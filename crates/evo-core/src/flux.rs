@@ -5,14 +5,18 @@
 //! initial plus les entrées moins les sorties déclarées. Un écart signale une
 //! fuite de matière, donc un bug.
 
-/// Éléments suivis. L'étape 1 suit le carbone ; l'azote, le phosphore et
-/// l'oxygène entrent à l'étape 2 avec les cycles géochimiques.
+/// Éléments suivis : le carbone depuis l'étape 1, le phosphore depuis
+/// l'étape 2 (nutriment limitant). L'oxygène libre n'est pas un élément
+/// conservé (il vient de l'eau) : son budget est tenu à part, par source et
+/// par puits, dans les réservoirs globaux de la planète.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Element {
     Carbon = 0,
+    Phosphorus = 1,
 }
 
-pub const ELEMENT_COUNT: usize = 1;
+pub const ELEMENT_COUNT: usize = 2;
+pub const ELEMENTS: [Element; ELEMENT_COUNT] = [Element::Carbon, Element::Phosphorus];
 
 /// Entrées et sorties cumulées, en moles, par élément.
 #[derive(Clone, Debug, Default, PartialEq)]

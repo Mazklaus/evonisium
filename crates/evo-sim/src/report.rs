@@ -1,7 +1,8 @@
 //! Mise en forme lisible de l'état du monde.
 
 use crate::world::Summary;
-use evo_life::metabolism::guild_label;
+use evo_genetics::{GenomeChangeCause, MutationKind, GENOME_CHANGE_CAUSE_COUNT};
+use evo_life::metabolism::{guild_label, PHOTOSYNTHESIS_STAGES};
 use evo_planet::WATER_POOLS;
 use std::fmt::Write;
 
@@ -20,7 +21,30 @@ pub fn format_years(y: f64) -> String {
 
 pub fn format_summary(s: &Summary) -> String {
     let mut out = String::new();
+    let g = &s.globals;
     let _ = writeln!(out, "Temps : {}", format_years(s.years));
+    let _ = writeln!(
+        out,
+        "Atmosphère : {:.2} bar ; O₂ {:.2e} ; CO₂ {:.0} Pa ; CH₄ {:.0} ppb. Climat : {:.1} K en moyenne, glace {:.0} %, océan {:.0} % de la surface",
+        g.pressure_pa / 1e5,
+        g.o2_mixing,
+        g.co2_pa,
+        g.ch4_ppb,
+        g.mean_temperature_k,
+        100.0 * g.ice_fraction,
+        100.0 * g.ocean_fraction
+    );
+    let _ = writeln!(
+        out,
+        "Oxygène : production brute {:.2e} mol/an, libération nette {:.2e}, puits {:.2e} ; carbone organique enfoui {:.2e} mol/an",
+        g.o2_production, g.o2_release, g.o2_sinks, g.organic_burial
+    );
+    let _ = writeln!(
+        out,
+        "Chemin de la photosynthèse : {} ; accélérateur {}",
+        PHOTOSYNTHESIS_STAGES[g.photosynthesis_stage as usize],
+        if g.accelerator_on { "actif" } else { "inactif" }
+    );
     let _ = writeln!(
         out,
         "Cellules océaniques colonisées : {} / {} ; populations : {} ; biomasse : {:.3e} mol C",
@@ -45,6 +69,33 @@ pub fn format_summary(s: &Summary) -> String {
         let _ = write!(out, " {} {:.3e} ;", p.label(), s.mean_chemistry[p as usize]);
     }
     let _ = writeln!(out);
-    let _ = writeln!(out, "Bilan de carbone : écart relatif {:.1e}", s.carbon_error);
+    let _ = writeln!(
+        out,
+        "Tunnel stochastique : {} tentatives, {} réussites ; modifications fixées par cause : {}",
+        s.stats.tunnel_attempts,
+        s.stats.tunnel_successes,
+        causes(&s.stats.fixed_changes_by_cause)
+    );
+    let _ = writeln!(out, "Bilans : carbone {:.1e}, phosphore {:.1e} (écarts relatifs)", s.carbon_error, s.phosphorus_error);
     out
+}
+
+/// Compteurs par cause, en texte (causes non nulles seulement).
+pub fn causes(counts: &[u64; GENOME_CHANGE_CAUSE_COUNT]) -> String {
+    let all = [
+        GenomeChangeCause::SpontaneousMutation(MutationKind::Point),
+        GenomeChangeCause::InducedMutation(MutationKind::Point),
+        GenomeChangeCause::Recombination,
+        GenomeChangeCause::HorizontalTransfer,
+        GenomeChangeCause::Endosymbiosis,
+        GenomeChangeCause::Accelerator,
+        GenomeChangeCause::ArtificialSelection,
+        GenomeChangeCause::SocietyTechnique,
+    ];
+    let parts: Vec<String> = all.iter().filter(|c| counts[c.index()] > 0).map(|c| format!("{} {}", c.label(), counts[c.index()])).collect();
+    if parts.is_empty() {
+        "aucune".into()
+    } else {
+        parts.join(", ")
+    }
 }

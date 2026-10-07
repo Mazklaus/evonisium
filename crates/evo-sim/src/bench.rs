@@ -1,4 +1,4 @@
-//! Mesure des budgets de calcul (porte de l'étape 1).
+//! Mesure des budgets de calcul (étapes 1 et 2).
 //!
 //! Le rapport produit compare les mesures aux budgets de la section
 //! « Faisabilité et performances » du document Vision.
@@ -7,8 +7,8 @@ use crate::report::format_years;
 use crate::world::{PhaseTimings, Seeding, World, WorldConfig};
 use evo_core::rng::{rng_for, Stream};
 use evo_genetics::popgen::fixation_probability;
-use evo_genetics::{mutate, MutationParams};
-use evo_life::{growth_rates, Phenotype, Physiology};
+use evo_genetics::mutate;
+use evo_life::{growth_rates, Conditions, Phenotype, Physiology};
 use evo_planet::generate::generate;
 use evo_planet::{PlanetParams, WaterPool, WATER_POOL_COUNT};
 use std::fmt::Write;
@@ -41,7 +41,8 @@ fn genetic_throughput(seed: u64) -> (f64, f64) {
     let world = World::new(cfg);
     let genome = world.minimal_cell();
     let physio = Physiology::default();
-    let params = MutationParams { reaction_count: 7, ..Default::default() };
+    let params = world.config.mutation.clone();
+    let cond = Conditions { temperature_k: 295.0, uv_w_m2: 5.0, light_kj: 1e5 };
     let mut chem = [0.0; WATER_POOL_COUNT];
     chem[WaterPool::Dic as usize] = 8.0;
     chem[WaterPool::H2 as usize] = 8e-4;
@@ -53,7 +54,7 @@ fn genetic_throughput(seed: u64) -> (f64, f64) {
     for _ in 0..n {
         let g = mutate(&genome, &params, &mut rng).genome;
         let p = Phenotype::from_genome(&g, &physio);
-        acc += growth_rates(&p, 295.0, &chem, 0.0, &physio).r;
+        acc += growth_rates(&p, &cond, &chem, &physio).r;
     }
     let evals = n as f64 / t.elapsed().as_secs_f64();
     std::hint::black_box(acc);
@@ -105,12 +106,7 @@ fn bench_level(level: u32, opts: &BenchOptions) -> LevelResult {
         total.add(&world.step());
     }
     let n = opts.steps.max(1);
-    let per_step = PhaseTimings {
-        ecology: total.ecology / n,
-        evolution: total.evolution / n,
-        migration: total.migration / n,
-        bookkeeping: total.bookkeeping / n,
-    };
+    let per_step = total.divided(n);
     let mem = world.memory_bytes();
     let summary = world.summary();
     LevelResult {
@@ -142,30 +138,30 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
     let results: Vec<LevelResult> = opts.levels.iter().map(|&l| bench_level(l, opts)).collect();
 
     let mut out = String::new();
-    let _ = writeln!(out, "# Mesures des budgets de calcul — étape 1\n");
-    let _ = writeln!(out, "Rapport produit par `evonisium bench`. Chaque mesure est une moyenne sur {} pas après {} pas de mise en route, avec des cellules minimales déposées dans toutes les cellules océaniques (charge maximale de l'étape 1).\n", opts.steps, opts.warmup);
+    let _ = writeln!(out, "# Mesures des budgets de calcul — étape 2\n");
+    let _ = writeln!(out, "Rapport produit par `evonisium bench`. Chaque mesure est une moyenne sur {} pas après {} pas de mise en route, avec des cellules minimales déposées dans toutes les cellules océaniques (charge maximale). Le pas comprend désormais la planète vivante : tectonique (un pas sur dix à 100 000 ans), climat d'équilibre, boîtes chimiques globales, tunnel stochastique et transfert horizontal.\n", opts.steps, opts.warmup);
     let _ = writeln!(
         out,
-        "Machine de mesure : {cpu}, {threads} fils, {ram} de mémoire. La machine cible du document Vision a 8 coeurs et 16 Go.\n"
+        "Machine de mesure : {cpu}, {threads} fils, {ram} de mémoire. La machine cible du document Vision a 8 coeurs et 16 Go, dont 2 réservés à l'affichage : la simulation en a 6.\n"
     );
 
     let _ = writeln!(out, "## Débit génétique (un fil)\n");
     let _ = writeln!(out, "| Opération | Par seconde |\n|---|---|");
     let _ = writeln!(out, "| Évaluation complète d'un mutant (mutation, phénotype, taux de croissance) | {evals_per_s:.2e} |");
     let _ = writeln!(out, "| Probabilité de fixation de Kimura | {kimura_per_s:.2e} |");
-    let _ = writeln!(out, "| Estimation sur 8 coeurs (évaluations complètes) | {:.2e} |\n", evals_per_s * 8.0);
+    let _ = writeln!(out, "| Estimation sur 6 coeurs (évaluations complètes) | {:.2e} |\n", evals_per_s * 6.0);
 
     let _ = writeln!(out, "## Monde microbien complet\n");
     let _ = writeln!(
         out,
-        "| Grille | Cellules | Cellules océaniques | Populations | Génomes distincts | Génération de la planète | Pas complet | dont écologie | dont évolution | dont migration | Évaluations génétiques par pas | Évaluations par seconde |"
+        "| Grille | Cellules | Cellules océaniques | Populations | Génomes distincts | Génération de la planète | Pas complet | dont planète | dont écologie | dont évolution | dont migration | Évaluations génétiques par pas | Évaluations par seconde |"
     );
-    let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|---|");
+    let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for r in &results {
         let step = r.per_step.total().as_secs_f64();
         let _ = writeln!(
             out,
-            "| niveau {} | {} | {} | {} | {} | {:.2} s | {:.0} ms | {:.0} ms | {:.0} ms | {:.0} ms | {:.0} | {:.2e} |",
+            "| niveau {} | {} | {} | {} | {} | {:.2} s | {:.0} ms | {:.0} ms | {:.0} ms | {:.0} ms | {:.0} ms | {:.0} | {:.2e} |",
             r.level,
             r.cells,
             r.ocean_cells,
@@ -173,6 +169,7 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
             r.distinct_genomes,
             r.grid_seconds + r.world_seconds,
             step * 1e3,
+            r.per_step.planet.as_secs_f64() * 1e3,
             r.per_step.ecology.as_secs_f64() * 1e3,
             r.per_step.evolution.as_secs_f64() * 1e3,
             r.per_step.migration.as_secs_f64() * 1e3,
@@ -183,11 +180,11 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
 
     let _ = writeln!(out, "\n## Vitesse du temps\n");
     let _ = writeln!(out, "Le document Vision vise environ 1 million d'années par seconde dans le monde microbien. La vitesse dépend du pas planétaire choisi : un pas plus long coûte le même calcul mais l'évolution y est plus grossière (une substitution au plus par population et par pas).\n");
-    let _ = writeln!(out, "| Grille | Pas mesuré | Vitesse avec ce pas | Pas nécessaire pour 1 Ma/s ici | Même chose estimée sur 8 coeurs |\n|---|---|---|---|---|");
+    let _ = writeln!(out, "| Grille | Pas mesuré | Vitesse avec ce pas | Pas nécessaire pour 1 Ma/s ici | Même chose estimée sur 6 coeurs |\n|---|---|---|---|---|");
     for r in &results {
         let step = r.per_step.total().as_secs_f64();
         let needed = 1e6 * step;
-        let needed_8 = needed * threads as f64 / 8.0;
+        let needed_8 = needed * threads as f64 / 6.0;
         let _ = writeln!(
             out,
             "| niveau {} | {} | {} par seconde | {} | {} |",

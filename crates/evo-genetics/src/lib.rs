@@ -1,18 +1,27 @@
-//! Génétique et évolution, version de l'étape 1.
+//! Génétique et évolution.
 //!
 //! - [`genome`] : génome d'éléments génétiques dont chaque gène porte un
 //!   domaine protéique paramétré (version réduite du génome à domaines du
-//!   document Génétique : pas encore de réseau de régulation).
-//! - [`mutation`] : les classes de mutations utiles aux unicellulaires.
+//!   document Génétique : pas encore de réseau de régulation), et l'interface
+//!   unique de modification qui note la cause de chaque changement.
+//! - [`mutation`] : les classes de mutations utiles aux unicellulaires, dont
+//!   la duplication suivie de divergence vers une famille apparentée, et le
+//!   transfert horizontal de gènes.
 //! - [`popgen`] : génétique des populations (Kimura, Wright-Fisher,
-//!   Hardy-Weinberg) et régime « apparition puis fixation ».
+//!   Hardy-Weinberg), régime « apparition puis fixation » et tunnel
+//!   stochastique.
+//! - [`journal`] : journal des modifications de génome fixées.
 
 pub mod genome;
+pub mod journal;
 pub mod lineage;
 pub mod mutation;
 pub mod popgen;
 
-pub use genome::{Domain, DomainFamily, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, GENOME_CHANGE_CAUSE_COUNT};
+pub use genome::{
+    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, GENOME_CHANGE_CAUSE_COUNT,
+};
+pub use journal::{GenomeJournal, JournalEntry};
 pub use lineage::{LineageRecord, LineageRegistry};
-pub use mutation::{mutate, mutate_with_kind, MutationKind, MutationParams, MUTATION_KINDS};
-pub use popgen::{fixation_probability, OriginFixation};
+pub use mutation::{mutate, mutate_again, mutate_with_kind, transfer_gene, MutationKind, MutationParams, MUTATION_KINDS, MUTATION_KIND_COUNT};
+pub use popgen::{fixation_probability, tunnel_probability, OriginFixation};

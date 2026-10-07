@@ -5,8 +5,8 @@
 //! stocke aucun trait : le chantier Organismes calcule le phénotype à partir
 //! des domaines exprimés.
 //!
-//! [Simplification] Étape 1 : un domaine par protéine, expression constante
-//! (pas de sites régulateurs), un chromosome circulaire unique, haploïde.
+//! [Simplification] Un domaine par protéine, expression constante (pas de
+//! sites régulateurs), un chromosome circulaire unique, haploïde.
 
 /// Identifiant d'une réaction du catalogue métabolique (tenu par Organismes).
 pub type ReactionId = u8;
@@ -20,9 +20,29 @@ pub enum DomainFamily {
     Repair,
     /// Défense contre l'oxygène (équivalent catalase, superoxyde dismutase).
     OxidativeDefense,
-    /// Pigment captant la lumière (équivalent chlorophylles) : sans lui, une
-    /// enzyme de photosynthèse ne sert à rien.
+    /// Pigment de la famille des porphyrines (équivalent chlorophylles) :
+    /// seul, il protège des ultraviolets ; couplé à une chaîne de transport
+    /// d'électrons ou à un centre réactionnel, il capte la lumière.
     Pigment,
+    /// Transporteur d'électrons à hème (équivalent cytochromes), porphyrine
+    /// lui aussi : seul, il améliore le rendement des voies chimiques.
+    Cytochrome,
+    /// Pompe à protons activée par la lumière (équivalent rhodopsine
+    /// microbienne) : une protéine, un peu d'énergie, pas de carbone fixé.
+    Rhodopsin,
+    /// Complexe à manganèse qui oxyde l'eau : seul, il détruit les espèces
+    /// réactives de l'oxygène (équivalent catalase à manganèse).
+    WaterOxidation,
+}
+
+/// Parenté déclarée entre familles de domaines : une copie d'un domaine
+/// `from` peut diverger vers `to` avec le poids relatif `weight`. La table est
+/// tenue par le chantier qui donne leur sens aux familles (Organismes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DomainRelation {
+    pub from: DomainFamily,
+    pub to: DomainFamily,
+    pub weight: f64,
 }
 
 /// Paramètres d'un domaine. Leur sens précis est fixé par le chantier qui les
@@ -39,6 +59,11 @@ pub struct Domain {
     pub t_opt_k: f64,
     /// Largeur de la plage de tolérance thermique, K.
     pub t_width_k: f64,
+    /// Pic du spectre d'absorption, nm. Il ne compte que pour les familles
+    /// qui captent la lumière (pigments, rhodopsines, cytochromes) : il donne
+    /// à la fois la couleur affichée et le rendement sous l'étoile. Ailleurs il
+    /// dérive librement, variation cachée disponible pour l'exaptation.
+    pub absorption_nm: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -121,11 +146,42 @@ impl GenomeChangeCause {
     }
 }
 
-/// Génome dérivé d'un autre, avec la cause du changement.
+impl GenomeChangeCause {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SpontaneousMutation(_) => "mutation spontanée",
+            Self::InducedMutation(_) => "mutation induite",
+            Self::Recombination => "recombinaison",
+            Self::HorizontalTransfer => "transfert horizontal",
+            Self::Endosymbiosis => "endosymbiose",
+            Self::Accelerator => "accélérateur",
+            Self::ArtificialSelection => "sélection artificielle",
+            Self::SocietyTechnique => "technique d'une société",
+        }
+    }
+}
+
+/// Élément modifié par un changement de génome (pour le journal).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ChangedElement {
+    /// Paramètre d'un gène existant modifié, ou gène devenu pseudogène.
+    Gene { index: u16, family: DomainFamily },
+    /// Gène ajouté (duplication, divergence, de novo, transfert).
+    Inserted { index: u16, family: DomainFamily },
+    /// Gène retiré.
+    Removed { index: u16, family: DomainFamily },
+    /// Site du marqueur neutre.
+    Marker { site: u16 },
+    /// Plusieurs éléments à la fois (double mutant d'un tunnel).
+    Several,
+}
+
+/// Génome dérivé d'un autre, avec la cause du changement et l'élément touché.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GenomeChange {
     pub genome: Genome,
     pub cause: GenomeChangeCause,
+    pub element: ChangedElement,
 }
 
 impl Genome {
@@ -133,13 +189,14 @@ impl Genome {
     /// passe par ici et en note la cause. C'est l'un des points d'accroche
     /// prévus par le document Vision pour étendre le moteur sans refonte.
     ///
+    /// La fermeture applique le changement et renvoie l'élément touché.
+    ///
     /// [Simplification] Chez les microbes, seules les modifications qui se
-    /// fixent sont comptées, par cause, dans les statistiques du monde ; le
-    /// journal détaillé (lignée, date, élément modifié, invisible du joueur)
-    /// arrive à l'étape 2 avec les autres causes.
-    pub fn derive(&self, cause: GenomeChangeCause, change: impl FnOnce(&mut Genome)) -> GenomeChange {
+    /// fixent entrent au journal détaillé ([`crate::journal::GenomeJournal`]) ;
+    /// les autres ne sont que des candidats évalués.
+    pub fn derive(&self, cause: GenomeChangeCause, change: impl FnOnce(&mut Genome) -> ChangedElement) -> GenomeChange {
         let mut genome = self.clone();
-        change(&mut genome);
-        GenomeChange { genome, cause }
+        let element = change(&mut genome);
+        GenomeChange { genome, cause, element }
     }
 }
