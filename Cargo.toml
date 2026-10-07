@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Mazklaus/evonisium"
+
+[workspace.dependencies]
+rand = "0.9"
+rand_chacha = "0.9"
+rand_distr = "0.5"
+rayon = "1"
+mimalloc = { version = "0.1", default-features = false }
+evo-core = { path = "crates/evo-core" }
+evo-planet = { path = "crates/evo-planet" }
+evo-genetics = { path = "crates/evo-genetics" }
+evo-life = { path = "crates/evo-life" }
+evo-sim = { path = "crates/evo-sim" }
+
+[profile.release]
+debug = 1
+
+# Les tests statistiques tournent des milliers de répliques : on les optimise.
+[profile.test]
+opt-level = 3

@@ -1,0 +1,19 @@
+[package]
+name = "evo-sim"
+description = "Monde simulé sans affichage, ordonnanceur et outil en ligne de commande (étape 1)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "evonisium"
+path = "src/bin/evonisium.rs"
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-genetics.workspace = true
+evo-life.workspace = true
+rand.workspace = true
+rayon.workspace = true
+mimalloc.workspace = true

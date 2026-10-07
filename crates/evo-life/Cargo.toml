@@ -1,0 +1,14 @@
+[package]
+name = "evo-life"
+description = "Organismes et écosystèmes : métabolismes, phénotype, populations microbiennes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-genetics.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+rayon.workspace = true
