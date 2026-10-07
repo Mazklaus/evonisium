@@ -18,7 +18,10 @@ use evo_core::flux::{Element, FluxRegistry};
 use evo_core::rng::{rng_for, Stream};
 use evo_core::Scheduler;
 use evo_genetics::genome::MARKER_LEN;
-use evo_genetics::{mutate_with_kind, Domain, DomainFamily, Gene, Genome, LineageRegistry, MutationParams, OriginFixation, MUTATION_KINDS};
+use evo_genetics::{
+    mutate_with_kind, Domain, DomainFamily, Gene, Genome, GenomeChange, GenomeChangeCause, LineageRegistry, MutationParams, OriginFixation,
+    GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS,
+};
 use evo_life::community::{evaluate, substep, CellContext, Population};
 use evo_life::metabolism::{FERMENTATION, METHANOGENESIS, REACTION_COUNT};
 use evo_life::{growth_rates, selection_coefficient, Phenotype, Physiology};
@@ -102,6 +105,8 @@ pub struct WorldStats {
     pub local_extinctions: u64,
     /// Génomes mutants construits et évalués (mutation, phénotype, r, s).
     pub genetic_evaluations: u64,
+    /// Modifications de génome fixées, par cause ([`GenomeChangeCause::index`]).
+    pub fixed_changes_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
 }
 
 impl WorldStats {
@@ -112,6 +117,9 @@ impl WorldStats {
         self.migrant_replacements += o.migrant_replacements;
         self.local_extinctions += o.local_extinctions;
         self.genetic_evaluations += o.genetic_evaluations;
+        for (a, b) in self.fixed_changes_by_cause.iter_mut().zip(o.fixed_changes_by_cause) {
+            *a += b;
+        }
     }
 }
 
@@ -591,7 +599,7 @@ fn evolve_cell(
         let generations = dt / resident.rates.generation_time(physio);
         let ne = cfg.regime.effective_size(resident.census(physio));
         let u = cfg.mutation.genomic_rate(&resident.genome);
-        let mut best: Option<(f64, Genome, Phenotype, evo_life::GrowthRates)> = None;
+        let mut best: Option<(f64, Genome, Phenotype, evo_life::GrowthRates, GenomeChangeCause)> = None;
         for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
             let count = cfg.candidates_per_kind[k];
             if count == 0 {
@@ -599,7 +607,7 @@ fn evolve_cell(
             }
             let copies = ne * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
             for _ in 0..count {
-                let genome = mutate_with_kind(&resident.genome, kind, &cfg.mutation, &mut rng).genome;
+                let GenomeChange { genome, cause } = mutate_with_kind(&resident.genome, kind, &cfg.mutation, &mut rng);
                 let phenotype = Phenotype::from_genome(&genome, physio);
                 let rates = growth_rates(&phenotype, ctx.env.temperature_k, chem, light, physio);
                 stats.genetic_evaluations += 1;
@@ -618,11 +626,12 @@ fn evolve_cell(
                     continue;
                 }
                 if cfg.regime.candidate_fixes(s, ne, copies, &mut rng) {
-                    best = Some((s, genome, phenotype, rates));
+                    best = Some((s, genome, phenotype, rates, cause));
                 }
             }
         }
-        let Some((_, genome, phenotype, rates)) = best else { continue };
+        let Some((_, genome, phenotype, rates, cause)) = best else { continue };
+        stats.fixed_changes_by_cause[cause.index()] += 1;
         let parent_lineage = pops[i].lineage;
         let (genome, phenotype) = (Arc::new(genome), Arc::new(phenotype));
         if phenotype.signature == pops[i].signature() {

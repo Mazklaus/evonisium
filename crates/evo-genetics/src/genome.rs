@@ -88,11 +88,37 @@ impl Genome {
     }
 }
 
-/// Pourquoi un génome a changé. Liste ouverte : les transferts horizontaux et
-/// les techniques des sociétés (génie génétique) s'y ajouteront.
+/// Pourquoi un génome a changé : les huit causes du document Génétique
+/// (« Une seule porte d'entrée pour modifier un génome »). L'étape 1 n'utilise
+/// que la mutation spontanée ; les autres sont réservées.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GenomeChangeCause {
-    Mutation(crate::mutation::MutationKind),
+    SpontaneousMutation(crate::mutation::MutationKind),
+    InducedMutation(crate::mutation::MutationKind),
+    Recombination,
+    HorizontalTransfer,
+    Endosymbiosis,
+    Accelerator,
+    ArtificialSelection,
+    SocietyTechnique,
+}
+
+pub const GENOME_CHANGE_CAUSE_COUNT: usize = 8;
+
+impl GenomeChangeCause {
+    /// Rang de la cause, pour les compteurs par cause.
+    pub fn index(self) -> usize {
+        match self {
+            Self::SpontaneousMutation(_) => 0,
+            Self::InducedMutation(_) => 1,
+            Self::Recombination => 2,
+            Self::HorizontalTransfer => 3,
+            Self::Endosymbiosis => 4,
+            Self::Accelerator => 5,
+            Self::ArtificialSelection => 6,
+            Self::SocietyTechnique => 7,
+        }
+    }
 }
 
 /// Génome dérivé d'un autre, avec la cause du changement.
@@ -104,10 +130,13 @@ pub struct GenomeChange {
 
 impl Genome {
     /// Interface unique de modification d'un génome : toute transformation
-    /// (mutation aujourd'hui, transfert horizontal ou technique d'une société
-    /// plus tard) passe par ici et en note la cause. C'est l'un des points
-    /// d'accroche prévus par le document Vision pour étendre le moteur sans
-    /// refonte.
+    /// passe par ici et en note la cause. C'est l'un des points d'accroche
+    /// prévus par le document Vision pour étendre le moteur sans refonte.
+    ///
+    /// [Simplification] Chez les microbes, seules les modifications qui se
+    /// fixent sont comptées, par cause, dans les statistiques du monde ; le
+    /// journal détaillé (lignée, date, élément modifié, invisible du joueur)
+    /// arrive à l'étape 2 avec les autres causes.
     pub fn derive(&self, cause: GenomeChangeCause, change: impl FnOnce(&mut Genome)) -> GenomeChange {
         let mut genome = self.clone();
         change(&mut genome);

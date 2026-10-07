@@ -74,6 +74,7 @@ Chacune s'ajoute à celles déjà listées dans les documents de conception.
 | Effectif efficace plafonné à 10⁸ | Effets des effectifs réels de 10²⁰ cellules | Valeur réaliste pour les bactéries |
 | Un domaine par protéine, pas de réseau de régulation, haploïde et asexué | Régulation, plasticité, recombinaison | Étape 4 (développement) |
 | Migration : seuls les génotypes passent d'une cellule à l'autre, pas la biomasse (sauf à la colonisation) | Flux de biomasse entre cellules | Étape 2 |
+| Toute modification de génome passe par `Genome::derive`, qui note sa cause (les huit causes du document Génétique) ; seules les modifications fixées sont comptées par cause, sans journal détaillé | Le journal par lignée, date et élément modifié | Étape 2 |
 | Lignée créée seulement à une innovation métabolique ; pas encore d'espèces par distance génétique | Arbre du vivant détaillé | Étape 3 |
 
 Les constantes physiologiques (`Physiology` dans `evo-life`) sont des ordres de grandeur de microbiologie, pas des valeurs calibrées : la calibration fine viendra avec les prototypes de l'étape 2.

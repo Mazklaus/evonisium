@@ -116,7 +116,7 @@ pub fn mutate_with_kind(genome: &Genome, kind: MutationKind, params: &MutationPa
     if genome.genes.is_empty() && kind != MutationKind::NeutralMarker {
         kind = MutationKind::DeNovo;
     }
-    genome.derive(GenomeChangeCause::Mutation(kind), |g| apply(g, kind, params, rng))
+    genome.derive(GenomeChangeCause::SpontaneousMutation(kind), |g| apply(g, kind, params, rng))
 }
 
 fn apply(g: &mut Genome, kind: MutationKind, params: &MutationParams, rng: &mut impl Rng) {
@@ -184,7 +184,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for _ in 0..2000 {
             let change = mutate(&g, &params, &mut rng);
-            let GenomeChangeCause::Mutation(kind) = change.cause;
+            let GenomeChangeCause::SpontaneousMutation(kind) = change.cause else { panic!("cause inattendue") };
             let m = change.genome;
             seen.insert(kind);
             match kind {
