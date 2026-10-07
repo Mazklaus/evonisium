@@ -38,25 +38,54 @@ impl Origin {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EventKind {
     /// Des cellules minimales ont été déposées.
-    LifeSeeded { lineage: u32 },
+    LifeSeeded {
+        lineage: u32,
+    },
     /// Un mutant au métabolisme nouveau pour la cellule fonde une lignée.
-    NewLineage { lineage: u32, parent: u32, signature: u32 },
+    NewLineage {
+        lineage: u32,
+        parent: u32,
+        signature: u32,
+    },
     /// Plus aucune population ne porte cette lignée.
-    LineageExtinct { lineage: u32 },
+    LineageExtinct {
+        lineage: u32,
+    },
     /// Première apparition sur la planète d'une étape d'une innovation à
     /// plusieurs pièces (par exemple le chemin vers la photosynthèse).
-    Innovation { lineage: u32, pathway: &'static str, stage: u8, label: &'static str },
+    Innovation {
+        lineage: u32,
+        pathway: &'static str,
+        stage: u8,
+        label: &'static str,
+    },
     /// Le détecteur de stagnation active ou coupe un accélérateur.
-    AcceleratorOn { pathway: &'static str, stage: u8 },
-    AcceleratorOff { pathway: &'static str },
+    AcceleratorOn {
+        pathway: &'static str,
+        stage: u8,
+    },
+    AcceleratorOff {
+        pathway: &'static str,
+    },
     /// L'oxygène de l'atmosphère franchit un seuil (fraction molaire).
-    OxygenThreshold { mixing_ratio: f64, rising: bool },
+    OxygenThreshold {
+        mixing_ratio: f64,
+        rising: bool,
+    },
     /// Glaciation globale (boule de neige) : début ou fin.
-    Snowball { ice_fraction: f64, starts: bool },
+    Snowball {
+        ice_fraction: f64,
+        starts: bool,
+    },
     /// Réorganisation des plaques (nouveaux pôles de rotation).
-    PlateReorganisation { plates: u32 },
+    PlateReorganisation {
+        plates: u32,
+    },
     /// Un ordre de la file a été appliqué.
-    OrderApplied { order: u64, label: String },
+    OrderApplied {
+        order: u64,
+        label: String,
+    },
 }
 
 impl EventKind {

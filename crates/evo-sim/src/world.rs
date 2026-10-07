@@ -340,17 +340,19 @@ impl World {
         for c in cells {
             let v = self.planet.cells[c].water_volume_m3;
             let chem = &mut self.chemistry[c];
-            let b = self
-                .config
-                .seed_biomass
-                .min(0.5 * chem[WaterPool::Dic as usize] * v)
-                .min(0.5 * chem[WaterPool::Po4 as usize] * v * cp);
+            let b = self.config.seed_biomass.min(0.5 * chem[WaterPool::Dic as usize] * v).min(0.5 * chem[WaterPool::Po4 as usize] * v * cp);
             if b < self.config.extinction_biomass {
                 continue;
             }
             chem[WaterPool::Dic as usize] -= b / v;
             chem[WaterPool::Po4 as usize] -= b / cp / v;
-            self.communities[c].push(Population { lineage, genome: genome.clone(), phenotype: phenotype.clone(), biomass: b, rates: Default::default() });
+            self.communities[c].push(Population {
+                lineage,
+                genome: genome.clone(),
+                phenotype: phenotype.clone(),
+                biomass: b,
+                rates: Default::default(),
+            });
         }
         if self.progress.stage_since_years.is_none() {
             self.progress.stage_since_years = Some(self.years);
@@ -370,7 +372,9 @@ impl World {
 
     /// Phosphore total du système, mol.
     pub fn total_phosphorus(&self) -> f64 {
-        self.planet.water_phosphorus(&self.chemistry) + self.biomass() / self.config.physiology.carbon_to_phosphorus + self.planet.reservoirs.phosphorus()
+        self.planet.water_phosphorus(&self.chemistry)
+            + self.biomass() / self.config.physiology.carbon_to_phosphorus
+            + self.planet.reservoirs.phosphorus()
     }
 
     /// Écarts relatifs des bilans de carbone et de phosphore.
@@ -551,15 +555,31 @@ impl World {
                     return r;
                 }
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
+                let start = *chem;
                 for _ in 0..cfg.eco_substeps {
                     if !pops.is_empty() {
-                        r.oxygen += substep(pops, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
+                        let o = substep(pops, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
+                        r.oxygen += o.oxygen;
+                        r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
+                        r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
                     }
                     planet.exchange(c, chem, cfg.eco_dt_years, &targets, &mut r.exact);
                 }
+                // Flux à prolonger : ceux d'une couche à l'équilibre, où ce qui
+                // s'accumule pendant l'écologie rapide serait sorti. Le simple
+                // rattrapage d'une cellule vers ses cibles (après un changement
+                // de l'atmosphère) ne doit pas être prolongé sur tout le pas.
+                let v = env.water_volume_m3;
+                let mut steady = r.exact;
+                for i in 0..WATER_POOL_COUNT {
+                    steady[i] += (chem[i] - start[i]) * v;
+                }
+                // Aucune boîte ne fournit de matière organique dissoute à la
+                // couche : une cellule qui en a consommé son stock ne peut pas
+                // en importer.
+                steady[WaterPool::Doc as usize] = steady[WaterPool::Doc as usize].max(0.0);
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
-                let v = env.water_volume_m3;
                 pops.retain(|p| {
                     if p.biomass < cfg.extinction_biomass {
                         chem[WaterPool::Doc as usize] += p.biomass / v;
@@ -571,7 +591,7 @@ impl World {
                     }
                 });
                 evaluate(pops, &ctx, chem, &cfg.physiology);
-                r.rates = balanced_rates(&r.exact, t_eco);
+                r.rates = balanced_rates(&steady, t_eco);
                 r
             })
             .collect::<Vec<CellEco>>()
@@ -824,7 +844,13 @@ impl World {
             self.progress.stage_since_years = Some(years);
             if self.progress.accelerator_on {
                 self.progress.accelerator_on = false;
-                self.events.push_with(years, None, EventKind::AcceleratorOff { pathway: PHOTOSYNTHESIS_PATHWAY }, Origin::Accelerator, Some(id));
+                self.events.push_with(
+                    years,
+                    None,
+                    EventKind::AcceleratorOff { pathway: PHOTOSYNTHESIS_PATHWAY },
+                    Origin::Accelerator,
+                    Some(id),
+                );
             }
         }
         // Détecteur de stagnation : l'accélérateur n'agit qu'en dernier recours.
@@ -834,7 +860,13 @@ impl World {
                 if years - since >= acc.patience_years && self.communities.iter().any(|v| !v.is_empty()) {
                     self.progress.accelerator_on = true;
                     let stage = self.progress.best_stage;
-                    self.events.push_with(years, None, EventKind::AcceleratorOn { pathway: PHOTOSYNTHESIS_PATHWAY, stage }, Origin::Accelerator, None);
+                    self.events.push_with(
+                        years,
+                        None,
+                        EventKind::AcceleratorOn { pathway: PHOTOSYNTHESIS_PATHWAY, stage },
+                        Origin::Accelerator,
+                        None,
+                    );
                 }
             }
         }
@@ -1250,7 +1282,12 @@ mod tests {
             }
         }
         let ancestral = a / b;
-        assert!(end.thermal_mismatch_k < 0.75 * ancestral, "écart thermique {} K contre {} K pour l'ancêtre", end.thermal_mismatch_k, ancestral);
+        assert!(
+            end.thermal_mismatch_k < 0.75 * ancestral,
+            "écart thermique {} K contre {} K pour l'ancêtre",
+            end.thermal_mismatch_k,
+            ancestral
+        );
     }
 
     #[test]

@@ -44,6 +44,11 @@ pub struct Reaction {
     /// pour une voie chimique, mole de carbone fixé pour une voie lumineuse.
     pub inputs: &'static [(WaterPool, f64)],
     pub outputs: &'static [(WaterPool, f64)],
+    /// Pour une voie chimique autotrophe : pouvoir réducteur consommé (négatif)
+    /// ou produit (positif) par mole de carbone fixée dans la biomasse. Le
+    /// CO₂ ne devient matière organique qu'avec 4 électrons par carbone ; les
+    /// voies lumineuses les comptent déjà dans leurs entrées.
+    pub fixation: &'static [(WaterPool, f64)],
     /// Le carbone de la biomasse vient de la matière organique.
     pub heterotrophic: bool,
     /// Voie d'anaérobie stricte, bloquée par l'oxygène.
@@ -84,6 +89,8 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: None,
         inputs: &[(H2, 1.0), (Dic, 0.25)],
         outputs: &[(Ch4, 0.25)],
+        // CO₂ + 2 H₂ → CH₂O + H₂O
+        fixation: &[(H2, -2.0)],
         heterotrophic: false,
         oxygen_sensitive: true,
     },
@@ -95,6 +102,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: None,
         inputs: &[(Doc, 1.0)],
         outputs: &[(Ch4, 0.5), (Dic, 0.5)],
+        fixation: &[],
         heterotrophic: true,
         oxygen_sensitive: false,
     },
@@ -106,6 +114,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((O2, 1e-3)),
         inputs: &[(Doc, 1.0), (O2, 1.0)],
         outputs: &[(Dic, 1.0)],
+        fixation: &[],
         heterotrophic: true,
         oxygen_sensitive: false,
     },
@@ -117,6 +126,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((Sulfate, 1e-2)),
         inputs: &[(Doc, 1.0), (Sulfate, 0.5)],
         outputs: &[(Dic, 1.0), (H2s, 0.5)],
+        fixation: &[],
         heterotrophic: true,
         oxygen_sensitive: true,
     },
@@ -128,6 +138,8 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((O2, 1e-3)),
         inputs: &[(Ch4, 1.0), (O2, 2.0)],
         outputs: &[(Dic, 1.0)],
+        // Le méthane fournit les électrons : ½ CH₄ → ½ CO₂ pour un carbone fixé.
+        fixation: &[(Ch4, -0.5), (Dic, 0.5)],
         heterotrophic: false,
         oxygen_sensitive: false,
     },
@@ -139,6 +151,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((H2s, 1e-3)),
         inputs: &[(H2s, 0.5)],
         outputs: &[(Sulfate, 0.5)],
+        fixation: &[],
         heterotrophic: false,
         oxygen_sensitive: true,
     },
@@ -150,6 +163,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: None,
         inputs: &[],
         outputs: &[(O2, 1.0)],
+        fixation: &[],
         heterotrophic: false,
         oxygen_sensitive: false,
     },
@@ -161,6 +175,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((Fe2, 1e-3)),
         inputs: &[(Fe2, 4.0)],
         outputs: &[(FeOx, 4.0)],
+        fixation: &[],
         heterotrophic: false,
         oxygen_sensitive: true,
     },
@@ -173,6 +188,7 @@ pub const REACTIONS: [Reaction; REACTION_COUNT] = [
         cosubstrate: Some((Mn2, 1e-4)),
         inputs: &[(Mn2, 2.0)],
         outputs: &[(MnOx, 2.0)],
+        fixation: &[],
         heterotrophic: false,
         oxygen_sensitive: true,
     },

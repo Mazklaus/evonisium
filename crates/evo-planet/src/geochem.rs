@@ -79,7 +79,13 @@ pub struct OxygenBudget {
 
 impl OxygenBudget {
     pub fn total_sinks(&self) -> f64 {
-        self.surface_uptake + self.deep_respiration + self.reduced_gases + self.methane + self.iron_manganese + self.oxidative_weathering + self.sulfide
+        self.surface_uptake
+            + self.deep_respiration
+            + self.reduced_gases
+            + self.methane
+            + self.iron_manganese
+            + self.oxidative_weathering
+            + self.sulfide
     }
 }
 
@@ -347,21 +353,26 @@ impl GlobalReservoirs {
         dt: f64,
         flux: &mut FluxRegistry,
     ) {
-        // Sous-pas de 10 000 ans au plus, raccourcis quand les échanges
-        // bruts de surface videraient plus d'un dixième d'une boîte (la
-        // photosynthèse renouvelle le CO₂ de l'air en quelques siècles).
-        let mut h_max: f64 = 10_000.0;
+        // Sous-pas de 10 000 ans au plus, raccourcis pour qu'un sous-pas ne
+        // prélève pas plus de 2 % d'une boîte (la photosynthèse renouvelle le
+        // CO₂ de l'air en quelques siècles à quelques millénaires).
+        let mut steps = (dt / 10_000.0).ceil();
         for (i, &r) in surface_rates.iter().enumerate() {
             if r < 0.0 {
                 if let Some(&stock) = self.counterpart_ref(crate::pools::WATER_POOLS[i]) {
                     if stock > 0.0 {
-                        h_max = h_max.min(0.1 * stock / -r);
+                        steps = steps.max((dt * -r / (0.02 * stock)).ceil());
                     }
                 }
             }
         }
-        let n = (dt / h_max.max(1.0)).ceil().clamp(1.0, 20_000.0) as usize;
+        let n = steps.clamp(1.0, 20_000.0) as usize;
         let h = dt / n as f64;
+        // Les prélèvements des cellules suivent la disponibilité de ce
+        // qu'elles prélèvent (cinétique d'ordre un, schéma implicite) : une
+        // boîte qui se vide les ralentit au lieu d'être vidée d'un coup.
+        let initial: [f64; WATER_POOL_COUNT] =
+            std::array::from_fn(|i| self.counterpart_ref(crate::pools::WATER_POOLS[i]).copied().unwrap_or(0.0).max(0.0));
         let mut acc = GlobalFluxes::default();
         let _ = ctx.deep_volume_m3;
         let sinks_before = self.oxygen.total_sinks();
@@ -369,9 +380,9 @@ impl GlobalReservoirs {
         let p_ref = params.co2_pa;
         let esc_per_mixing = params.hydrogen_escape * ctx.area_m2 * evo_core::units::SECONDS_PER_YEAR / 6.022_140_76e23;
         for _ in 0..n {
-            // 1. Échanges de surface, limités pour qu'aucune boîte ne devienne négative.
-            //    Les pools carbonés partagent une même limite (le carbone reste
-            //    équilibré cellule par cellule) ; les autres sont limités un à un.
+            // 1. Échanges de surface. Les pools carbonés partagent un même
+            //    facteur (le carbone reste équilibré cellule par cellule), que
+            //    suit l'O₂ libéré par la fixation ; les autres pools ont le leur.
             let mut moles = surface_rates.map(|r| r * h);
             let mut phi = [1.0f64; WATER_POOL_COUNT];
             let mut phi_carbon: f64 = 1.0;
@@ -379,25 +390,51 @@ impl GlobalReservoirs {
                 let pool = crate::pools::WATER_POOLS[i];
                 if m < 0.0 {
                     if let Some(&r) = self.counterpart_ref(pool) {
-                        let limit = (0.9 * r.max(0.0) / -m).min(1.0);
+                        let f = if initial[i] > 0.0 { (r.max(0.0) / (initial[i] - m)).min(1.0) } else { 0.0 };
                         if pool.carbon_atoms() > 0.0 {
-                            phi_carbon = phi_carbon.min(limit);
+                            phi_carbon = phi_carbon.min(f);
                         } else {
-                            phi[i] = limit;
+                            phi[i] = f;
                         }
                     }
                 }
             }
             for (i, m) in moles.iter_mut().enumerate() {
                 let pool = crate::pools::WATER_POOLS[i];
-                *m *= if pool.carbon_atoms() > 0.0 { phi_carbon } else { phi[i] };
+                let carbon_linked = pool.carbon_atoms() > 0.0 || (pool == WaterPool::O2 && *m > 0.0);
+                *m *= if carbon_linked { phi_carbon.min(phi[i]) } else { phi[i] };
             }
             let deep_oxic = self.deep_oxic(params);
             let (export, h2s) = self.apply_surface(params, &moles, deep_oxic);
             acc.organic_export += export;
             acc.organic_burial += export.max(0.0) * params.organic_burial_efficiency;
 
-            // 2. Volcanisme et hydrothermalisme profond.
+            // 2. Chimie rapide de l'atmosphère (juste après les apports de surface,
+            //    pour que les puits lents voient l'O₂ qui reste) : titrage H₂-O₂, oxydation et photolyse
+            //    du méthane, échappement de l'hydrogène vers l'espace.
+            let atm = &mut self.atmosphere;
+            let r = (atm[Gas::H2 as usize] / 2.0).min(atm[Gas::O2 as usize]).max(0.0);
+            atm[Gas::H2 as usize] -= 2.0 * r;
+            atm[Gas::O2 as usize] -= r;
+            self.oxygen.reduced_gases += r;
+            let total: f64 = atm.iter().sum();
+            let k_esc = esc_per_mixing / total.max(1e-300);
+            let f_o2 = atm[Gas::O2 as usize] / total;
+            let k_ox = params.ch4_oxidation * f_o2.max(0.0).sqrt();
+            let ch4_0 = atm[Gas::Ch4 as usize];
+            atm[Gas::Ch4 as usize] = ch4_0 / (1.0 + h * (k_ox + k_esc));
+            let destroyed = ch4_0 - atm[Gas::Ch4 as usize];
+            let oxidised = (destroyed * k_ox / (k_ox + k_esc).max(1e-300)).min(atm[Gas::O2 as usize] / 2.0);
+            atm[Gas::O2 as usize] -= 2.0 * oxidised;
+            self.oxygen.methane += 2.0 * oxidised;
+            // Le carbone du méthane détruit revient en CO₂.
+            atm[Gas::Co2 as usize] += destroyed;
+            let h2_0 = atm[Gas::H2 as usize];
+            atm[Gas::H2 as usize] = h2_0 / (1.0 + h * k_esc);
+            acc.hydrogen_escape += h2_0 - atm[Gas::H2 as usize] + 2.0 * (destroyed - oxidised);
+            acc.methane_release += moles[WaterPool::Ch4 as usize];
+
+            // 3. Volcanisme et hydrothermalisme profond.
             let v = params.outgassing_co2 * ctx.activity * h;
             self.atmosphere[Gas::Co2 as usize] += v;
             self.atmosphere[Gas::H2 as usize] += v * params.outgassing_h2_ratio;
@@ -407,7 +444,7 @@ impl GlobalReservoirs {
             self.deep_fe2 += params.vent_fe_flux * deep_share;
             self.deep_mn2 += params.vent_mn_flux * deep_share;
 
-            // 3. Altération des silicates (thermostat) et des fonds.
+            // 4. Altération des silicates (thermostat) et des fonds.
             let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
             let co2_factor = (p_co2 / p_ref).max(0.0);
             let land = params.weathering_per_m2
@@ -423,7 +460,7 @@ impl GlobalReservoirs {
             self.deep_po4 += p_in;
             flux.exchange(Element::Phosphorus, p_in);
 
-            // 4. Puits d'oxygène.
+            // 5. Puits d'oxygène lents.
             let f_o2 = self.mixing_ratio(Gas::O2);
             let o2 = self.atmosphere[Gas::O2 as usize];
             let ow = (params.oxidative_weathering_per_m2 * ctx.land_area_m2 * f_o2 / (f_o2 + params.oxidative_weathering_half) * h).min(o2);
@@ -455,30 +492,6 @@ impl GlobalReservoirs {
             self.manganese_oxides += mn_ox;
             self.iron_reduced += mn_lost - mn_ox;
             self.oxygen.iron_manganese += fe_ox / 4.0 + mn_ox / 2.0;
-
-            // 5. Chimie de l'atmosphère : titrage H₂-O₂, oxydation et photolyse
-            //    du méthane, échappement de l'hydrogène vers l'espace.
-            let atm = &mut self.atmosphere;
-            let r = (atm[Gas::H2 as usize] / 2.0).min(atm[Gas::O2 as usize]).max(0.0);
-            atm[Gas::H2 as usize] -= 2.0 * r;
-            atm[Gas::O2 as usize] -= r;
-            self.oxygen.reduced_gases += r;
-            let total: f64 = atm.iter().sum();
-            let k_esc = esc_per_mixing / total.max(1e-300);
-            let f_o2 = atm[Gas::O2 as usize] / total;
-            let k_ox = params.ch4_oxidation * f_o2.max(0.0).sqrt();
-            let ch4_0 = atm[Gas::Ch4 as usize];
-            atm[Gas::Ch4 as usize] = ch4_0 / (1.0 + h * (k_ox + k_esc));
-            let destroyed = ch4_0 - atm[Gas::Ch4 as usize];
-            let oxidised = (destroyed * k_ox / (k_ox + k_esc).max(1e-300)).min(atm[Gas::O2 as usize] / 2.0);
-            atm[Gas::O2 as usize] -= 2.0 * oxidised;
-            self.oxygen.methane += 2.0 * oxidised;
-            // Le carbone du méthane détruit revient en CO₂.
-            atm[Gas::Co2 as usize] += destroyed;
-            let h2_0 = atm[Gas::H2 as usize];
-            atm[Gas::H2 as usize] = h2_0 / (1.0 + h * k_esc);
-            acc.hydrogen_escape += h2_0 - atm[Gas::H2 as usize] + 2.0 * (destroyed - oxidised);
-            acc.methane_release += moles[WaterPool::Ch4 as usize];
 
             // 6. Subduction des sédiments.
             let sub = (ctx.subduction_per_year * h).min(1.0);
@@ -551,7 +564,9 @@ mod tests {
         let base = GlobalReservoirs::new(&p, 1.3e18);
         let mut flux = FluxRegistry::default();
         // Photosynthèse oxygénique de surface : chaque mole d'O₂ libérée
-        // accompagne une mole de carbone organique exportée.
+        // accompagne une mole de carbone organique exportée ; seule la part
+        // enfouie (5 %) est une source nette, face aux gaz réduits, au fer et
+        // aux roches exposées.
         let run = |production: f64| {
             let mut r = base.clone();
             let mut rates = [0.0; WATER_POOL_COUNT];
@@ -565,8 +580,8 @@ mod tests {
             r.mixing_ratio(Gas::O2)
         };
         assert!(run(1e11) < 1e-6, "faible production : l'oxygène ne s'accumule pas");
-        let high = run(1e15);
-        assert!(high > 1e-3, "forte production : O₂ {high}");
+        let high = run(2e13);
+        assert!(high > 1e-5, "forte production : O₂ {high}");
         flux.set_initial(Element::Carbon, 0.0);
     }
 }

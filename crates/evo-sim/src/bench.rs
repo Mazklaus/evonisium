@@ -6,8 +6,8 @@
 use crate::report::format_years;
 use crate::world::{PhaseTimings, Seeding, World, WorldConfig};
 use evo_core::rng::{rng_for, Stream};
-use evo_genetics::popgen::fixation_probability;
 use evo_genetics::mutate;
+use evo_genetics::popgen::fixation_probability;
 use evo_life::{growth_rates, Conditions, Phenotype, Physiology};
 use evo_planet::generate::generate;
 use evo_planet::{PlanetParams, WaterPool, WATER_POOL_COUNT};

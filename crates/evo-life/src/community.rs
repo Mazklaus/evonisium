@@ -91,10 +91,13 @@ pub fn evaluate(pops: &mut [Population], ctx: &CellContext, chem: &WaterChemistr
 /// dans le carbone inorganique ou organique dissous et dans le phosphate, la
 /// mort rend la biomasse en carbone organique dissous et en phosphate. Les
 /// voies lumineuses consomment leur donneur et rejettent leurs produits en
-/// proportion du carbone qu'elles fixent. Renvoie l'O₂ produit par la
-/// photosynthèse oxygénique pendant le pas, en moles (production brute).
-pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemistry, dt: f64, physio: &Physiology) -> f64 {
-    let mut oxygen = 0.0;
+/// proportion du carbone qu'elles fixent.
+///
+/// Une part de la nécromasse forme des particules qui coulent hors de la
+/// couche (pompe biologique) : elle n'entre pas dans l'eau et est renvoyée
+/// à l'appelant, qui la confie aux réservoirs globaux avec son phosphore.
+pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemistry, dt: f64, physio: &Physiology) -> SubstepOutput {
+    let mut out = SubstepOutput::default();
     let volume = ctx.env.water_volume_m3;
     let cp = physio.carbon_to_phosphorus;
     evaluate(pops, ctx, chem, physio);
@@ -109,9 +112,14 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
             if q <= 0.0 {
                 continue;
             }
-            let units = if r.is_light() { growth * p.rates.light_fixation_share(r.id as usize) } else { q * b };
+            let units = if r.is_light() { growth * p.rates.fixation_share(r.id as usize) } else { q * b };
             for &(pool, k) in r.inputs {
                 demand[pool as usize] += units * k;
+            }
+            for &(pool, k) in r.fixation {
+                if k < 0.0 {
+                    demand[pool as usize] -= growth * p.rates.fixation_share(r.id as usize) * k;
+                }
             }
         }
         demand[WaterPool::Doc as usize] += growth * p.rates.heterotroph_share;
@@ -167,19 +175,40 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
         }
         let births = potential * energy_ratio.min(1.0) * carbon_phi;
         let scale = if potential > 0.0 { births / potential } else { 0.0 };
+        // Pouvoir réducteur des autotrophes chimiques, au prorata du carbone
+        // qu'ils fixent : sans lui, pas de fixation.
+        let fix_phi = |r: &crate::metabolism::Reaction| {
+            r.fixation.iter().filter(|&&(_, k)| k < 0.0).map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min)
+        };
+        let mut scale = scale;
+        for r in REACTIONS.iter().filter(|r| !r.is_light() && !r.fixation.is_empty()) {
+            if p.rates.fixation_share(r.id as usize) > 0.0 {
+                scale = scale.min(fix_phi(r).max(0.0) + (1.0 - p.rates.fixation_share(r.id as usize)) * (1.0 - fix_phi(r)).max(0.0));
+            }
+        }
+        let births = potential * scale;
+        for r in REACTIONS.iter().filter(|r| !r.is_light() && !r.fixation.is_empty()) {
+            let fixed = births * p.rates.fixation_share(r.id as usize);
+            if fixed <= 0.0 {
+                continue;
+            }
+            for &(pool, k) in r.fixation {
+                chem[pool as usize] += fixed * k / volume;
+            }
+        }
         // Stoichiométrie des voies lumineuses, au prorata du carbone fixé.
         for r in REACTIONS.iter().filter(|r| r.is_light()) {
             if p.rates.reaction[r.id as usize] <= 0.0 {
                 continue;
             }
-            let fixed = potential * p.rates.light_fixation_share(r.id as usize) * scale.min(phi_of(r));
+            let fixed = potential * p.rates.fixation_share(r.id as usize) * scale.min(phi_of(r));
             for &(pool, k) in r.inputs {
                 chem[pool as usize] -= fixed * k / volume;
             }
             for &(pool, k) in r.outputs {
                 chem[pool as usize] += fixed * k / volume;
                 if pool == WaterPool::O2 {
-                    oxygen += fixed * k;
+                    out.oxygen += fixed * k;
                 }
             }
         }
@@ -187,8 +216,10 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
         chem[WaterPool::Doc as usize] -= births * het / volume;
         chem[WaterPool::Dic as usize] -= births * (1.0 - het) / volume;
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
-        chem[WaterPool::Doc as usize] += deaths / volume;
-        chem[WaterPool::Po4 as usize] += deaths / cp / volume;
+        let sinking = deaths * physio.sinking_share;
+        out.sinking_carbon += sinking;
+        chem[WaterPool::Doc as usize] += (deaths - sinking) / volume;
+        chem[WaterPool::Po4 as usize] += (deaths - sinking) / cp / volume;
         p.biomass += births - deaths;
     }
     for c in chem.iter_mut() {
@@ -198,7 +229,17 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
             *c = 0.0;
         }
     }
-    oxygen
+    out
+}
+
+/// Ce qui sort d'une cellule pendant un sous-pas, en moles.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SubstepOutput {
+    /// O₂ produit par la photosynthèse oxygénique (production brute).
+    pub oxygen: f64,
+    /// Carbone des particules qui coulent ; elles emportent leur phosphore
+    /// au rapport de la biomasse.
+    pub sinking_carbon: f64,
 }
 
 #[cfg(test)]
@@ -272,12 +313,15 @@ mod tests {
         let mut pops = vec![pop(&[METHANOGENESIS], 1e3, &physio), pop(&[FERMENTATION], 1e3, &physio)];
         let before = carbon(&pops, &chem, e.water_volume_m3);
         let p_before = phosphorus(&pops, &chem, e.water_volume_m3, &physio);
+        // Les particules qui coulent sortent de la cellule : on les compte à part.
+        let mut sunk = 0.0;
         for _ in 0..2000 {
-            substep(&mut pops, &ctx, &mut chem, 1.0 / 3650.0, &physio);
+            sunk += substep(&mut pops, &ctx, &mut chem, 1.0 / 3650.0, &physio).sinking_carbon;
         }
-        let after = carbon(&pops, &chem, e.water_volume_m3);
+        assert!(sunk > 0.0);
+        let after = carbon(&pops, &chem, e.water_volume_m3) + sunk;
         assert!((after - before).abs() / before < 1e-9, "avant {before}, après {after}");
-        let p_after = phosphorus(&pops, &chem, e.water_volume_m3, &physio);
+        let p_after = phosphorus(&pops, &chem, e.water_volume_m3, &physio) + sunk / physio.carbon_to_phosphorus;
         assert!((p_after - p_before).abs() / p_before < 1e-9, "phosphore avant {p_before}, après {p_after}");
         // Les méthanogènes ont consommé l'hydrogène et produit du méthane.
         assert!(chem[WaterPool::H2 as usize] < 5e-2);

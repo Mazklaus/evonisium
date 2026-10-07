@@ -1,7 +1,9 @@
 //! Mutations. Aucune n'a d'effet prédéfini : elles modifient le génome, et
 //! leur conséquence découle du phénotype que le chantier Organismes en tire.
 
-use crate::genome::{ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, MARKER_LEN};
+use crate::genome::{
+    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, MARKER_LEN,
+};
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 
@@ -238,7 +240,14 @@ mod tests {
     use evo_core::rng::{rng_for, Stream};
 
     fn sample_genome() -> Genome {
-        let d = Domain { family: DomainFamily::Catalytic(0), efficiency: 1.0, affinity: 1.0, t_opt_k: 300.0, t_width_k: 10.0, absorption_nm: 420.0 };
+        let d = Domain {
+            family: DomainFamily::Catalytic(0),
+            efficiency: 1.0,
+            affinity: 1.0,
+            t_opt_k: 300.0,
+            t_width_k: 10.0,
+            absorption_nm: 420.0,
+        };
         Genome {
             genes: vec![
                 Gene { domain: d, functional: true },

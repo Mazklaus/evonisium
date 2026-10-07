@@ -19,9 +19,12 @@ pub mod mutation;
 pub mod popgen;
 
 pub use genome::{
-    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, GENOME_CHANGE_CAUSE_COUNT,
+    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId,
+    GENOME_CHANGE_CAUSE_COUNT,
 };
 pub use journal::{GenomeJournal, JournalEntry};
 pub use lineage::{LineageRecord, LineageRegistry};
-pub use mutation::{mutate, mutate_again, mutate_with_kind, transfer_gene, MutationKind, MutationParams, MUTATION_KINDS, MUTATION_KIND_COUNT};
+pub use mutation::{
+    mutate, mutate_again, mutate_with_kind, transfer_gene, MutationKind, MutationParams, MUTATION_KINDS, MUTATION_KIND_COUNT,
+};
 pub use popgen::{fixation_probability, tunnel_probability, OriginFixation};

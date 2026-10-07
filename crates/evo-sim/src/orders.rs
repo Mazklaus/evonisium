@@ -26,11 +26,18 @@ pub enum OrderKind {
     SeedLife,
     /// Apporte du phosphate à l'océan profond (intervention du joueur :
     /// altération accrue d'un massif, par exemple), mol.
-    AddPhosphate { moles: f64 },
+    AddPhosphate {
+        moles: f64,
+    },
     /// Injecte un gaz dans l'atmosphère (éruption provoquée), mol.
-    InjectGas { gas: Gas, moles: f64 },
+    InjectGas {
+        gas: Gas,
+        moles: f64,
+    },
     /// Marque une lignée pour la suivre (sans effet sur l'histoire).
-    MarkLineage { lineage: u32 },
+    MarkLineage {
+        lineage: u32,
+    },
 }
 
 impl OrderKind {
@@ -108,7 +115,7 @@ impl OrderQueue {
     pub fn log(&self) -> Vec<Order> {
         let mut all: Vec<Order> = self.applied.iter().map(|a| a.order.clone()).collect();
         all.extend(self.pending.iter().cloned());
-        all.sort_by(|a, b| a.id.cmp(&b.id));
+        all.sort_by_key(|a| a.id);
         all
     }
 

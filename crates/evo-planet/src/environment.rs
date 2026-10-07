@@ -226,9 +226,11 @@ impl Planet {
         target[WaterPool::Sulfate as usize] = p.sulfate_equilibrium;
         rate[WaterPool::Sulfate as usize] = 0.2;
         let deep = self.deep_volume_m3.max(1.0);
-        for (pool, moles) in
-            [(WaterPool::Fe2, self.reservoirs.deep_fe2), (WaterPool::Mn2, self.reservoirs.deep_mn2), (WaterPool::Po4, self.reservoirs.deep_po4)]
-        {
+        for (pool, moles) in [
+            (WaterPool::Fe2, self.reservoirs.deep_fe2),
+            (WaterPool::Mn2, self.reservoirs.deep_mn2),
+            (WaterPool::Po4, self.reservoirs.deep_po4),
+        ] {
             target[pool as usize] = moles.max(0.0) / deep;
             rate[pool as usize] = p.upwelling_rate;
         }

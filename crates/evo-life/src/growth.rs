@@ -65,6 +65,10 @@ pub struct Physiology {
     /// saturation de la croissance par le phosphate, mol·m⁻³.
     pub carbon_to_phosphorus: f64,
     pub phosphate_half: f64,
+    /// Part de la nécromasse qui forme des particules et coule hors de la
+    /// couche de surface (pompe biologique : 10 à 20 % de la production dans
+    /// les océans actuels).
+    pub sinking_share: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
     /// Carbone d'une cellule, mol (environ 10⁻¹³ g de carbone).
@@ -96,6 +100,7 @@ impl Default for Physiology {
             pigment_uv_shield: 0.9,
             carbon_to_phosphorus: 106.0,
             phosphate_half: 1e-4,
+            sinking_share: 0.15,
             max_growth: 6000.0,
             carbon_per_cell: 1e-14,
             spectrum: LightSpectrum::default(),
@@ -121,6 +126,8 @@ pub struct GrowthRates {
     /// biomasse et par an. Voies lumineuses : énergie fournie,
     /// kJ·molC⁻¹·an⁻¹ (leur stoichiométrie suit le carbone qu'elles fixent).
     pub reaction: [f64; REACTION_COUNT],
+    /// Énergie fournie par chaque voie, kJ·molC⁻¹·an⁻¹.
+    pub reaction_energy: [f64; REACTION_COUNT],
     /// Énergie assimilée, kJ·molC⁻¹·an⁻¹, toutes sources.
     pub energy_kj: f64,
     /// Énergie des voies qui fixent le CO₂ (chimio- et photoautotrophes).
@@ -146,11 +153,11 @@ impl GrowthRates {
         std::f64::consts::LN_2 / self.birth.max(physio.background_mortality)
     }
 
-    /// Carbone fixé par une voie lumineuse pour une naissance de `births`
-    /// moles de carbone : la part de la croissance autotrophe qui lui revient.
-    pub fn light_fixation_share(&self, reaction: usize) -> f64 {
+    /// Part de la croissance dont le carbone est fixé par la voie autotrophe
+    /// `reaction` (au prorata de l'énergie qu'elle fournit).
+    pub fn fixation_share(&self, reaction: usize) -> f64 {
         if self.autotroph_energy_kj > 0.0 {
-            (1.0 - self.heterotroph_share) * self.reaction[reaction] / self.autotroph_energy_kj
+            (1.0 - self.heterotroph_share) * self.reaction_energy[reaction] / self.autotroph_energy_kj
         } else {
             0.0
         }
@@ -173,10 +180,7 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
     let (mut het, mut auto) = (0.0, 0.0);
 
     // Second centre réactionnel (photosystème I) pour la voie oxygénique.
-    let partner = crate::metabolism::ANOXYGENIC_CENTRES
-        .iter()
-        .map(|&r| p.capacity(r, t, physio).0.min(1.0))
-        .fold(0.0, f64::max);
+    let partner = crate::metabolism::ANOXYGENIC_CENTRES.iter().map(|&r| p.capacity(r, t, physio).0.min(1.0)).fold(0.0, f64::max);
 
     for reaction in REACTIONS.iter() {
         if p.signature & (1 << reaction.id) == 0 {
@@ -213,6 +217,7 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
             }
         };
         out.reaction[reaction.id as usize] = value;
+        out.reaction_energy[reaction.id as usize] = e;
         if reaction.heterotrophic {
             het += e;
         } else {
@@ -228,7 +233,10 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
     let carbon_energy = het + auto;
     let het_share = if carbon_energy > 0.0 { het / carbon_energy } else { 0.0 };
     let cost = het_share * physio.heterotroph_biomass_kj + (1.0 - het_share) * physio.autotroph_biomass_kj;
-    let surplus = carbon_energy + supplement - p.maintenance_kj;
+    // L'énergie d'appoint (phototrophie simple, rhodopsine) ne fournit pas
+    // d'électrons : elle paie l'entretien, pas la fabrication de biomasse à
+    // partir du CO₂. Seules les voies qui apportent du carbone font croître.
+    let surplus = carbon_energy - (p.maintenance_kj - supplement).max(0.0);
     // Sans voie qui apporte du carbone, l'énergie d'appoint ne fait que
     // réduire la famine.
     let birth = if carbon_energy > 0.0 {
@@ -319,7 +327,9 @@ mod tests {
         );
         assert_eq!(without.signature, 0);
         assert!(with.phototroph);
-        assert!(growth_rates(&with, &at(300.0, 0.0, 1e6), &chem(0.0, 0.0), &physio).r > 0.0);
+        // Lumière d'une eau de surface peu peuplée : quelques 10⁷ kJ par mole
+        // de carbone phototrophe et par an.
+        assert!(growth_rates(&with, &at(300.0, 0.0, 1e7), &chem(0.0, 0.0), &physio).r > 0.0);
     }
 
     /// Règle 1 du document Organismes : chaque pièce du chemin vers la

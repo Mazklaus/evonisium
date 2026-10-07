@@ -323,14 +323,7 @@ impl PlanetParams {
     /// Les six mondes de la première vague, sur lesquels la porte de
     /// l'étape 2 est vérifiée.
     pub fn wave_one() -> Vec<Self> {
-        vec![
-            Self::earth_archean(),
-            Self::ocean_world(),
-            Self::desert_world(),
-            Self::super_earth(),
-            Self::small_planet(),
-            Self::moonless(),
-        ]
+        vec![Self::earth_archean(), Self::ocean_world(), Self::desert_world(), Self::super_earth(), Self::small_planet(), Self::moonless()]
     }
 
     /// Préréglage par nom court (outil en ligne de commande).
