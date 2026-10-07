@@ -87,3 +87,30 @@ impl Genome {
         std::mem::size_of::<Genome>() + self.genes.capacity() * std::mem::size_of::<Gene>()
     }
 }
+
+/// Pourquoi un génome a changé. Liste ouverte : les transferts horizontaux et
+/// les techniques des sociétés (génie génétique) s'y ajouteront.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GenomeChangeCause {
+    Mutation(crate::mutation::MutationKind),
+}
+
+/// Génome dérivé d'un autre, avec la cause du changement.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GenomeChange {
+    pub genome: Genome,
+    pub cause: GenomeChangeCause,
+}
+
+impl Genome {
+    /// Interface unique de modification d'un génome : toute transformation
+    /// (mutation aujourd'hui, transfert horizontal ou technique d'une société
+    /// plus tard) passe par ici et en note la cause. C'est l'un des points
+    /// d'accroche prévus par le document Vision pour étendre le moteur sans
+    /// refonte.
+    pub fn derive(&self, cause: GenomeChangeCause, change: impl FnOnce(&mut Genome)) -> GenomeChange {
+        let mut genome = self.clone();
+        change(&mut genome);
+        GenomeChange { genome, cause }
+    }
+}

@@ -1,7 +1,7 @@
 //! Mutations. Aucune n'a d'effet prédéfini : elles modifient le génome, et
 //! leur conséquence découle du phénotype que le chantier Organismes en tire.
 
-use crate::genome::{Domain, DomainFamily, Gene, Genome, ReactionId, MARKER_LEN};
+use crate::genome::{Domain, DomainFamily, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, MARKER_LEN};
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 
@@ -104,19 +104,22 @@ fn point_mutation(domain: &mut Domain, params: &MutationParams, rng: &mut impl R
 }
 
 /// Applique une mutation tirée au hasard et renvoie le génome mutant.
-pub fn mutate(genome: &Genome, params: &MutationParams, rng: &mut impl Rng) -> (Genome, MutationKind) {
+pub fn mutate(genome: &Genome, params: &MutationParams, rng: &mut impl Rng) -> GenomeChange {
     let kind = pick_kind(params, rng);
     mutate_with_kind(genome, kind, params, rng)
 }
 
 /// Applique une mutation d'une classe donnée (échantillonnage stratifié par
 /// classe dans le régime « apparition puis fixation »).
-pub fn mutate_with_kind(genome: &Genome, kind: MutationKind, params: &MutationParams, rng: &mut impl Rng) -> (Genome, MutationKind) {
-    let mut g = genome.clone();
+pub fn mutate_with_kind(genome: &Genome, kind: MutationKind, params: &MutationParams, rng: &mut impl Rng) -> GenomeChange {
     let mut kind = kind;
-    if g.genes.is_empty() && kind != MutationKind::NeutralMarker {
+    if genome.genes.is_empty() && kind != MutationKind::NeutralMarker {
         kind = MutationKind::DeNovo;
     }
+    genome.derive(GenomeChangeCause::Mutation(kind), |g| apply(g, kind, params, rng))
+}
+
+fn apply(g: &mut Genome, kind: MutationKind, params: &MutationParams, rng: &mut impl Rng) {
     match kind {
         MutationKind::Point => {
             let i = rng.random_range(0..g.genes.len());
@@ -155,7 +158,6 @@ pub fn mutate_with_kind(genome: &Genome, kind: MutationKind, params: &MutationPa
             });
         }
     }
-    (g, kind)
 }
 
 #[cfg(test)]
@@ -181,7 +183,9 @@ mod tests {
         let mut rng = rng_for(1, Stream::Validation, &[]);
         let mut seen = std::collections::HashSet::new();
         for _ in 0..2000 {
-            let (m, kind) = mutate(&g, &params, &mut rng);
+            let change = mutate(&g, &params, &mut rng);
+            let GenomeChangeCause::Mutation(kind) = change.cause;
+            let m = change.genome;
             seen.insert(kind);
             match kind {
                 MutationKind::Duplication | MutationKind::DeNovo => assert_eq!(m.genes.len(), 3),

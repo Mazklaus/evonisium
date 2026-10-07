@@ -12,7 +12,7 @@ pub mod lineage;
 pub mod mutation;
 pub mod popgen;
 
-pub use genome::{Domain, DomainFamily, Gene, Genome, ReactionId};
+pub use genome::{Domain, DomainFamily, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId};
 pub use lineage::{LineageRecord, LineageRegistry};
 pub use mutation::{mutate, mutate_with_kind, MutationKind, MutationParams, MUTATION_KINDS};
 pub use popgen::{fixation_probability, OriginFixation};

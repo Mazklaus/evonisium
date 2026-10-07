@@ -51,7 +51,7 @@ fn genetic_throughput(seed: u64) -> (f64, f64) {
     let t = Instant::now();
     let mut acc = 0.0;
     for _ in 0..n {
-        let (g, _) = mutate(&genome, &params, &mut rng);
+        let g = mutate(&genome, &params, &mut rng).genome;
         let p = Phenotype::from_genome(&g, &physio);
         acc += growth_rates(&p, 295.0, &chem, 0.0, &physio).r;
     }

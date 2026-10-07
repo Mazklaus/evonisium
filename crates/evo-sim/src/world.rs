@@ -599,7 +599,7 @@ fn evolve_cell(
             }
             let copies = ne * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
             for _ in 0..count {
-                let (genome, _) = mutate_with_kind(&resident.genome, kind, &cfg.mutation, &mut rng);
+                let genome = mutate_with_kind(&resident.genome, kind, &cfg.mutation, &mut rng).genome;
                 let phenotype = Phenotype::from_genome(&genome, physio);
                 let rates = growth_rates(&phenotype, ctx.env.temperature_k, chem, light, physio);
                 stats.genetic_evaluations += 1;
