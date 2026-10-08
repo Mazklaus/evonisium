@@ -12,6 +12,7 @@
 // mathématiques de la plateforme y suffisent (voir clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+pub mod anatomy;
 pub mod chronicle;
 pub mod compare;
 pub mod decor;

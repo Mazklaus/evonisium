@@ -19,6 +19,8 @@ const Reglages := preload("res://scripts/ui/reglages.gd")
 const AvecSans := preload("res://scripts/ui/avec_sans.gd")
 const Reseau := preload("res://scripts/ui/reseau.gd")
 const Strates := preload("res://scripts/ui/strates.gd")
+const Anatomie := preload("res://scripts/ui/anatomie.gd")
+const Comparateur := preload("res://scripts/ui/comparateur.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -230,6 +232,18 @@ func open_species(species: int) -> void:
 	var f = FicheEspece.new()
 	_open(f)
 	f.open(species)
+	f.species_requested.connect(open_species)
+	f.anatomy_requested.connect(open_anatomy)
+	f.compare_requested.connect(open_comparator)
+
+func open_anatomy(species: int) -> void:
+	var f = _open(Anatomie.new())
+	f.open(species)
+	f.compare_requested.connect(open_comparator)
+
+func open_comparator(species: int, other := -1) -> void:
+	var f = _open(Comparateur.new())
+	f.open(species, other)
 	f.species_requested.connect(open_species)
 
 func open_tree() -> void:

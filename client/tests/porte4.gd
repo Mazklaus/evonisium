@@ -188,6 +188,46 @@ func _scenario() -> void:
 	await _shot("06-colonne-stratigraphique")
 	jeu.fiche.close()
 
+	# Fiche d'espèce : planche devant le décor, avec les silhouettes des
+	# espèces voisines.
+	var sp := int(App.session.guild_ids()[0])
+	jeu.open_species(sp)
+	await _until(func(): return jeu.fiche.decor.texture != null, 30.0)
+	await _wait(0.5)
+	await _shot("07-fiche-et-decor")
+	# Anatomie depuis le plan de construction (palier 2).
+	jeu.open_anatomy(sp)
+	var body_ok := await _until(func(): return not jeu.fiche.portrait.info.is_empty(), 30.0)
+	if body_ok:
+		var lods: Array = jeu.fiche.portrait.info["lods"]
+		report["anatomie_triangles"] = lods[0]["indices"].size() / 3
+		report["anatomie_taille"] = jeu.fiche.portrait.info["traits"]["size"]
+	jeu.fiche.anatomy_button.button_pressed = true
+	await _wait(1.0)
+	await _shot("08-anatomie")
+	# Comparateur : deux espèces à la même échelle, ancêtre commun.
+	jeu.open_comparator(sp)
+	var cmp_ok := await _until(func(): return bool(jeu.fiche.data.get("ready", false)), 30.0)
+	await _wait(1.0)
+	report["comparateur_lignes"] = jeu.fiche.data.get("rows", []).size()
+	report["ancetre_commun"] = str(jeu.fiche.data.get("ancestor_name", ""))
+	await _shot("09-comparateur")
+	# Banc d'essai du générateur : un corps pluricellulaire tiré au hasard,
+	# peau puis organes.
+	var test = jeu._open(jeu.Anatomie.new())
+	test.open_test(int(opts["graine"]))
+	var test_ok := await _until(func(): return not test.portrait.info.is_empty(), 30.0)
+	if test_ok:
+		report["essai_triangles"] = test.portrait.info["lods"][0]["indices"].size() / 3
+		report["essai_os"] = int(test.portrait.info["bone_count"])
+	await _wait(1.0)
+	await _shot("10-corps-essai")
+	test.anatomy_button.button_pressed = true
+	await _wait(0.6)
+	await _shot("11-corps-essai-anatomie")
+	test.close()
+
 	var passed: bool = report["vie_installee"] and order >= 0 and caught and report["comparaison_meme_date"] and rows.size() >= 5 \
-		and web_ok and strata_ok and iridium and report["barrieres"] >= 1
+		and web_ok and strata_ok and iridium and report["barrieres"] >= 1 \
+		and body_ok and cmp_ok and int(report["comparateur_lignes"]) >= 10 and test_ok
 	_finish(passed)

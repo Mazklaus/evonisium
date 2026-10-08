@@ -289,6 +289,56 @@ fn disc_wash(cv: &mut Canvas, cx: f32, cy: f32, r: f32, c: [f32; 3], alpha: f32)
     }
 }
 
+/// Silhouettes des espèces voisines (architecture, « décor de milieu avec
+/// les silhouettes des espèces voisines ») : chaque voisine, de profil, au
+/// lavis de son pigment cerné d'encre, posée au premier plan à droite de la
+/// planche. Les tailles gardent leurs rapports vrais ; la plus petite est
+/// agrandie jusqu'à rester lisible, comme les figures grossies d'une planche
+/// de naturaliste.
+pub fn paint_neighbours(cv: &mut Canvas, plans: &[(evo_morph::body::BodyPlan, [f32; 3])], seed: u64) {
+    if plans.is_empty() {
+        return;
+    }
+    let (w, hh) = (cv.width as f32, cv.height as f32);
+    let extents: Vec<f32> = plans.iter().map(|(p, _)| evo_morph::body::extent_m(p)).collect();
+    let largest = extents.iter().cloned().fold(0.0f32, f32::max).max(1e-12);
+    let mut rng = DrawRng::new(seed ^ 0x51_4C48);
+    let slot = (w * 0.55) / plans.len() as f32;
+    for (i, ((plan, colour), e)) in plans.iter().zip(&extents).enumerate() {
+        let box_h = (hh * 0.28 * (e / largest)).max(hh * 0.1);
+        let box_w = (box_h * 1.6).min(slot * 0.95);
+        let (bw, bh) = (box_w.max(8.0) as usize, box_h.max(8.0) as usize);
+        let (mask, _) = evo_morph::body::silhouette(plan, bw, bh);
+        let x0 = w * 0.42 + slot * i as f32 + (slot - bw as f32) * rng.range(0.2, 0.8);
+        let y0 = hh * 0.9 - bh as f32 - rng.range(0.0, hh * 0.05);
+        // Ombre portée : un lavis d'encre très léger sous la figure.
+        disc_wash(cv, x0 + bw as f32 / 2.0, y0 + bh as f32 * 0.98, bw as f32 * 0.35, INK, 0.08);
+        for y in 0..bh {
+            for x in 0..bw {
+                let m = mask[y * bw + x];
+                if m <= 0.0 {
+                    continue;
+                }
+                let (px, py) = ((x0 + x as f32) as isize, (y0 + y as f32) as isize);
+                if px < 0 || py < 0 || px as usize >= cv.width || py as usize >= cv.height {
+                    continue;
+                }
+                let (px, py) = (px as usize, py as usize);
+                cv.wash(px, py, *colour, 0.55 * m);
+                // Contour : là où le masque passe de dedans à dehors.
+                let edge = (0..4).any(|k| {
+                    let (dx, dy) = [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)][k];
+                    let (nx, ny) = (x as isize + dx, y as isize + dy);
+                    nx < 0 || ny < 0 || nx as usize >= bw || ny as usize >= bh || mask[ny as usize * bw + nx as usize] < 0.5
+                });
+                if edge && m >= 0.5 {
+                    cv.set(px, py, INK, 0.75);
+                }
+            }
+        }
+    }
+}
+
 /// Dôme de stromatolite : couches de tapis microbien en lavis, contour et
 /// lamines à l'encre.
 fn stromatolite(cv: &mut Canvas, cx: f32, base: f32, r: f32, colour: [f32; 3], seed: u64) {
@@ -357,6 +407,14 @@ mod tests {
         let ms = t.elapsed().as_millis();
         assert_eq!(a.checksum(), paint(&h, seed, 1024, 512).checksum());
         // Budget de l'architecture : 200 ms (mesuré en profil de test optimisé).
+        assert!(ms < 400, "{ms} ms");
+        // Silhouettes des voisines : elles marquent la planche, au même prix.
+        let mut b = paint(&h, seed, 1024, 512);
+        let plans: Vec<_> = (0..3).map(|k| (evo_morph::body::random_plan(k), [0.4, 0.6, 0.3])).collect();
+        let t = std::time::Instant::now();
+        paint_neighbours(&mut b, &plans, seed);
+        let ms = t.elapsed().as_millis();
+        assert_ne!(a.checksum(), b.checksum());
         assert!(ms < 400, "{ms} ms");
     }
 
