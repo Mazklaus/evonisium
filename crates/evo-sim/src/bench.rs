@@ -213,11 +213,14 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
             ("migration", r.per_step_one.migration, r.per_step.migration),
             ("registres", r.per_step_one.bookkeeping, r.per_step.bookkeeping),
         ];
-        let mut six = 0.0;
-        for (name, one, many) in rows {
+        let (mut six, mut evo_six) = (0.0, 0.0);
+        for (k, (name, one, many)) in rows.into_iter().enumerate() {
             let (one, many) = (one.as_secs_f64(), many.as_secs_f64());
             let est = amdahl(one, many, threads as f64, 6.0);
             six += est;
+            if k == 2 {
+                evo_six = est;
+            }
             let share =
                 if threads > 1 && one > 0.0 { ((one - many) * threads as f64 / (threads as f64 - 1.0) / one).clamp(0.0, 1.0) } else { 0.0 };
             let _ = writeln!(
@@ -238,16 +241,16 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
             r.per_step.total().as_secs_f64() * 1e3,
             six * 1e3
         );
-        six_steps.push(six);
+        six_steps.push((six, evo_six));
     }
 
     let _ = writeln!(out, "\n## Vitesse du temps\n");
-    let _ = writeln!(out, "Le document Vision demande au moins 250 000 ans par seconde à l'étape 3 sur 6 coeurs, et vise 1 million (cible reportée à l'étape 4). La vitesse dépend du pas planétaire choisi : un pas plus long coûte presque le même calcul mais l'évolution y est plus grossière (une substitution au plus par population et par pas).\n");
+    let _ = writeln!(out, "Le document Vision demande au moins 250 000 ans par seconde à l'étape 3 sur 6 coeurs, et vise 1 million (cible reportée à l'étape 4). Un pas plus long que 100 ka enchaîne un tour d'évolution par tranche de 100 ka (sinon le nombre de substitutions dépendrait du pas, voir etape-3-equivalence.md) : seuls la planète, l'écologie, la migration et les registres s'amortissent sur un pas plus long.\n");
     let _ = writeln!(
         out,
-        "| Grille | Pas mesuré | Vitesse mesurée ({threads} fils) | Vitesse estimée sur 6 coeurs | Pas nécessaire pour 1 Ma/s sur 6 coeurs |\n|---|---|---|---|---|"
+        "| Grille | Pas mesuré | Vitesse mesurée ({threads} fils) | Vitesse estimée sur 6 coeurs | Au pas de 200 ka (deux tours d'évolution), estimée sur 6 coeurs |\n|---|---|---|---|---|"
     );
-    for (r, six) in results.iter().zip(&six_steps) {
+    for (r, &(six, evo_six)) in results.iter().zip(&six_steps) {
         let step = r.per_step.total().as_secs_f64();
         let _ = writeln!(
             out,
@@ -256,7 +259,7 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
             format_years(r.step_years),
             format_years(r.step_years / step),
             format_years(r.step_years / six),
-            format_years(1e6 * six)
+            format_years(2.0 * r.step_years / (six + evo_six))
         );
     }
 

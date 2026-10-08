@@ -14,9 +14,9 @@
 //! système se rapprochant pas après pas de son équilibre ; la planète en tire
 //! des flux annuels qu'elle applique sur tout le pas.
 
-use crate::growth::{growth_rates, Conditions, GrowthRates, Physiology};
+use crate::growth::{growth_rates_with, Conditions, GrowthRates, Physiology};
 use crate::metabolism::{EnergySource, REACTIONS};
-use crate::phenotype::Phenotype;
+use crate::phenotype::{Capacities, Phenotype};
 use evo_core::math::Det;
 use evo_core::units::watts_to_kj_per_year;
 use evo_genetics::Genome;
@@ -81,9 +81,21 @@ impl CellContext<'_> {
 
 /// Évalue toutes les populations d'une cellule dans l'état courant.
 pub fn evaluate(pops: &mut [Population], ctx: &CellContext, chem: &WaterChemistry, physio: &Physiology) {
+    let caps = capacities(pops, ctx, physio);
+    evaluate_with(pops, &caps, ctx, chem, physio);
+}
+
+/// Capacités des populations d'une cellule à sa température (constantes
+/// pendant les sous-pas de l'écologie d'un pas).
+pub fn capacities(pops: &[Population], ctx: &CellContext, physio: &Physiology) -> Vec<Capacities> {
+    pops.iter().map(|p| p.phenotype.capacities(ctx.env.temperature_k, physio)).collect()
+}
+
+/// [`evaluate`] avec les capacités déjà calculées (une par population).
+pub fn evaluate_with(pops: &mut [Population], caps: &[Capacities], ctx: &CellContext, chem: &WaterChemistry, physio: &Physiology) {
     let cond = ctx.conditions(CellContext::photo_biomass(pops));
-    for p in pops.iter_mut() {
-        p.rates = growth_rates(&p.phenotype, &cond, chem, physio);
+    for (p, c) in pops.iter_mut().zip(caps) {
+        p.rates = growth_rates_with(&p.phenotype, c, &cond, chem, physio);
     }
 }
 
@@ -98,10 +110,23 @@ pub fn evaluate(pops: &mut [Population], ctx: &CellContext, chem: &WaterChemistr
 /// couche (pompe biologique) : elle n'entre pas dans l'eau et est renvoyée
 /// à l'appelant, qui la confie aux réservoirs globaux avec son phosphore.
 pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemistry, dt: f64, physio: &Physiology) -> SubstepOutput {
+    let caps = capacities(pops, ctx, physio);
+    substep_with(pops, &caps, ctx, chem, dt, physio)
+}
+
+/// [`substep`] avec les capacités déjà calculées (une par population).
+pub fn substep_with(
+    pops: &mut [Population],
+    caps: &[Capacities],
+    ctx: &CellContext,
+    chem: &mut WaterChemistry,
+    dt: f64,
+    physio: &Physiology,
+) -> SubstepOutput {
     let mut out = SubstepOutput::default();
     let volume = ctx.env.water_volume_m3;
     let cp = physio.carbon_to_phosphorus;
-    evaluate(pops, ctx, chem, physio);
+    evaluate_with(pops, caps, ctx, chem, physio);
 
     // Demande de chaque pool, en moles, pour le pas.
     let mut demand = [0.0; WATER_POOL_COUNT];

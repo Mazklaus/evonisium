@@ -164,6 +164,7 @@ impl Engine {
                 years: world.years(),
                 steps: world.stats.steps,
                 paused: world.paused,
+                state_hash: world.paused.then(|| world.state_hash()),
                 running: true,
                 ..Default::default()
             }),

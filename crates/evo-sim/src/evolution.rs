@@ -59,11 +59,21 @@ pub struct EvolutionParams {
     /// très délétère disparaît avant de porter quoi que ce soit).
     pub tunnel: bool,
     pub tunnel_min_selection: f64,
+    /// Tentatives de tunnel au plus par génotype et par pas (les premiers
+    /// candidats) ; au-delà, chaque essai est pondéré par
+    /// (candidats / essais) pour ne pas biaiser le taux de franchissement.
+    pub tunnel_attempts_per_genotype: usize,
     /// Transferts horizontaux reçus par génome et par génération, et
     /// candidats évalués par population et par pas.
     pub hgt_rate: f64,
     pub hgt_candidates: usize,
     pub accelerator: AcceleratorParams,
+    /// Durée au plus d'un tour « apparition puis fixation », années : un pas
+    /// plus long enchaîne plusieurs tours, pour que le nombre de
+    /// substitutions par génotype ne dépende pas de la durée du pas
+    /// (`None` : un tour par pas, quelle que soit sa durée). Le test
+    /// d'équivalence des pas (docs/etape-3-equivalence.md) fixe 100 ka.
+    pub round_years: Option<f64>,
 }
 
 impl Default for EvolutionParams {
@@ -72,9 +82,11 @@ impl Default for EvolutionParams {
             candidates_per_kind: [4, 1, 1, 1, 1, 1, 2],
             tunnel: true,
             tunnel_min_selection: -0.05,
+            tunnel_attempts_per_genotype: 2,
             hgt_rate: 1e-7,
             hgt_candidates: 1,
             accelerator: AcceleratorParams::default(),
+            round_years: Some(100_000.0),
         }
     }
 }
@@ -105,6 +117,10 @@ pub struct EvolutionStats {
     pub genetic_evaluations: u64,
     pub tunnel_attempts: u64,
     pub tunnel_successes: u64,
+    /// Génotypes avec au moins un candidat au tunnel, et ceux qui en avaient
+    /// plus que la borne d'essais.
+    pub tunnel_genotypes: u64,
+    pub tunnel_capped: u64,
     pub fixed_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
 }
 
@@ -114,6 +130,8 @@ impl EvolutionStats {
         self.genetic_evaluations += o.genetic_evaluations;
         self.tunnel_attempts += o.tunnel_attempts;
         self.tunnel_successes += o.tunnel_successes;
+        self.tunnel_genotypes += o.tunnel_genotypes;
+        self.tunnel_capped += o.tunnel_capped;
         for (a, b) in self.fixed_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -238,6 +256,8 @@ pub struct Fixation {
     pub rates: GrowthRates,
     pub cause: GenomeChangeCause,
     pub element: ChangedElement,
+    /// Coefficient de sélection du changement fixé (0 : neutre).
+    pub selection: f64,
 }
 
 /// Régime « apparition puis fixation » pour un génotype : le résident est la
@@ -253,7 +273,7 @@ pub fn evolve_genotype(
     rng: &mut impl Rng,
     accelerator_on: bool,
     stats: &mut EvolutionStats,
-) -> Option<(GenomeChange, Phenotype, GrowthRates)> {
+) -> Option<(GenomeChange, Phenotype, GrowthRates, f64)> {
     let physio = &cfg.physiology;
     let evo = &cfg.evolution;
     let (rc, i) = group.rep;
@@ -287,11 +307,15 @@ pub fn evolve_genotype(
     let u = cfg.mutation.genomic_rate(&resident.genome);
 
     // Évalue un génome candidat contre la population qu'il affronterait.
-    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
-        let phenotype = Phenotype::from_genome(genome, physio);
-        stats.genetic_evaluations += 1;
+    // Coefficient de sélection d'un phénotype candidat.
+    let judge = |phenotype: Phenotype| -> Option<(f64, Phenotype, GrowthRates)> {
         if phenotype.signature == 0 {
             return None;
+        }
+        // Mutation sans effet sur le phénotype (marqueur, gène inactif) :
+        // neutre, sans réévaluer la croissance.
+        if phenotype == *resident.phenotype {
+            return Some((0.0, phenotype, resident.rates));
         }
         let rates = growth_rates(&phenotype, &cond, chem, physio);
         // Un mutant de guilde nouvelle est jugé contre la population de
@@ -318,6 +342,11 @@ pub fn evolve_genotype(
         }
         Some((s / weight, phenotype, rates))
     };
+    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
+        let phenotype = Phenotype::from_genome(genome, physio);
+        stats.genetic_evaluations += 1;
+        judge(phenotype)
+    };
 
     let mut best: Option<Best> = None;
     let consider = |best: &mut Option<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
@@ -326,6 +355,12 @@ pub fn evolve_genotype(
         }
     };
 
+    // Candidats au tunnel : ceux qui ne se fixent pas seuls mais sont assez
+    // proches de la neutralité. Seuls les premiers (borne par génotype et
+    // par pas) sont tentés ; chaque essai compte alors pour
+    // (candidats / essais), ce qui garde le taux de franchissement sans biais.
+    let mut tunnel_pending: Vec<(GenomeChange, f64, f64)> = Vec::new();
+    let mut tunnel_eligible = 0usize;
     for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
         let count = evo.candidates_per_kind[k] * group.candidate_factor();
         if count == 0 {
@@ -348,32 +383,55 @@ pub fn evolve_genotype(
                     consider(&mut best, s, change, phenotype, rates);
                 }
                 None if evo.tunnel && s > evo.tunnel_min_selection => {
-                    // Tunnel stochastique : la lignée du premier mutant,
-                    // tant qu'elle survit, produit des doubles mutants.
-                    let second = mutate(&change.genome, &cfg.mutation, rng);
-                    let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
-                    stats.tunnel_attempts += 1;
-                    let Some((s2, phenotype2, rates2)) = evaluate(&second.genome, stats) else { continue };
-                    // Le tunnel sert à franchir une innovation à deux
-                    // pièces : le double mutant doit gagner une fonction
-                    // que le résident n'a pas. Sinon, la seconde mutation
-                    // seule, bien plus fréquente, l'emporte sur ce double
-                    // qui traîne la première comme un poids mort.
-                    if s2 <= 0.0 || !gains_function(&phenotype2, &resident.phenotype) || best.as_ref().is_some_and(|b| b.s >= s2) {
-                        continue;
-                    }
-                    let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
-                    let mu2 = u * cfg.mutation.weights[k2] / weight_total;
-                    let p2 = fixation_probability(s2, ne, 1.0 / ne);
-                    let p1 = tunnel_probability((-s).max(0.0), mu2, p2);
-                    if rng.random::<f64>() < OriginFixation::any_fixes(p1, copies) {
-                        stats.tunnel_successes += 1;
-                        let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
-                        consider(&mut best, s2, double, phenotype2, rates2);
+                    tunnel_eligible += 1;
+                    if tunnel_pending.len() < evo.tunnel_attempts_per_genotype {
+                        tunnel_pending.push((change, s, copies));
                     }
                 }
                 None => {}
             }
+        }
+    }
+    if tunnel_eligible > 0 {
+        stats.tunnel_genotypes += 1;
+        if tunnel_eligible > tunnel_pending.len() {
+            stats.tunnel_capped += 1;
+        }
+    }
+    let tunnel_weight = if tunnel_pending.is_empty() { 1.0 } else { tunnel_eligible as f64 / tunnel_pending.len() as f64 };
+    for (change, s, copies) in tunnel_pending {
+        // Tunnel stochastique : la lignée du premier mutant, tant qu'elle
+        // survit, produit des doubles mutants.
+        let second = mutate(&change.genome, &cfg.mutation, rng);
+        let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
+        stats.tunnel_attempts += 1;
+        // Perdre ou supprimer un gène, ou changer un marqueur, ne fait gagner
+        // aucune fonction : inutile de construire le phénotype.
+        if matches!(kind2, MutationKind::LossOfFunction | MutationKind::Deletion | MutationKind::NeutralMarker) {
+            continue;
+        }
+        // Le tunnel sert à franchir une innovation à deux pièces : le double
+        // mutant doit gagner une fonction que le résident n'a pas. Sinon, la
+        // seconde mutation seule, bien plus fréquente, l'emporte sur ce double
+        // qui traîne la première comme un poids mort. Ce critère se lit sur le
+        // phénotype, avant tout calcul de croissance.
+        let phenotype2 = Phenotype::from_genome(&second.genome, physio);
+        stats.genetic_evaluations += 1;
+        if !gains_function(&phenotype2, &resident.phenotype) {
+            continue;
+        }
+        let Some((s2, phenotype2, rates2)) = judge(phenotype2) else { continue };
+        if s2 <= 0.0 || best.as_ref().is_some_and(|b| b.s >= s2) {
+            continue;
+        }
+        let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
+        let mu2 = u * cfg.mutation.weights[k2] / weight_total;
+        let p2 = fixation_probability(s2, ne, 1.0 / ne);
+        let p1 = tunnel_probability((-s).max(0.0), mu2, p2);
+        if rng.random::<f64>() < OriginFixation::any_fixes(p1, copies * tunnel_weight) {
+            stats.tunnel_successes += 1;
+            let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
+            consider(&mut best, s2, double, phenotype2, rates2);
         }
     }
 
@@ -407,7 +465,7 @@ pub fn evolve_genotype(
             }
         }
     }
-    best.map(|b| (b.change, b.phenotype, b.rates))
+    best.map(|b| (b.change, b.phenotype, b.rates, b.s))
 }
 
 /// Évolution d'un dème : un tirage par génotype, dans sa cellule
@@ -423,14 +481,20 @@ pub fn evolve_deme(
     cfg: &WorldConfig,
     dt: f64,
     step_index: u64,
+    round: u64,
     accelerator_on: bool,
 ) -> (Vec<Fixation>, EvolutionStats) {
     let mut stats = EvolutionStats::default();
     let mut out = Vec::new();
     for group in genotype_groups(cells, communities, envs, cfg) {
         let (c, i) = group.rep;
-        let mut rng = rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64]);
-        if let Some((change, phenotype, rates)) =
+        // Le premier tour garde le tirage d'un pas à un seul tour.
+        let mut rng = if round == 0 {
+            rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64])
+        } else {
+            rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
+        };
+        if let Some((change, phenotype, rates, selection)) =
             evolve_genotype(communities, chemistry, envs, cfg, dt, &group, &mut rng, accelerator_on, &mut stats)
         {
             let GenomeChange { genome, cause, element } = change;
@@ -442,6 +506,7 @@ pub fn evolve_deme(
                 rates,
                 cause,
                 element,
+                selection,
             });
         }
     }
