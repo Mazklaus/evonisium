@@ -134,6 +134,8 @@ pub struct WorldStats {
     pub colonisations: u64,
     pub migrant_replacements: u64,
     pub local_extinctions: u64,
+    /// Lignées éteintes sans lignée fille (comptées, sans événement).
+    pub leaf_extinctions: u64,
     /// Génomes mutants construits et évalués (mutation, phénotype, r, s).
     pub genetic_evaluations: u64,
     pub tunnel_attempts: u64,
@@ -795,16 +797,13 @@ impl World {
     fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>) {
         let years = self.years;
         // Lignées éteintes.
-        let mut alive = vec![0u32; self.lineages.records.len()];
-        for p in self.communities.iter().flatten() {
-            alive[p.lineage as usize] += 1;
-        }
-        for (id, &count) in alive.iter().enumerate() {
-            let rec = &mut self.lineages.records[id];
-            if count == 0 && rec.extinct_years.is_none() {
-                rec.extinct_years = Some(years);
-                self.events.push(years, None, EventKind::LineageExtinct { lineage: id as u32 });
-            }
+        let mut present: Vec<u32> = self.communities.iter().flatten().map(|p| p.lineage).collect();
+        present.sort_unstable();
+        present.dedup();
+        let (clades, leaves) = self.lineages.retire_absent(&present, years);
+        self.stats.leaf_extinctions += leaves as u64;
+        for id in clades {
+            self.events.push(years, None, EventKind::LineageExtinct { lineage: id });
         }
 
         // Innovations : première apparition d'une étape sur la planète.
@@ -917,7 +916,7 @@ impl World {
             ice_fraction: self.planet.climate.ice_fraction,
             ocean_fraction: self.planet.ocean_fraction(),
             biomass: self.biomass(),
-            living_lineages: self.lineages.living().count(),
+            living_lineages: self.lineages.living_count(),
             guilds: guilds.len(),
             photosynthesis_stage: stage,
             o2_production: self.oxygen_production,
@@ -1037,7 +1036,7 @@ impl World {
             biomass: self.biomass(),
             guilds,
             lineages_total: self.lineages.records.len(),
-            lineages_living: self.lineages.living().count(),
+            lineages_living: self.lineages.living_count(),
             thermal_mismatch_k: if weight > 0.0 { mismatch / weight } else { f64::NAN },
             mean_genes: mean(self.communities.iter().flatten().map(|p| p.genome.genes.len() as f64)),
             mean_functional_genes: mean(self.communities.iter().flatten().map(|p| p.genome.functional_genes().count() as f64)),

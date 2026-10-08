@@ -147,8 +147,21 @@ impl Planet {
         let g = self.greenhouse();
         let climate = self.climate.solve(p, &self.grid, &is_ocean, &elevation, years, &g);
 
-        // Sources hydrothermales : axes des dorsales sous l'eau.
-        let vents: Vec<usize> = (0..n).filter(|&c| is_ocean[c] && self.tectonics.parcel_of(c).age_myr < p.vent_crust_age_myr).collect();
+        // Sources hydrothermales : axes des dorsales sous l'eau. Quand les
+        // dorsales sont émergées (monde désertique, mers fermées dans les
+        // bassins), la circulation hydrothermale passe par la croûte immergée
+        // la plus jeune (sources hors axe, serpentinisation) : on garde au
+        // moins une part fixe des cellules océaniques, les plus jeunes.
+        let mut vents: Vec<usize> = (0..n).filter(|&c| is_ocean[c] && self.tectonics.parcel_of(c).age_myr < p.vent_crust_age_myr).collect();
+        let ocean_count = is_ocean.iter().filter(|&&o| o).count();
+        let min_vents = ((ocean_count as f64 * p.vent_min_ocean_share).ceil() as usize).min(ocean_count);
+        if vents.len() < min_vents {
+            let mut by_age: Vec<usize> = (0..n).filter(|&c| is_ocean[c]).collect();
+            by_age.sort_by(|&a, &b| self.tectonics.parcel_of(a).age_myr.total_cmp(&self.tectonics.parcel_of(b).age_myr).then(a.cmp(&b)));
+            by_age.truncate(min_vents);
+            by_age.sort_unstable();
+            vents = by_age;
+        }
         let activity = self.activity(years);
         let per_vent = activity * p.vent_local_share / vents.len().max(1) as f64;
 

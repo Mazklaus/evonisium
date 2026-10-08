@@ -82,6 +82,10 @@ mod tests {
         assert!(ocean.ocean_fraction() > 0.99, "{}", ocean.ocean_fraction());
         assert!(desert.ocean_fraction() < 0.4, "{}", desert.ocean_fraction());
         assert!(desert.ocean_fraction() > 0.0);
+        // Dorsales émergées : les sources passent sur la croûte immergée la
+        // plus jeune, la vie a toujours où commencer.
+        assert!(!desert.vent_cells().is_empty());
+        assert!(desert.vent_cells().iter().all(|&c| desert.cells[c].is_ocean));
     }
 
     #[test]
