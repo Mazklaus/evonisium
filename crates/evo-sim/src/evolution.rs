@@ -42,8 +42,11 @@ use evo_genetics::{
     MutationKind, OriginFixation, GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS, MUTATION_KIND_COUNT,
 };
 use evo_life::community::{CellContext, Population};
+use evo_life::growth::growth_rates_with;
 use evo_life::metabolism::photosynthesis_stage;
-use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
+use evo_life::metabolism::{ANOXYGENIC_CENTRES, REACTION_COUNT};
+use evo_life::phenotype::{thermal_factor, Capacities, Enzyme};
+use evo_life::{selection_coefficient, GrowthRates, Phenotype, Physiology};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
 use rand::Rng;
@@ -167,6 +170,81 @@ struct Best {
     change: GenomeChange,
     phenotype: Phenotype,
     rates: GrowthRates,
+}
+
+/// Sommes des capacités et des affinités des enzymes d'un phénotype à une
+/// température, par voie, avant normalisation (mêmes opérations, dans le
+/// même ordre, que [`Phenotype::capacities`]). Celles du résident sont
+/// calculées une fois par génotype et par cellule jugée ; celles d'un mutant
+/// s'en déduisent en retirant les enzymes qu'il a perdues ou changées et en
+/// ajoutant les siennes.
+#[derive(Clone, Copy, Debug)]
+pub struct RawCapacities {
+    cap: [f64; REACTION_COUNT],
+    aff: [f64; REACTION_COUNT],
+    count: [u32; REACTION_COUNT],
+}
+
+impl RawCapacities {
+    pub fn of(enzymes: &[Enzyme], t: f64, physio: &Physiology) -> Self {
+        let mut raw = Self { cap: [0.0; REACTION_COUNT], aff: [0.0; REACTION_COUNT], count: [0; REACTION_COUNT] };
+        for e in enzymes {
+            raw.add(e, t, physio, 1.0);
+        }
+        raw
+    }
+
+    fn add(&mut self, e: &Enzyme, t: f64, physio: &Physiology, sign: f64) {
+        let r = e.reaction as usize;
+        let c = e.efficiency * thermal_factor(t, e.t_opt_k, e.t_width_k, physio);
+        self.cap[r] += sign * c;
+        self.aff[r] += sign * c * e.affinity;
+        if sign > 0.0 {
+            self.count[r] += 1;
+        } else {
+            self.count[r] -= 1;
+        }
+    }
+
+    /// Capacités d'un mutant dont les enzymes sont `mutant`, le résident
+    /// (dont `self` est la somme) ayant `resident`. Les enzymes communes en
+    /// tête et en queue de liste ne sont pas recalculées.
+    pub fn mutant(&self, resident: &[Enzyme], mutant: &[Enzyme], t: f64, physio: &Physiology) -> Capacities {
+        let mut head = 0;
+        while head < resident.len() && head < mutant.len() && resident[head] == mutant[head] {
+            head += 1;
+        }
+        let mut tail = 0;
+        while tail < resident.len() - head
+            && tail < mutant.len() - head
+            && resident[resident.len() - 1 - tail] == mutant[mutant.len() - 1 - tail]
+        {
+            tail += 1;
+        }
+        let mut raw = *self;
+        for e in &resident[head..resident.len() - tail] {
+            raw.add(e, t, physio, -1.0);
+        }
+        for e in &mutant[head..mutant.len() - tail] {
+            raw.add(e, t, physio, 1.0);
+        }
+        raw.finish()
+    }
+
+    /// Capacités normalisées, comme [`Phenotype::capacities`].
+    pub fn finish(&self) -> Capacities {
+        let mut cap = self.cap;
+        let mut affinity = [1.0; REACTION_COUNT];
+        for r in 0..REACTION_COUNT {
+            if self.count[r] > 0 && cap[r] > 0.0 {
+                affinity[r] = self.aff[r] / cap[r];
+            } else {
+                cap[r] = 0.0;
+            }
+        }
+        let partner = ANOXYGENIC_CENTRES.iter().map(|&r| cap[r as usize].min(1.0)).fold(0.0, f64::max);
+        Capacities { cap, affinity, partner }
+    }
 }
 
 /// Tire le sort d'un candidat : fixation ordinaire, ou, si l'accélérateur
@@ -308,19 +386,21 @@ pub fn evolve_genotype(
     }
     // Conditions des cellules où le mutant est jugé (la représentative
     // d'abord).
-    let judged: Vec<(usize, usize, f64, evo_life::Conditions)> = group
+    let judged: Vec<(usize, usize, f64, evo_life::Conditions, RawCapacities)> = group
         .members
         .iter()
         .map(|&(c, j, b)| {
             let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-            (c, j, b, ctx.conditions(CellContext::photo_biomass(&communities[c])))
+            let cnd = ctx.conditions(CellContext::photo_biomass(&communities[c]));
+            (c, j, b, cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
         })
         .collect();
     let weight: f64 = judged.iter().map(|j| j.2).sum::<f64>().max(f64::MIN_POSITIVE);
     let chem = &chemistry[rc];
-    let cond = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| j.3).unwrap_or_else(|| {
+    let (cond, base) = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| (j.3, j.4)).unwrap_or_else(|| {
         let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-        ctx.conditions(CellContext::photo_biomass(pops))
+        let cnd = ctx.conditions(CellContext::photo_biomass(pops));
+        (cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
     });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
@@ -342,7 +422,14 @@ pub fn evolve_genotype(
         if phenotype == *resident.phenotype {
             return Some((0.0, phenotype, resident.rates));
         }
-        let rates = growth_rates(&phenotype, &cond, chem, physio);
+        // Capacités du mutant à partir de celles du résident, mises en cache
+        // par génotype et par cellule : seules les enzymes qui diffèrent sont
+        // recalculées.
+        let rates_in = |cnd: &evo_life::Conditions, base: &RawCapacities, chem: &WaterChemistry| {
+            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype.enzymes, cnd.temperature_k, physio);
+            growth_rates_with(&phenotype, &caps, cnd, chem, physio)
+        };
+        let rates = rates_in(&cond, &base, chem);
         // Un mutant de guilde nouvelle est jugé contre la population de
         // cette guilde si elle existe déjà dans la cellule.
         let against = |pops: &[Population], own: &Population, rates: &GrowthRates| {
@@ -361,8 +448,8 @@ pub fn evolve_genotype(
         // son coefficient de sélection est la moyenne, pondérée par la
         // biomasse, de ceux des cellules où il est jugé.
         let mut s = 0.0;
-        for &(c, j, b, ref cnd) in &judged {
-            let r = if (c, j) == (rc, i) { rates } else { growth_rates(&phenotype, cnd, &chemistry[c], physio) };
+        for &(c, j, b, ref cnd, ref raw) in &judged {
+            let r = if (c, j) == (rc, i) { rates } else { rates_in(cnd, raw, &chemistry[c]) };
             s += b * against(&communities[c], &communities[c][j], &r);
         }
         Some((s / weight, phenotype, rates))
@@ -550,4 +637,52 @@ pub fn evolve_deme(
         }
     }
     (out, stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use evo_core::rng::{rng_for, Stream};
+    use evo_genetics::{Domain, DomainFamily, Gene, MutationParams};
+    use evo_life::metabolism::{domain_relations, ANOXYGENIC_PHOTOSYNTHESIS, METHANOGENESIS, PHOTOFERROTROPHY};
+
+    /// Les capacités d'un mutant déduites de celles du résident sont celles
+    /// d'un calcul complet, aux arrondis près, pour toutes les classes de
+    /// mutations ; celles du résident le sont exactement.
+    #[test]
+    fn cached_capacities_match_a_full_computation() {
+        let physio = Physiology::default();
+        let gene = |family, efficiency, t_opt_k| Gene {
+            domain: Domain { family, efficiency, affinity: 1.3, t_opt_k, t_width_k: 9.0, absorption_nm: 450.0 },
+            functional: true,
+        };
+        let genome = Genome {
+            genes: vec![
+                gene(DomainFamily::Catalytic(METHANOGENESIS), 1.0, 300.0),
+                gene(DomainFamily::Cytochrome, 0.4, 300.0),
+                gene(DomainFamily::Catalytic(PHOTOFERROTROPHY), 0.3, 296.0),
+                gene(DomainFamily::Pigment, 0.5, 300.0),
+                gene(DomainFamily::Catalytic(ANOXYGENIC_PHOTOSYNTHESIS), 0.2, 305.0),
+                gene(DomainFamily::Catalytic(METHANOGENESIS), 0.6, 290.0),
+            ],
+            marker: [0; evo_genetics::genome::MARKER_LEN],
+        };
+        let params = MutationParams { weights: [1.0; MUTATION_KIND_COUNT], relations: domain_relations(), ..Default::default() };
+        let resident = Phenotype::from_genome(&genome, &physio);
+        let t = 297.0;
+        let base = RawCapacities::of(&resident.enzymes, t, &physio);
+        assert_eq!(base.finish(), resident.capacities(t, &physio));
+        let mut rng = rng_for(9, Stream::Validation, &[]);
+        for _ in 0..2000 {
+            let m = mutate(&genome, &params, &mut rng);
+            let mutant = Phenotype::from_genome(&m.genome, &physio);
+            let fast = base.mutant(&resident.enzymes, &mutant.enzymes, t, &physio);
+            let full = mutant.capacities(t, &physio);
+            for r in 0..REACTION_COUNT {
+                assert!((fast.cap[r] - full.cap[r]).abs() < 1e-12, "capacité {r} : {} contre {}", fast.cap[r], full.cap[r]);
+                assert!((fast.affinity[r] - full.affinity[r]).abs() < 1e-9, "affinité {r}");
+            }
+            assert!((fast.partner - full.partner).abs() < 1e-12);
+        }
+    }
 }

@@ -71,6 +71,11 @@ fn main() {
                 out_dir: opt(&args, "--data").map(Into::into),
                 round_years: opt(&args, "--round-years").map(|v| v.parse().expect("durée invalide")),
                 innovation_probability: opt(&args, "--innovation").map(|v| v.parse().expect("probabilité invalide")),
+                eviction: opt(&args, "--eviction").map(|v| match v.as_str() {
+                    "biomasse" => evo_sim::Eviction::Biomass,
+                    "invasion" => evo_sim::Eviction::InvasionFitness,
+                    _ => usage(),
+                }),
             };
             // Rapport assemblé à partir des résultats déjà enregistrés, monde
             // par monde (les parties longues tournent séparément).

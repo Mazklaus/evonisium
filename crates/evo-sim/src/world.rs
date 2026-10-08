@@ -64,6 +64,16 @@ pub enum Seeding {
     AllOcean,
 }
 
+/// Ordre d'éviction sous le plafond de populations par cellule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Eviction {
+    /// La plus petite biomasse d'abord (règle de l'étape 3).
+    Biomass,
+    /// La plus basse fitness d'invasion d'abord : le r de chaque population
+    /// dans la communauté résidente, ressources déjà consommées (étape 4).
+    InvasionFitness,
+}
+
 /// Seuils d'oxygène atmosphérique signalés (fraction molaire). L'atmosphère
 /// actuelle de la Terre en contient 0,21 ; la « grande oxydation » la fait
 /// passer de moins de 10⁻⁶ à plus de 10⁻³.
@@ -105,6 +115,8 @@ pub struct WorldConfig {
     /// petites populations sont retirées (exclusion compétitive que
     /// l'écologie quasi stationnaire n'a pas le temps de faire).
     pub max_populations_per_cell: usize,
+    /// Ordre d'éviction sous ce plafond.
+    pub eviction: Eviction,
     pub seeding: Seeding,
     /// Biomasse déposée par cellule au départ, mol de carbone.
     pub seed_biomass: f64,
@@ -137,6 +149,7 @@ impl WorldConfig {
             founder_biomass: 100.0,
             light_biomass_per_m2: 0.1,
             max_populations_per_cell: 8,
+            eviction: Eviction::InvasionFitness,
             seeding: Seeding::Vents,
             seed_biomass: 1e4,
             history_every_years: 1e6,
@@ -1056,13 +1069,16 @@ impl World {
         }
     }
 
-    /// Retire les plus petites populations des cellules trop peuplées ; leur
-    /// biomasse retourne à la couche d'eau (carbone organique et phosphate).
+    /// Retire les populations les moins aptes des cellules trop peuplées ;
+    /// leur biomasse retourne à la couche d'eau (carbone organique et
+    /// phosphate).
     ///
-    /// Garde-fous (document d'architecture, « Correction sur monde mûr ») :
+    /// Garde-fous (document d'architecture, « Éviction sous le plafond ») :
     /// la dernière population d'une guilde n'est jamais retirée, quitte à
-    /// dépasser le plafond, et l'éviction va de la moins abondante à la plus
-    /// abondante, à biomasse égale dans l'ordre d'arrivée (déterministe). La
+    /// dépasser le plafond, et l'éviction suit la fitness d'invasion (le r
+    /// de chaque population dans la communauté résidente, ressources déjà
+    /// consommées), de la plus basse à la plus haute, puis la biomasse et
+    /// l'ordre d'arrivée (déterministe). La
     /// guilde est ici la voie principale ([`Phenotype::main_pathway`]) : neuf
     /// au plus, alors que les combinaisons de voies se comptent par centaines
     /// et videraient le plafond de son sens.
@@ -1071,6 +1087,7 @@ impl World {
         let cp = self.config.physiology.carbon_to_phosphorus;
         let envs = &self.bio.env;
         let founder = self.config.founder_biomass;
+        let (light, physio, rule) = (self.config.light_biomass_per_m2, &self.config.physiology, self.config.eviction);
         let (removed, saturated, established, occupied) = self
             .communities
             .par_iter_mut()
@@ -1086,9 +1103,21 @@ impl World {
                 for g in &guilds {
                     *guild.entry(*g).or_default() += 1;
                 }
-                // Tri stable : à biomasse égale, l'ordre d'arrivée décide.
+                // Fitness d'invasion : le taux de croissance de chaque
+                // population dans la communauté telle qu'elle est, ressources
+                // déjà consommées par les résidents. Un résident à l'équilibre
+                // a un r proche de zéro ; un arrivant qui ne peut pas
+                // s'installer, un r négatif. On évince d'abord le r le plus
+                // bas ; à r égal, la plus petite biomasse, puis l'ordre
+                // d'arrivée (tri stable).
                 let mut order: Vec<usize> = (0..pops.len()).collect();
-                order.sort_by(|&a, &b| pops[a].biomass.total_cmp(&pops[b].biomass));
+                if rule == Eviction::InvasionFitness {
+                    let ctx = CellContext { env: &envs[c], light_biomass_per_m2: light };
+                    evaluate(pops, &ctx, chem, physio);
+                    order.sort_by(|&a, &b| pops[a].rates.r.total_cmp(&pops[b].rates.r).then(pops[a].biomass.total_cmp(&pops[b].biomass)));
+                } else {
+                    order.sort_by(|&a, &b| pops[a].biomass.total_cmp(&pops[b].biomass));
+                }
                 let mut keep = vec![true; pops.len()];
                 let mut excess = pops.len() - max;
                 for &i in &order {
