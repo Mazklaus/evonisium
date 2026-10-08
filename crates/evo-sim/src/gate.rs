@@ -296,11 +296,15 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "# Porte de l'étape 3 : l'oxygène s'accumule sur les six mondes à la résolution normale\n");
     let _ = writeln!(
         out,
-        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas de {}, au plus {} par partie, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
+        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas de {}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
         opts.level,
         results.first().map_or(0, |r| r.cells),
         format_years(opts.step_years),
         format_years(opts.max_years),
+        match opts.round_years.map_or(crate::evolution::EvolutionParams::default().round_years, |r| (r > 0.0).then_some(r)) {
+            Some(r) => format!("un tour d'évolution « apparition puis fixation » par tranche de {} du pas", format_years(r)),
+            None => "un seul tour d'évolution par pas".into(),
+        },
         opts.seeds,
         opts.oxygen_threshold,
         format_years(opts.hold_years)

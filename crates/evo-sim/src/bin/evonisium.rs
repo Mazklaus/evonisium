@@ -219,6 +219,9 @@ fn chrono(args: &[String]) {
     if let Some(v) = opt(args, "--step-years") {
         world.config.step_years = v.parse().expect("pas invalide");
     }
+    if let Some(v) = opt(args, "--cap") {
+        world.config.max_populations_per_cell = v.parse().expect("plafond invalide");
+    }
     if let Some(v) = opt(args, "--round-years") {
         let r: f64 = v.parse().expect("durée invalide");
         world.config.evolution.round_years = (r > 0.0).then_some(r);
@@ -248,9 +251,17 @@ fn chrono(args: &[String]) {
     let steps: u32 = arg(args, "--steps", 5);
     let mut total = evo_sim::world::PhaseTimings::default();
     let evals = world.stats.genetic_evaluations;
+    let (occupied, saturated, established) =
+        (world.stats.occupied_cell_steps, world.stats.saturated_cell_steps, world.stats.established_eviction_cell_steps);
     for _ in 0..steps {
         total.add(&world.step());
     }
+    let occ = (world.stats.occupied_cell_steps - occupied).max(1) as f64;
+    eprintln!(
+        "cellules saturées pendant ces pas : {:.1} %, dont avec éviction d'une population établie : {:.1} %",
+        100.0 * (world.stats.saturated_cell_steps - saturated) as f64 / occ,
+        100.0 * (world.stats.established_eviction_cell_steps - established) as f64 / occ
+    );
     let t = total.divided(steps);
     let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
     let s = world.summary();
