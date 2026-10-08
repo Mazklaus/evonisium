@@ -1,0 +1,68 @@
+{
+  "annees_jouees": 32640000.0,
+  "captures": [
+    "01-accueil",
+    "02-creation",
+    "03-ensemencement",
+    "04-partie",
+    "05-interventions",
+    "06-inspecteur",
+    "07-calque-biomasse",
+    "08-calque-guildes",
+    "09-calque-oxygene",
+    "10-oxygene-frise",
+    "11-fiche-espece",
+    "12-arbre",
+    "13-chronique"
+  ],
+  "cellule_inspectee": 49,
+  "code_planete": "terre-2026-4-1.00-1.00-0",
+  "date": "an 32,6 Ma",
+  "duree_image_ms": {
+    "max": 150.0,
+    "mediane": 133.333333333333,
+    "min": 116.666666666667,
+    "moyenne": 133.195616972477,
+    "n": 436,
+    "p05": 120.139,
+    "p95": 146.239
+  },
+  "espece_montree": 428,
+  "etape_photosynthese": 4,
+  "fenetre": [
+    1600.0,
+    900.0
+  ],
+  "graine": 2026,
+  "images_par_seconde": {
+    "max": 4.0,
+    "mediane": 3.0,
+    "min": 3.0,
+    "moyenne": 3.4047619047619,
+    "n": 42,
+    "p05": 3.0,
+    "p95": 4.0
+  },
+  "intervention_appliquee": true,
+  "lignees_vivantes": 810,
+  "mode": "partie",
+  "monde": "terre",
+  "niveau": 4,
+  "o2_final": 0.000479624282176579,
+  "oxygene_monte_a_annees": 32640000.0,
+  "passed": true,
+  "planete_creee": true,
+  "pont_ms": {
+    "max": 2.119666,
+    "mediane": 0.58828,
+    "min": 0.203267,
+    "moyenne": 0.591924518348624,
+    "n": 436,
+    "p05": 0.26417,
+    "p95": 0.821493
+  },
+  "rendu": "llvmpipe (LLVM 20.1.2, 256 bits) — Unknown",
+  "sauvegarde": true,
+  "temps_reel_s": 105.514,
+  "vie_deposee": true
+}
