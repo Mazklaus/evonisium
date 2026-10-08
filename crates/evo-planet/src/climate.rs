@@ -148,6 +148,13 @@ impl ClimateState {
         let q: Vec<f64> = (0..n).map(|i| annual_insolation(flux, self.obliquity_rad, grid.latitude(i))).collect();
         let lapse = params.lapse_rate();
         let mut out = vec![CellClimate::default(); n];
+        // Le bilan d'énergie donne la température de la surface moyenne, pas
+        // celle du niveau de la mer : le gradient thermique s'applique par
+        // rapport à l'altitude moyenne de la surface (océans comptés au
+        // niveau de la mer). Sur Terre, l'écart est de quelques centaines de
+        // mètres ; sur un monde désertique, dont les mers dorment au fond des
+        // bassins, toutes les terres seraient sinon des hauts plateaux gelés.
+        let reference_m = (0..n).map(|i| elevation_above_sea[i].max(0.0) * grid.unit_areas[i]).sum::<f64>() / total_area;
         // Itération du point fixe glace ↔ température, depuis l'état précédent.
         for _ in 0..60 {
             let mean_absorbed: f64 = (0..n)
@@ -161,7 +168,7 @@ impl ClimateState {
                 let albedo = if self.ice[i] { params.albedo_ice } else { params.albedo };
                 let absorbed = q[i] * (1.0 - albedo);
                 let t_sea = 273.15 + (absorbed - a + c * t_mean) / (b + c);
-                let t_local = t_sea - if is_ocean[i] { 0.0 } else { lapse * elevation_above_sea[i].max(0.0) };
+                let t_local = t_sea - if is_ocean[i] { 0.0 } else { lapse * (elevation_above_sea[i].max(0.0) - reference_m) };
                 let ice = t_local < params.ice_temperature_k;
                 if ice != self.ice[i] {
                     changed = true;
