@@ -21,7 +21,8 @@ pub const REGION_LEVEL: u32 = 3;
 /// Ce que le client peut demander.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Query {
-    /// Événements d'identifiant supérieur à `since_id` (0 : depuis le début),
+    /// Événements d'identifiant au moins `since_id` (les identifiants
+    /// commencent à 0 : 0 demande tout ; ensuite, dernier identifiant reçu + 1),
     /// d'intérêt au moins `min_interest`, dans l'ordre, au plus `limit`.
     Events { since_id: u64, min_interest: f32, limit: usize },
     /// Historique des grandeurs globales depuis une date.
@@ -273,7 +274,7 @@ impl Store {
     fn try_answer(&self, world: &World, q: &Query) -> rusqlite::Result<Answer> {
         Ok(match *q {
             Query::Events { since_id, min_interest, limit } => {
-                let mut st = self.db.prepare_cached("SELECT data FROM events WHERE id > ?1 AND interest >= ?2 ORDER BY id LIMIT ?3")?;
+                let mut st = self.db.prepare_cached("SELECT data FROM events WHERE id >= ?1 AND interest >= ?2 ORDER BY id LIMIT ?3")?;
                 let rows = st.query_map(params![since_id as i64, min_interest as f64, limit.min(i64::MAX as usize) as i64], |r| {
                     r.get::<_, Vec<u8>>(0)
                 })?;
