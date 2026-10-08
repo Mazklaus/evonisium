@@ -1,0 +1,15 @@
+[package]
+name = "evo-view"
+description = "Logique d'affichage du client, sans Godot : maillage du globe, textures de données, calques, palettes, chronique, alertes, arbre du vivant, décor de milieu."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-life.workspace = true
+evo-genetics.workspace = true
+evo-sim.workspace = true
+evo-engine.workspace = true
+evo-morph.workspace = true

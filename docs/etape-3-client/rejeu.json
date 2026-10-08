@@ -1,0 +1,24 @@
+{
+  "empreintes": {
+    "chemin_1": [
+      40,
+      "6ecd08847ae48e13"
+    ],
+    "chemin_2": [
+      40,
+      "6ecd08847ae48e13"
+    ],
+    "sauvegarde_rechargee": [
+      40,
+      "6ecd08847ae48e13"
+    ]
+  },
+  "graine": 2026,
+  "identiques": true,
+  "mode": "rejeu",
+  "monde": "terre",
+  "niveau": 4,
+  "pas": 40,
+  "passed": true,
+  "systeme": "Linux"
+}

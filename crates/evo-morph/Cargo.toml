@@ -1,0 +1,8 @@
+[package]
+name = "evo-morph"
+description = "Générateur d'apparence du vivant (palier 1 : microbes, vue microscope), pur et déterministe, dans le style de l'Atlas naturaliste."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

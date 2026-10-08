@@ -1,0 +1,21 @@
+[package]
+name = "evo-godot"
+description = "Pont entre le moteur Rust et le client Godot 4 (GDExtension) : session de jeu, globe, images du vivant."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-life.workspace = true
+evo-sim.workspace = true
+evo-engine.workspace = true
+evo-view.workspace = true
+evo-morph.workspace = true
+mimalloc.workspace = true
+rayon.workspace = true
+godot = { version = "0.5", features = ["api-4-6"] }
