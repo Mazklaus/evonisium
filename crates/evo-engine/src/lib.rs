@@ -30,7 +30,9 @@ pub use engine::{Engine, EngineStatus, Frame, NewGame, When};
 pub use geometry::GridGeometry;
 pub use query::{Answer, CellDetail, Habitat, LineageView, Query, RegionSample, SpeciesSample};
 
-pub use evo_planet::Gas;
+pub use evo_core::events::EventKind;
+pub use evo_planet::{Gas, PlanetParams};
 pub use evo_sim::history::{CellView, ClimateMode, PublishedState, Sample};
 pub use evo_sim::observation::InterestZone;
 pub use evo_sim::orders::{Intervention, OrderKind};
+pub use evo_sim::Seeding;

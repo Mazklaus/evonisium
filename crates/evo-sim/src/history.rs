@@ -194,6 +194,9 @@ pub struct EventView {
     pub origin: Origin,
     pub cause: Option<u64>,
     pub interest: f32,
+    /// L'événement brut (classement par famille, phrase dans une autre
+    /// langue, lignées à montrer).
+    pub kind: evo_core::events::EventKind,
 }
 
 impl EventView {
@@ -207,6 +210,7 @@ impl EventView {
             origin: e.origin,
             cause: e.cause,
             interest: e.interest as f32,
+            kind: e.kind.clone(),
         }
     }
 }

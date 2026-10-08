@@ -14,7 +14,7 @@ fn wait_for(engine: &Engine, what: &str, pred: impl Fn(&Engine) -> bool) {
 }
 
 fn small_game(seed: u64) -> NewGame {
-    NewGame { seed, preset: "terre".into(), level: 3, threads: 2, sandbox: false }
+    NewGame { seed, level: 3, threads: 2, ..NewGame::default() }
 }
 
 #[test]

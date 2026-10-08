@@ -6,7 +6,7 @@ use evo_planet::PlanetParams;
 use evo_sim::history::PublishedState;
 use evo_sim::observation::InterestZone;
 use evo_sim::orders::OrderKind;
-use evo_sim::{World, WorldConfig};
+use evo_sim::{Seeding, World, WorldConfig};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,25 +29,32 @@ pub struct NewGame {
     pub threads: usize,
     /// Bac à sable : interventions sans limite d'influence.
     pub sandbox: bool,
+    /// Paramètres de planète réglés à l'écran de création ; s'ils sont
+    /// donnés, ils remplacent le préréglage.
+    pub planet: Option<PlanetParams>,
+    /// Où l'ordre `SeedLife` dépose les cellules minimales.
+    pub seeding: Seeding,
 }
 
 impl Default for NewGame {
     fn default() -> Self {
-        Self { seed: 1, preset: "terre".into(), level: 6, threads: 6, sandbox: false }
+        Self { seed: 1, preset: "terre".into(), level: 6, threads: 6, sandbox: false, planet: None, seeding: Seeding::Vents }
     }
 }
 
 impl NewGame {
     /// Configuration du monde correspondante.
     pub fn config(&self) -> io::Result<WorldConfig> {
-        let planet = PlanetParams::by_key(&self.preset).ok_or_else(|| {
+        let preset = PlanetParams::by_key(&self.preset).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("monde inconnu : {} (connus : {})", self.preset, PlanetParams::KEYS.join(", ")),
             )
         })?;
+        let planet = self.planet.clone().unwrap_or(preset);
         let mut cfg = WorldConfig::with_planet(planet, self.seed, self.level);
         cfg.influence.sandbox = self.sandbox;
+        cfg.seeding = self.seeding;
         Ok(cfg)
     }
 }
