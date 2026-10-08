@@ -242,7 +242,7 @@ impl PlanetParams {
             plate_reorganisation_myr: 150.0,
             erosion_myr: 100.0,
             vent_crust_age_myr: 4.0,
-            vent_min_ocean_share: 0.01,
+            vent_min_ocean_share: 0.05,
             outgassing_co2: 1.5e13,
             outgassing_h2_ratio: 0.03,
             vent_h2_flux: 1.0e12,
