@@ -168,17 +168,27 @@ impl EvoSession {
         }
     }
 
-    /// Nom courant d'une espèce (guilde) : celui du moteur en français.
+    /// Nom courant d'une espèce (guilde) : son métabolisme principal et la
+    /// région où elle est apparue (« Photosynthétique à oxygène d'Iranou »).
+    /// Le nom du moteur, qui énumère toutes ses voies, reste dans la fiche.
     fn species_name(&self, f: &Frame, species: u32) -> String {
-        match (self.lang, f.species(species)) {
-            (Lang::Fr, Some(s)) => s.name.clone(),
-            _ => {
-                let mut c = guild_common(main_reaction(species), self.lang).to_string();
-                if let Some(first) = c.get(0..1) {
-                    c = first.to_uppercase() + &c[1..];
-                }
-                c
+        let common = guild_common(main_reaction(species), self.lang);
+        let place = match (f.species(species), &self.grid) {
+            (Some(s), Some(g)) => {
+                let cell = (s.origin_bio_cell as usize).min(g.len().saturating_sub(1));
+                Some(evo_view::naming::place_name(f.planet.seed, evo_view::naming::region_of(g, cell)))
             }
+            _ => None,
+        };
+        let mut c = common.to_string();
+        if let Some(first) = c.chars().next() {
+            c = first.to_uppercase().collect::<String>() + &c[first.len_utf8()..];
+        }
+        match (self.lang, place) {
+            (Lang::Fr, Some(p)) if p.starts_with(['A', 'E', 'I', 'O', 'U']) => format!("{c} d'{p}"),
+            (Lang::Fr, Some(p)) => format!("{c} de {p}"),
+            (Lang::En, Some(p)) => format!("{p} {common}"),
+            (_, None) => c,
         }
     }
 

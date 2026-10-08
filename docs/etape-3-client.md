@@ -9,11 +9,11 @@ Feuille de route (document Vision, périmètre consolidé de l'étape 3) : le cl
 | Créer une planète | oui : préréglage, graine, distance à l'étoile, part d'eau, étoile, grille ; code de planète à partager | capture `02-creation.png` |
 | Ensemencer | oui : près des sources hydrothermales ou dans toutes les mers | scénario, `vie_deposee` |
 | Intervenir | oui : phosphate autour d'un lieu choisi, éruption (CO₂, méthane) ; le coût est pris sur la réserve d'influence, l'ordre passe par la file et revient dans la chronique comme « votre intervention » (ou « refusée ») | `intervention_appliquee` |
-| Voir l'oxygène monter | oui : O₂ de l'air au-dessus de 10⁻⁴ à 32,6 Ma (Terre archéenne, graine 2026, 2 562 cellules), en 106 s de temps réel | `rapport.json`, capture `10-oxygene-frise.png` |
-| Rejeu identique sur deux chemins de caméra | oui : même empreinte d'état après 20 pas (40 en intégration continue), caméra lointaine sur l'équateur ou plongée sur un pôle | `rejeu.json` |
+| Voir l'oxygène monter | oui : O₂ de l'air au-dessus de 10⁻⁴ à 55,6 Ma (Terre archéenne, graine 2026, 2 562 cellules), en 149 s de temps réel ; la date varie d'une partie jouée à l'autre (34,5 et 55,6 Ma sur deux essais), car le joueur change la vitesse à des dates différentes | `rapport.json`, capture `10-oxygene-frise.png` |
+| Rejeu identique sur deux chemins de caméra | oui : même empreinte d'état après 40 pas, caméra lointaine sur l'équateur ou plongée sur un pôle | `rejeu.json` |
 | Rejeu après rechargement d'un point de sauvegarde | oui : même empreinte | `rejeu.json` |
 | Rejeu identique sous Linux et Windows | comparé par l'intégration continue (job bloquant), maintenant que le moteur calcule avec des fonctions mathématiques déterministes | job `client-rejeu-identique` |
-| 60 images par seconde sur la machine cible | non vérifiable ici : 3 images par seconde en rendu Vulkan logiciel (lavapipe, 4 cœurs) ; le pont coûte 0,6 ms par image | « Mesures » |
+| 60 images par seconde sur la machine cible | non vérifiable ici : 3 images par seconde en rendu Vulkan logiciel (lavapipe, 4 cœurs) ; le pont coûte 0,65 ms par image | « Mesures » |
 
 ## Ce que le joueur voit
 
@@ -54,10 +54,10 @@ Conteneur de développement : 4 cœurs Xeon à 2,8 GHz, sans carte graphique ; r
 
 | Mesure | Valeur |
 |---|---|
-| Vitesse tenue par le moteur | environ 400 ka/s pendant que le client dessine |
+| Vitesse tenue par le moteur | 450 à 800 ka/s pendant que le client dessine |
 | Images par seconde | 3 (médiane), rendu logiciel |
 | Durée d'une image | 133 ms (médiane), 146 ms (95ᵉ centile) |
-| Pont Rust → Godot (textures de données d'un pas) | 0,59 ms en moyenne, 2,1 ms au plus |
+| Pont Rust → Godot (textures de données d'un pas) | 0,65 ms en moyenne, 7,6 ms au plus |
 
 Le rendu logiciel dessine chaque pixel sur le processeur, qu'il partage avec la simulation : ces 3 images par seconde ne disent rien de la machine cible. Le globe compte une seule surface de 10 242 sommets au niveau 5 (40 962 au niveau 6) et un shader de fragment sans texture d'image, ce qu'une carte graphique d'entrée de gamme dessine bien au-delà de 60 images par seconde ; la mesure reste à faire sur la machine cible, avec le scénario `--porte` qui la consigne dans `rapport.json`.
 
