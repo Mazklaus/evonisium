@@ -1,0 +1,33 @@
+id	annees	cellule	type	origine	cause	interet	detail
+0	0	23	vie déposée	moteur		1.00	LifeSeeded { lineage: 0 }
+9	200000	54	innovation	moteur	0	0.95	Innovation { lineage: 0, pathway: "photosynthèse", stage: 2, label: "phototrophie simple" }
+28	400000	949	innovation	moteur		0.60	Innovation { lineage: 0, pathway: "rhodopsine", stage: 1, label: "rhodopsine" }
+59	600000	847	innovation	moteur	9	0.80	Innovation { lineage: 33, pathway: "photosynthèse", stage: 3, label: "photosynthèse anoxygénique" }
+176531	20200000	1785	innovation	moteur	59	0.90	Innovation { lineage: 166294, pathway: "photosynthèse", stage: 4, label: "photosynthèse oxygénique" }
+461494	80600000		seuil d'oxygène	moteur	176531	1.00	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+461495	80600000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+461496	80600000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+468703	81200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+468704	81200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+468705	81200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+474852	81800000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+474853	81800000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+476871	82000000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+485868	83000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+485869	83000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+485870	83000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+487331	83200000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+487332	83200000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+487333	83200000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+490647	83600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+493607	84000000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+493608	84000000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+499658	84800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+502408	85200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+507177	86000000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+509783	86400000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+514028	87000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+518888	87800000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+536445	90800000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+598287	100200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+630314	104400000		seuil d'oxygène	moteur	176531	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }

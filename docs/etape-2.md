@@ -6,7 +6,25 @@ Feuille de route (document Vision) : « Tectonique, climat et cycles chimiques c
 
 Rapport complet produit par `evonisium porte` : [etape-2-porte.md](etape-2-porte.md). Données (historiques échantillonnés, événements, ordres) dans `docs/etape-2-porte/`.
 
-RESULTATS_PORTE
+**Verdict : porte franchie sur cinq mondes sur six.** Le monde désertique produit de l'oxygène par photosynthèse et en accumule par moments (jusqu'à 1,7·10⁻⁴), sans le tenir 50 millions d'années.
+
+| Monde | Photosynthèse oxygénique | O₂ > 10⁻⁴ | O₂ final | Accélérateur | Électrons corrigés | Verdict |
+|---|---|---|---|---|---|---|
+| Terre (Archéen) | 18,8 Ma | 57 Ma | 2,1·10⁻⁴ | jamais | 5,3 % | franchie |
+| Monde océan | 25,8 Ma | 131 Ma | 0,55 | jamais | 3,3 % | franchie |
+| Monde désertique | 186 Ma | 354 Ma (passager) | 1,4·10⁻⁵ | jamais | 17,5 % | non franchie |
+| Super-Terre | 20,2 Ma | 81 Ma | 0,30 | jamais | 7,6 % | franchie |
+| Petite planète | 16,2 Ma | 68 Ma | 1,2·10⁻² | jamais | 13,8 % | franchie |
+| Monde sans lune | 19,0 Ma | 53 Ma | 3,1·10⁻² | jamais | 3,9 % | franchie |
+
+Carbone et phosphore sont conservés à 10⁻⁸ près au pire, et chaque partie se rejoue à l'identique. L'accélérateur n'a jamais été nécessaire : exaptation, duplication, transfert et tunnel suffisent.
+
+Ce qu'il faut savoir avant de s'appuyer sur ces résultats :
+
+- **Monde désertique.** Ses mers, au fond des bassins, passent de 40 % à 5–15 % de la surface quand la croûte océanique vieillit et s'enfonce. La production y est cinquante fois plus faible que sur Terre, alors que l'hydrogène volcanique est à l'échelle de la planète : le méthane l'emporte. Pistes pour l'étape 3 : la vie des terres et des lacs (tapis microbiens), absente pour l'instant, et une calibration du dégazage réduit selon le monde.
+- **Niveaux d'oxygène.** Sur la Terre, l'O₂ franchit le seuil vers 57 Ma mais oscille ; il ne le tient 50 Ma qu'au bout de 1,25 Ga. Sur les mondes sans terres ou presque (monde océan, super-Terre), rien ne freine l'oxygène hors de la respiration profonde : il monte à 30 et 55 %, avec un CO₂ de plusieurs bars. C'est cohérent avec le modèle, pas avec un monde réel qui aurait d'autres puits (oxydation des fonds océaniques, incendies au-delà de 25 %).
+- **Électrons corrigés.** L'extrapolation des flux de surface sur tout le pas perd des électrons ; la correction déplace de 3 à 17 % de la production d'O₂. C'est la principale approximation numérique de cette étape : des pas plus courts ou une écologie résolue plus longtemps la réduiraient.
+
 
 Un monde franchit la porte quand quatre conditions sont réunies :
 
@@ -56,6 +74,7 @@ Les premières parties longues ont révélé quatre défauts, corrigés avant la
 - **Fuite d'électrons.** Les flux de surface mesurés pendant l'écologie rapide sont prolongés sur tout le pas comme des taux d'équilibre. La fermeture du carbone et du phosphore ne garantissait pas celle des électrons : du méthane apparaissait sans source réductrice et consommait tout l'oxygène. Une couche à l'équilibre n'exporte désormais que le pouvoir réducteur de ses sources hydrothermales (la vie ne fait que le déplacer) ; l'écart corrigé est compté et publié par la porte.
 - **Oscillation d'un pas à l'autre.** Avec des pas de 200 000 ans, le couplage explicite entre l'atmosphère et la vie faisait alterner méthane abondant et méthane nul. Les flux appliqués sont la moyenne de ceux du pas et du pas précédent (schéma amorti, même équilibre).
 - **Génomes enflés.** Une cellule gorgée de lumière croissait au plafond quel que soit son génome : rien ne freinait les copies inutiles (300 gènes après 100 Ma). Le taux de croissance maximal baisse désormais de 0,2 % par gène (temps de réplication).
+- **Monde désertique.** Trois corrections physiques, sans effet sur les autres mondes ou presque : le gradient thermique se mesure depuis l'altitude moyenne de la surface et non depuis des mers enfouies au fond des bassins (toutes les terres gelaient) ; une dorsale émergée dégaze dans l'air, seule la part immergée nourrit la mer en réducteurs (avec un plancher de 10 % pour la circulation hors axe, et des sources sur au moins 5 % des mers) ; l'altération n'use que les terres que la pluie venue des mers peut arroser (au plus une fois l'aire des mers).
 - **Mémoire.** Une partie de 1,5 Ga fonde des millions de lignées éphémères ; le registre gardait chaque génome fondateur (14 Go). Une lignée éteinte sans fille oublie son génome et ne produit plus d'événement (elle reste comptée).
 
 ## Simplifications
@@ -75,4 +94,9 @@ SQLite (sauvegardes, historiques par région et par espèce), la zone d'intérê
 
 ## Mesures
 
-MESURES
+Rapport complet : [etape-2-mesures.md](etape-2-mesures.md) (machine de mesure à 4 fils, estimations pour les 6 cœurs laissés à la simulation).
+
+Le pas complet à 40 962 cellules, à pleine charge, coûte 3,1 s contre 208 ms à l'étape 1 : la planète elle-même ne compte presque pas (15 ms), ce sont l'écologie couplée à la chimie (1 s) et l'évolution avec tunnel et transfert (1,3 s) sur 307 000 populations. Sur 6 cœurs, 1 Ma/s demanderait des pas de 2 Ma : le budget du document Vision n'est pas tenu à cette résolution. La porte a donc été passée sur la grille de 2 562 cellules (environ 0,1 à 1 Ma/s). Pistes pour l'étape 3 : moins de candidats mutants par pas quand rien ne change, écologie rapide plus courte dans les cellules à l'équilibre, plafond de populations par cellule plus bas.
+
+La mémoire tient : 0,7 Go pour 40 962 cellules, et les très longues parties sont bornées (registre des lignées allégé, journal plafonné).
+

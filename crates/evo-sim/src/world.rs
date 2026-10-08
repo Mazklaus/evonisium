@@ -1330,6 +1330,12 @@ mod tests {
         assert!(end.colonised_cells > 3 * start.colonised_cells, "{} → {}", start.colonised_cells, end.colonised_cells);
         assert!(end.stats.substitutions > 0);
         assert_eq!(w.journal.total(), end.stats.substitutions);
+        // L'adaptation thermique demande plus de générations que la
+        // colonisation.
+        for _ in 0..40 {
+            w.step();
+        }
+        let end = w.summary();
         // Écart à la température locale des enzymes utilisées, comparé à
         // celui qu'aurait gardé l'ancêtre (optimum à 300 K) aux mêmes endroits.
         let (mut a, mut b) = (0.0, 0.0);

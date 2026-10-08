@@ -371,8 +371,13 @@ impl Planet {
         let ocean_unit: f64 = (0..self.cells.len()).filter(|&c| self.cells[c].is_ocean).map(|c| self.grid.unit_areas[c]).sum();
         let last = &self.tectonics.last;
         let subduction = if last.years > 0.0 && ocean_unit > 0.0 { last.subducted_area / ocean_unit / last.years } else { 0.0 };
+        // L'altération a besoin d'eau : la pluie qui arrose les terres vient
+        // de l'évaporation des mers. Un monde aux mers réduites n'altère que
+        // les terres qu'il arrose (au plus `runoff_land_per_ocean` fois
+        // l'aire des mers) ; sur Terre, toutes les terres le sont.
+        let watered = self.ocean_area() * self.params.runoff_land_per_ocean;
         BoxContext {
-            land_area_m2: self.land_area(),
+            land_area_m2: self.land_area().min(watered),
             deep_volume_m3: self.deep_volume_m3,
             mean_temperature_k: self.climate.mean_temperature_k,
             activity: self.activity(years),

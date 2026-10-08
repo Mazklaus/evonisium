@@ -270,7 +270,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
             r.max_o2,
             s.co2_pa,
             s.mean_temperature_k,
-            100.0 * s.ice_fraction,
+            (100.0 * s.ice_fraction).max(0.0),
             100.0 * s.ocean_fraction,
             r.snowballs,
             r.plate_reorganisations,

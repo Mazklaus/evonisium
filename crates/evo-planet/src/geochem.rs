@@ -126,7 +126,7 @@ pub struct GlobalFluxes {
 /// Ce que le reste de la planète fournit aux boîtes pour un pas.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BoxContext {
-    /// Aire des terres émergées non englacées, m².
+    /// Aire des terres émergées, non englacées et arrosées par la pluie, m².
     pub land_area_m2: f64,
     /// Volume de l'océan profond, m³.
     pub deep_volume_m3: f64,

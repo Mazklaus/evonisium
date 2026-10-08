@@ -219,7 +219,7 @@ pub fn run_benchmarks(opts: &BenchOptions) -> String {
         let per_genome = r.memory_genomes as f64 / r.distinct_genomes.max(1) as f64;
         let _ = writeln!(
             out,
-            "\nExtrapolation : 20 000 espèces × 50 génotypes de ce format occuperaient {:.2} Go. Les génomes de l'étape 1 sont ceux de cellules minimales (quelques gènes) ; un animal complexe en aura des milliers, d'où le stockage en différences par rapport au génome de référence prévu par le document Vision.",
+            "\nExtrapolation : 20 000 espèces × 50 génotypes de ce format occuperaient {:.2} Go. Les génomes de ces mesures sont ceux de microbes (quelques gènes) ; un animal complexe en aura des milliers, d'où le stockage en différences par rapport au génome de référence prévu par le document Vision.",
             20_000.0 * 50.0 * per_genome / (MB * 1024.0)
         );
     }
