@@ -14,6 +14,7 @@ use crate::hydrology::{diagnose, CellDisplay};
 use crate::params::PlanetParams;
 use crate::pools::{WaterPool, WATER_POOLS, WATER_POOL_COUNT};
 use crate::tectonics::{sea_level, Tectonics};
+use evo_core::math::Det;
 
 /// Conditions physiques d'une cellule, recalculées à chaque pas.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -213,7 +214,7 @@ impl Planet {
             let layer = if ocean { p.mixed_layer_m.min(depth.max(10.0)) } else { p.lake_layer_m };
             let water_area = if ocean { areas[c] } else { areas[c] * lw.wet_fraction };
             let ice_cover = if cl.ice { 1.0 } else { 0.0 };
-            let transmission = if water_area > 0.0 { (1.0 - (-k * layer).exp()) / (k * layer) } else { 1.0 };
+            let transmission = if water_area > 0.0 { (1.0 - (-k * layer).dexp()) / (k * layer) } else { 1.0 };
             let light = cl.insolation_w_m2 * (1.0 - p.albedo) * self.climate.light_share * transmission * (1.0 - 0.95 * ice_cover);
             let uv = cl.insolation_w_m2 * self.climate.uv_share * self.climate.uv_transmission * (1.0 - ice_cover);
             let is_vent = ocean && vents.binary_search(&c).is_ok();
@@ -229,7 +230,7 @@ impl Planet {
                 flushing_per_year: if ocean { 0.0 } else { lw.flushing_per_year },
                 rain_mm_yr: display[c].rain_mm_yr as f64,
                 temperature_k: cl.temperature_k,
-                seasonal_amplitude_k: 40.0 * self.climate.obliquity_rad.sin() * lat.sin().abs() * if ocean { 0.3 } else { 1.0 },
+                seasonal_amplitude_k: 40.0 * self.climate.obliquity_rad.dsin() * lat.dsin().abs() * if ocean { 0.3 } else { 1.0 },
                 light_par_w_m2: light,
                 uv_w_m2: uv,
                 ph: p.ocean_ph,
@@ -264,7 +265,7 @@ impl Planet {
         let mut target = [0.0; WATER_POOL_COUNT];
         let mut rate = [0.0; WATER_POOL_COUNT];
         let co2 = self.partial_pressure(Gas::Co2);
-        target[WaterPool::Dic as usize] = p.dic_equilibrium * (co2 / p.co2_pa).max(0.0).powf(p.dic_co2_exponent);
+        target[WaterPool::Dic as usize] = p.dic_equilibrium * (co2 / p.co2_pa).max(0.0).dpowf(p.dic_co2_exponent);
         rate[WaterPool::Dic as usize] = 1.0;
         // Sédimentation de la matière organique et des oxydes.
         rate[WaterPool::Doc as usize] = 0.5;
@@ -373,7 +374,7 @@ impl Planet {
             if rate > 0.0 {
                 // Solution exacte de dc/dt = rate·(target − c) + supply/V.
                 let eq = target + supply / v / rate;
-                chem[i] = eq + (before - eq) * (-rate * dt).exp();
+                chem[i] = eq + (before - eq) * (-rate * dt).dexp();
             } else {
                 chem[i] += supply / v * dt;
             }
@@ -399,7 +400,7 @@ impl Planet {
             if r <= 0.0 || ox <= 0.0 {
                 continue;
             }
-            let reacted = (r * -(-k * ox * dt).exp_m1()).min(ox * per_o2);
+            let reacted = (r * -(-k * ox * dt).dexp_m1()).min(ox * per_o2);
             chem[reduced as usize] -= reacted;
             chem[o2] -= reacted / per_o2;
             if let Some(p) = oxidised {

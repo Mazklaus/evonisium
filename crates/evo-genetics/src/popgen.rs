@@ -10,6 +10,7 @@
 //! - [`DiploidPopulation`] : individus diploïdes à un locus, reproduction
 //!   sexuée par appariement au hasard, pour vérifier Hardy-Weinberg.
 
+use evo_core::math::Det;
 use rand::Rng;
 use rand_distr::{Binomial, Distribution};
 
@@ -17,9 +18,9 @@ use rand_distr::{Binomial, Distribution};
 #[inline]
 fn ln_expm1(x: f64) -> f64 {
     if x > 30.0 {
-        x + (-(-x).exp()).ln_1p()
+        x + (-(-x).dexp()).dln_1p()
     } else {
-        x.exp_m1().ln()
+        x.dexp_m1().dln()
     }
 }
 
@@ -35,10 +36,10 @@ pub fn fixation_probability(s: f64, ne: f64, p0: f64) -> f64 {
         return p0;
     }
     if b > 0.0 {
-        (-a).exp_m1() / (-b).exp_m1()
+        (-a).dexp_m1() / (-b).dexp_m1()
     } else {
         // Allèle désavantageux : rapport de deux grands nombres, en logarithmes.
-        (ln_expm1(-a) - ln_expm1(-b)).exp()
+        (ln_expm1(-a) - ln_expm1(-b)).dexp()
     }
 }
 
@@ -101,7 +102,7 @@ impl OriginFixation {
         if p_fix >= 1.0 {
             return 1.0;
         }
-        -(copies * (-p_fix).ln_1p()).exp_m1()
+        -(copies * (-p_fix).dln_1p()).dexp_m1()
     }
 
     /// Tire le sort d'un candidat d'avantage `s`.
@@ -142,7 +143,7 @@ pub fn tunnel_probability(delta: f64, mu2: f64, p2: f64) -> f64 {
     for _ in 0..30 {
         // g(p) = 1 − p − exp(−m·(μ₂p₂ + (1 − μ₂)p)) = 0.
         let a = m * (mu2 * p2 + (1.0 - mu2) * p);
-        let e = (-a).exp();
+        let e = (-a).dexp();
         let g = 1.0 - p - e;
         let dg = -1.0 + e * m * (1.0 - mu2);
         let next = (p - g / dg).clamp(0.0, 1.0);
@@ -238,7 +239,7 @@ mod tests {
         assert!((new_mutant_fixation(0.0, 1000.0) - 1e-3).abs() < 1e-15);
         // Grande population, avantage s : environ 1 − e^(−2s) ≈ 2s.
         let p = new_mutant_fixation(0.01, 1e9);
-        assert!((p - (1.0 - (-0.02f64).exp())).abs() < 1e-9);
+        assert!((p - (1.0 - (-0.02f64).dexp())).abs() < 1e-9);
         // Désavantage fort dans une grande population : pratiquement nul, sans NaN.
         let p = new_mutant_fixation(-0.01, 1e9);
         assert!(p.is_finite() && (0.0..1e-300).contains(&p));

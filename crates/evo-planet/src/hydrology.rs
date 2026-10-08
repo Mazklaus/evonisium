@@ -23,6 +23,7 @@
 use crate::grid::{GeodesicGrid, Vec3};
 use crate::params::PlanetParams;
 use crate::tectonics::Tectonics;
+use evo_core::math::Det;
 use std::collections::VecDeque;
 
 /// Ce qu'une cellule physique montre en plus de son environnement.
@@ -147,8 +148,8 @@ pub fn diagnose(
         let u = params.wind_reference_ms * table(&ZONAL, deg);
         let v = params.wind_reference_ms * table(&MERIDIONAL, deg) * hemi;
         display[c].wind_ms = [u as f32, v as f32];
-        let moisture = if dist[c] == u32::MAX { 0.0 } else { (-(dist[c] as f64) * spacing_km / params.moisture_range_km).exp() };
-        let cc = (0.07 * (temperature_k[c] - 288.0)).exp().clamp(0.02, 4.0);
+        let moisture = if dist[c] == u32::MAX { 0.0 } else { (-(dist[c] as f64) * spacing_km / params.moisture_range_km).dexp() };
+        let cc = (0.07 * (temperature_k[c] - 288.0)).dexp().clamp(0.02, 4.0);
         let frozen = if ice[c] { 0.3 } else { 1.0 };
         rain[c] = table(&RAIN, deg) * moisture * cc * frozen;
         let _ = p;
@@ -158,7 +159,7 @@ pub fn diagnose(
     let ocean_area: f64 = (0..n).filter(|&c| is_ocean[c]).map(|c| areas_m2[c]).sum();
     let evaporation: f64 = (0..n)
         .filter(|&c| is_ocean[c] && !ice[c])
-        .map(|c| areas_m2[c] * params.ocean_evaporation_m_yr * (0.07 * (temperature_k[c] - 288.0)).exp().clamp(0.02, 4.0))
+        .map(|c| areas_m2[c] * params.ocean_evaporation_m_yr * (0.07 * (temperature_k[c] - 288.0)).dexp().clamp(0.02, 4.0))
         .sum::<f64>()
         * 1e3;
     let total: f64 = (0..n).map(|c| rain[c] * areas_m2[c]).sum();

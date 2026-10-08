@@ -1,0 +1,21 @@
+# Mathématiques déterministes : voir crates/evo-core/src/math.rs.
+disallowed-methods = [
+    { path = "f64::exp", reason = "non déterministe entre plateformes : utiliser evo_core::math::Det::dexp" },
+    { path = "f64::exp_m1", reason = "utiliser Det::dexp_m1" },
+    { path = "f64::ln", reason = "utiliser Det::dln" },
+    { path = "f64::ln_1p", reason = "utiliser Det::dln_1p" },
+    { path = "f64::log10", reason = "utiliser libm::log10" },
+    { path = "f64::log2", reason = "utiliser libm::log2" },
+    { path = "f64::powf", reason = "utiliser Det::dpowf" },
+    { path = "f64::sin", reason = "utiliser Det::dsin" },
+    { path = "f64::cos", reason = "utiliser Det::dcos" },
+    { path = "f64::tan", reason = "utiliser libm::tan" },
+    { path = "f64::sin_cos", reason = "utiliser Det::dsin_cos" },
+    { path = "f64::asin", reason = "utiliser Det::dasin" },
+    { path = "f64::acos", reason = "utiliser Det::dacos" },
+    { path = "f64::atan", reason = "utiliser libm::atan" },
+    { path = "f64::atan2", reason = "utiliser Det::datan2" },
+    { path = "f64::tanh", reason = "utiliser libm::tanh" },
+    { path = "f64::cbrt", reason = "utiliser libm::cbrt" },
+    { path = "f64::hypot", reason = "utiliser libm::hypot" },
+]

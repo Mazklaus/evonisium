@@ -3,6 +3,7 @@
 //! préréglages sont les mondes exotiques de la première vague (document
 //! Planète, « Mondes exotiques ») : ils ne changent que des paramètres.
 
+use evo_core::math::Det;
 use evo_core::units::{GRAVITATIONAL_CONSTANT, STEFAN_BOLTZMANN};
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -432,10 +433,10 @@ impl PlanetParams {
     /// [Simplification] Loi d'échelle ajustée, pas de calcul d'équilibre des
     /// gaz magmatiques.
     pub fn reduced_outgassing_ratio(&self) -> f64 {
-        let fmq = 10f64.powf(-0.5 * self.mantle_delta_fmq);
+        let fmq = 10f64.dpowf(-0.5 * self.mantle_delta_fmq);
         let water = (self.water_inventory_m / self.reference_water_m).sqrt().clamp(0.2, 3.0);
         let surface = self.n2_pa + self.co2_pa + self.ch4_pa + self.h2_pa;
-        let pressure = (surface.max(1.0) / self.reference_surface_pa).powf(-0.3);
+        let pressure = (surface.max(1.0) / self.reference_surface_pa).dpowf(-0.3);
         self.reference_h2_co2 * fmq * water * pressure
     }
 
@@ -457,7 +458,7 @@ impl PlanetParams {
     /// Température d'équilibre radiatif sans effet de serre, K.
     pub fn equilibrium_temperature(&self) -> f64 {
         let absorbed = self.stellar_flux() * (1.0 - self.albedo) / 4.0;
-        (absorbed / STEFAN_BOLTZMANN).powf(0.25)
+        (absorbed / STEFAN_BOLTZMANN).dpowf(0.25)
     }
 
     /// Gradient thermique vertical, K·m⁻¹ : adiabatique sèche g/cp corrigée
@@ -473,7 +474,7 @@ impl PlanetParams {
 
     /// Chaleur interne relative à celle du départ.
     pub fn internal_heat(&self, years: f64) -> f64 {
-        (-years / (self.internal_heat_decay_gyr * 1e9)).exp()
+        (-years / (self.internal_heat_decay_gyr * 1e9)).dexp()
     }
 }
 

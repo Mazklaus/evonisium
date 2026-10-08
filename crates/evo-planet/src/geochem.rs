@@ -23,6 +23,7 @@
 use crate::params::PlanetParams;
 use crate::pools::{WaterPool, WATER_POOL_COUNT};
 use evo_core::flux::{Element, FluxRegistry};
+use evo_core::math::Det;
 
 /// Gaz de l'atmosphère suivis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -500,9 +501,9 @@ impl GlobalReservoirs {
             let co2_factor = (p_co2 / p_ref).max(0.0);
             let land = params.weathering_per_m2
                 * ctx.land_area_m2
-                * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).exp()
-                * co2_factor.powf(params.weathering_co2_exponent);
-            let seafloor = params.seafloor_weathering_share * params.outgassing_co2 * ctx.activity * co2_factor.powf(0.23);
+                * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
+                * co2_factor.dpowf(params.weathering_co2_exponent);
+            let seafloor = params.seafloor_weathering_share * params.outgassing_co2 * ctx.activity * co2_factor.dpowf(0.23);
             let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize]);
             self.atmosphere[Gas::Co2 as usize] -= w;
             self.carbonate_c += w;
@@ -516,7 +517,7 @@ impl GlobalReservoirs {
             let o2 = self.atmosphere[Gas::O2 as usize];
             let ow = (params.oxidative_weathering_per_m2
                 * ctx.land_area_m2
-                * (f_o2.max(0.0) / params.oxidative_weathering_reference).powf(params.oxidative_weathering_exponent)
+                * (f_o2.max(0.0) / params.oxidative_weathering_reference).dpowf(params.oxidative_weathering_exponent)
                 * h)
                 .min(o2);
             self.atmosphere[Gas::O2 as usize] -= ow;

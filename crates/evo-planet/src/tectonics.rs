@@ -20,6 +20,7 @@
 
 use crate::grid::{GeodesicGrid, Vec3};
 use crate::params::PlanetParams;
+use evo_core::math::Det;
 use evo_core::rng::{rng_for, Stream};
 use rand::Rng;
 
@@ -95,7 +96,7 @@ fn normalize(v: Vec3) -> Vec3 {
 
 /// Rotation de `v` d'un angle `theta` autour de l'axe unitaire `k` (Rodrigues).
 fn rotate(v: Vec3, k: Vec3, theta: f64) -> Vec3 {
-    let (s, c) = theta.sin_cos();
+    let (s, c) = theta.dsin_cos();
     let kv = cross(k, v);
     let d = dot(k, v) * (1.0 - c);
     normalize([v[0] * c + kv[0] * s + k[0] * d, v[1] * c + kv[1] * s + k[1] * d, v[2] * c + kv[2] * s + k[2] * d])
@@ -105,7 +106,7 @@ fn random_unit(rng: &mut impl Rng) -> Vec3 {
     let z: f64 = rng.random_range(-1.0..1.0);
     let phi: f64 = rng.random_range(0.0..std::f64::consts::TAU);
     let r = (1.0 - z * z).sqrt();
-    [r * phi.cos(), r * phi.sin(), z]
+    [r * phi.dcos(), r * phi.dsin(), z]
 }
 
 /// Cellule la plus proche d'un point, par descente depuis une cellule de
@@ -138,8 +139,8 @@ fn smooth_field(grid: &GeodesicGrid, rng: &mut impl Rng, bumps: usize) -> Vec<f6
         .map(|&c| {
             b.iter()
                 .map(|&(p, w, h)| {
-                    let ang = dot(c, p).clamp(-1.0, 1.0).acos();
-                    h * (-(ang / w).powi(2)).exp()
+                    let ang = dot(c, p).clamp(-1.0, 1.0).dacos();
+                    h * (-(ang / w).powi(2)).dexp()
                 })
                 .sum()
         })
@@ -354,7 +355,7 @@ impl Tectonics {
         }
 
         // 4. Érosion des reliefs épaissis, nouvelles parcelles.
-        let relax = 1.0 - (-dt_myr / params.erosion_myr).exp();
+        let relax = 1.0 - (-dt_myr / params.erosion_myr).dexp();
         self.parcels = keep
             .into_iter()
             .enumerate()

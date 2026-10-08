@@ -12,6 +12,7 @@
 
 use crate::growth::Physiology;
 use crate::metabolism::{EnergySource, ANOXYGENIC_CENTRES, REACTIONS, REACTION_COUNT};
+use evo_core::math::Det;
 use evo_genetics::{DomainFamily, Genome, ReactionId};
 
 /// Une enzyme exprimée, telle que la lit la physiologie (y compris les
@@ -64,7 +65,7 @@ pub struct Phenotype {
 pub fn thermal_factor(t: f64, t_opt: f64, width: f64, physio: &Physiology) -> f64 {
     let peak = 2.0 * physio.thermal_reference_width_k / (physio.thermal_reference_width_k + width);
     let x = (t - t_opt) / width;
-    peak * (-x * x).exp()
+    peak * (-x * x).dexp()
 }
 
 impl Phenotype {

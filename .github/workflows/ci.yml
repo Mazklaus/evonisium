@@ -23,3 +23,35 @@ jobs:
       - run: cargo test --workspace
       - name: Petite partie de bout en bout
         run: cargo run --release -p evo-sim -- run --level 4 --steps 50 --every 50
+
+  empreinte:
+    name: Rejeu identique (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Empreintes d'une partie scénarisée
+        shell: bash
+        run: cargo run --release -p evo-sim -- empreinte > empreinte-${{ matrix.os }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: empreinte-${{ matrix.os }}
+          path: empreinte-${{ matrix.os }}.txt
+
+  rejeu:
+    name: Mêmes empreintes sur Linux, Windows et macOS
+    needs: empreinte
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: empreinte-*
+          merge-multiple: true
+      - run: |
+          diff empreinte-ubuntu-latest.txt empreinte-windows-latest.txt
+          diff empreinte-ubuntu-latest.txt empreinte-macos-latest.txt
+          wc -l empreinte-ubuntu-latest.txt

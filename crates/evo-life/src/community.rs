@@ -17,6 +17,7 @@
 use crate::growth::{growth_rates, Conditions, GrowthRates, Physiology};
 use crate::metabolism::{EnergySource, REACTIONS};
 use crate::phenotype::Phenotype;
+use evo_core::math::Det;
 use evo_core::units::watts_to_kj_per_year;
 use evo_genetics::Genome;
 use evo_planet::{CellEnvironment, WaterChemistry, WaterPool, WATER_POOL_COUNT};
@@ -63,7 +64,7 @@ impl CellContext<'_> {
             // Limite à faible biomasse : toute la lumière est disponible.
             incoming / b_ref
         } else {
-            incoming * (-(-x).exp_m1()) / photo_biomass
+            incoming * (-(-x).dexp_m1()) / photo_biomass
         }
     }
 
@@ -212,7 +213,7 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
                 }
             }
         }
-        let deaths = p.biomass * (-(-p.rates.mortality * dt).exp_m1());
+        let deaths = p.biomass * (-(-p.rates.mortality * dt).dexp_m1());
         chem[WaterPool::Doc as usize] -= births * het / volume;
         chem[WaterPool::Dic as usize] -= births * (1.0 - het) / volume;
         chem[WaterPool::Po4 as usize] -= births / cp / volume;

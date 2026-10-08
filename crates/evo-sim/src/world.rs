@@ -34,6 +34,7 @@ use crate::observation::{Focus, FocusCell, InterestZone, PopulationView, MAX_FOC
 use crate::orders::{AppliedOrder, Intervention, Order, OrderKind, OrderQueue};
 use evo_core::events::{EventKind, EventLog, Origin};
 use evo_core::flux::{Element, FluxRegistry};
+use evo_core::math::Det;
 use evo_core::rng::{rng_for, Stream};
 use evo_genetics::genome::MARKER_LEN;
 use evo_genetics::{
@@ -545,7 +546,7 @@ impl World {
                     .wet_cells()
                     .filter(|&b| {
                         let p = self.bio.grid.centers[b];
-                        (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).acos() <= radius
+                        (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).dacos() <= radius
                     })
                     .collect();
                 let volume: f64 = targets.iter().map(|&b| self.bio.env[b].water_volume_m3).sum();
@@ -655,7 +656,7 @@ impl World {
         }
         let mut rng = rng_for(seed, Stream::Climate, &[step_index]);
         let (u1, u2): (f64, f64) = (rng.random::<f64>().max(1e-300), rng.random());
-        let gaussian = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+        let gaussian = (-2.0 * u1.dln()).sqrt() * (std::f64::consts::TAU * u2).dcos();
         planet.climate.drift_obliquity(&planet.params, dt, gaussian);
 
         let before: Vec<f64> = self.bio.env.iter().map(|e| e.water_volume_m3).collect();
@@ -1332,7 +1333,7 @@ impl World {
         let mut near: Vec<(f64, usize)> = (0..self.bio.len())
             .filter_map(|b| {
                 let p = self.bio.grid.centers[b];
-                let d = (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).acos();
+                let d = (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).dacos();
                 (d <= radius).then_some((d, b))
             })
             .collect();

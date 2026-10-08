@@ -14,6 +14,7 @@
 //! absorption de l'eau pure tabulée plus un terme de matière organique
 //! dissoute ; pas de diffusion ni de physique quantique de la capture.
 
+use evo_core::math::Det;
 /// Constante de Planck × vitesse de la lumière / constante de Boltzmann, nm·K.
 const HC_OVER_K_NM_K: f64 = 1.438_777e7;
 
@@ -45,7 +46,7 @@ fn water_absorption(nm: f64) -> f64 {
         if nm <= x1 {
             // Interpolation en logarithme : l'absorption varie sur 4 ordres.
             let t = (nm - x0) / (x1 - x0);
-            return (y0.ln() * (1.0 - t) + y1.ln() * t).exp();
+            return (y0.dln() * (1.0 - t) + y1.dln() * t).dexp();
         }
     }
     w[w.len() - 1].1
@@ -72,10 +73,10 @@ impl LightSpectrum {
             .map(|i| {
                 let nm = start_nm + step_nm * i as f64;
                 // Photons par intervalle de longueur d'onde : λ⁻⁴ / (e^(hc/λkT) − 1).
-                let planck = nm.powi(-4) / ((HC_OVER_K_NM_K / (nm * star_k)).exp_m1());
-                let k = water_absorption(nm) + 0.05 * (-0.015 * (nm - 440.0)).exp();
+                let planck = nm.powi(-4) / ((HC_OVER_K_NM_K / (nm * star_k)).dexp_m1());
+                let k = water_absorption(nm) + 0.05 * (-0.015 * (nm - 440.0)).dexp();
                 let kh = k * water_depth_m;
-                let mean_transmission = if kh < 1e-9 { 1.0 } else { -(-kh).exp_m1() / kh };
+                let mean_transmission = if kh < 1e-9 { 1.0 } else { -(-kh).dexp_m1() / kh };
                 planck * mean_transmission
             })
             .collect();
@@ -112,7 +113,7 @@ pub fn pigment_colour(nm: f64) -> [u8; 3] {
     const WIDTH_NM: f64 = 40.0;
     let channel = |centre: f64| {
         let x = (centre - nm) / WIDTH_NM;
-        let reflected = 1.0 - 0.85 * (-0.5 * x * x).exp();
+        let reflected = 1.0 - 0.85 * (-0.5 * x * x).dexp();
         (reflected * 255.0).round().clamp(0.0, 255.0) as u8
     };
     [channel(610.0), channel(545.0), channel(450.0)]
