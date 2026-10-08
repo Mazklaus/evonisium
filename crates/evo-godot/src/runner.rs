@@ -1,387 +1,348 @@
-//! Le moteur sur son propre fil.
+//! La partie côté client : le moteur (`evo-engine`) et ce que le client
+//! garde de lui.
 //!
-//! Le monde avance sur un fil dédié, avec un groupe de fils de calcul qui
-//! laisse deux cœurs à l'affichage (architecture : 2 cœurs sur 8 réservés).
-//! Après chaque pas, il publie une image figée (`Frame`) que le fil de rendu
-//! lit sans jamais attendre la simulation. Le client n'écrit que par deux
-//! canaux : la file d'ordres (qui change l'histoire et entre dans le rejeu)
-//! et le canal d'observation (qui ne la change jamais).
-//!
-//! [Simplification] Adaptateur provisoire sur l'API de l'étape 2 : quand le
-//! volet moteur de l'étape 3 publiera son service d'exécution (double
-//! tampon, points de sauvegarde, réserve d'influence), ce module se réduira
-//! à un appel de ce service.
+//! Le moteur tourne sur son propre fil et publie un état figé à chaque pas.
+//! Le client n'écrit que par deux canaux : la file d'ordres (qui change
+//! l'histoire) et la zone d'intérêt (qui ne la change jamais). Tout le reste
+//! passe par des requêtes asynchrones : ce module les relance et relève leurs
+//! réponses sans jamais attendre (une fois par image, depuis `pump`).
 
-use evo_core::events::{Event, EventKind, Origin};
-use evo_sim::{OrderKind, Sample, Seeding, World, WorldConfig};
-use evo_view::chronicle::{Action, StopRules};
-use evo_view::frame::{lineages_of, Frame, LineageFrame};
-use evo_view::save::{PlanetSpec, SaveFile};
+use evo_core::events::{Event, Origin};
+use evo_engine::{Answer, CellDetail, Engine, InterestZone, NewGame, OrderKind, Query, Sample, When};
+use evo_view::chronicle::{self, Action, StopRules};
+use evo_view::frame::{LineageFrame, PlanetInfo};
+use evo_view::save::{seeding_of, PlanetSpec, SaveFile, META_SUFFIX};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
-
-/// Zone d'intérêt de la caméra (canal d'observation).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Observation {
-    pub centre: [f64; 3],
-    pub radius_rad: f64,
-    /// Bande de zoom, 1 (orbite) à 6 (loupe).
-    pub band: u8,
-}
-
-pub enum Command {
-    /// Ordre pour la file (daté au début du prochain pas).
-    Order(OrderKind),
-    /// Vitesse visée, années de jeu par seconde réelle (cadence du fil, pas
-    /// l'histoire : la durée du pas passe, elle, par un ordre).
-    Pace(f64),
-    Observe(Observation),
-    SetSeeding(Seeding),
-    Save {
-        path: String,
-        name: String,
-    },
-    /// Pause au pas donné, par un ordre (scénario de la porte : deux
-    /// parties s'arrêtent au même pas, quelle que soit la caméra).
-    PauseAtStep(u64),
-    Shutdown,
-}
-
-/// Ce que le fil de la simulation partage avec le client.
-#[derive(Default)]
-pub struct Shared {
-    pub current: Mutex<Option<Arc<Frame>>>,
-    pub previous: Mutex<Option<Arc<Frame>>>,
-    /// Journal complet des événements, dans l'ordre.
-    pub events: Mutex<Vec<Event>>,
-    pub lineages: Mutex<Arc<Vec<LineageFrame>>>,
-    pub history: Mutex<Vec<Sample>>,
-    pub rules: Mutex<Option<StopRules>>,
-    /// Messages pour le client (sauvegarde écrite, erreur).
-    pub notices: Mutex<VecDeque<String>>,
-    /// Vitesse réellement tenue, années par seconde (bits d'un f64).
-    pub real_speed: AtomicU64,
-    /// Rejeu d'un point de sauvegarde en cours : pas atteints et visés.
-    pub loading: Mutex<Option<(u64, u64)>>,
-    pub alive: AtomicBool,
-    pub observation: Mutex<Observation>,
-    /// Événement qui a provoqué la dernière pause automatique.
-    pub auto_paused_by: Mutex<Option<u64>>,
-    /// Empreinte de l'état (pas, empreinte), calculée à chaque pause.
-    pub hash: Mutex<Option<(u64, u64)>>,
-}
-
-impl Shared {
-    pub fn real_speed(&self) -> f64 {
-        f64::from_bits(self.real_speed.load(Ordering::Relaxed))
-    }
-}
-
-/// Une partie en cours.
-pub struct Runner {
-    pub tx: Sender<Command>,
-    pub shared: Arc<Shared>,
-    pub spec: PlanetSpec,
-    pub seed: u64,
-    pub level: u32,
-    handle: Option<JoinHandle<()>>,
-}
 
 /// Vitesse de départ : 100 ka/s.
 pub const DEFAULT_SPEED: f64 = 1e5;
 /// Pas par seconde visés : la durée du pas est vitesse / 10.
 pub const STEPS_PER_SECOND: f64 = 10.0;
+/// Événements relevés par requête.
+const EVENTS_PER_POLL: usize = 500;
 
 /// Durée de pas pour une vitesse (bornes du monde microbien).
 pub fn step_years_for(speed: f64) -> f64 {
     (speed / STEPS_PER_SECOND).clamp(100.0, 130_000.0)
 }
 
-impl Runner {
+/// Fils de calcul du moteur : deux cœurs restent à l'affichage
+/// (architecture : 2 cœurs sur 8 réservés).
+pub fn engine_threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| n.get()).saturating_sub(2).max(1)
+}
+
+pub fn planet_info(spec: &PlanetSpec, seed: u64, level: u32) -> Arc<PlanetInfo> {
+    let p = spec.to_params();
+    Arc::new(PlanetInfo { name: p.name.clone(), seed, level, radius_m: p.radius_m, star_temperature_k: p.star_temperature_k })
+}
+
+fn meta_path(save: &Path) -> PathBuf {
+    let mut s = save.as_os_str().to_owned();
+    s.push(META_SUFFIX);
+    PathBuf::from(s)
+}
+
+/// Fiche d'un point de sauvegarde, sans ouvrir l'état.
+pub fn read_meta(save: &Path) -> Result<SaveFile, String> {
+    let text = std::fs::read_to_string(meta_path(save)).map_err(|e| format!("fiche illisible : {e}"))?;
+    SaveFile::from_text(&text)
+}
+
+/// Une réponse attendue du moteur.
+struct Pending<T> {
+    rx: Option<Receiver<Answer>>,
+    tag: T,
+}
+
+impl<T: Copy> Pending<T> {
+    fn new(tag: T) -> Self {
+        Self { rx: None, tag }
+    }
+
+    fn idle(&self) -> bool {
+        self.rx.is_none()
+    }
+
+    fn ask(&mut self, engine: &Engine, q: Query, tag: T) {
+        self.rx = Some(engine.query(q));
+        self.tag = tag;
+    }
+
+    /// Réponse arrivée, avec l'étiquette de la demande.
+    fn take(&mut self) -> Option<(Answer, T)> {
+        let rx = self.rx.as_ref()?;
+        match rx.try_recv() {
+            Ok(a) => {
+                self.rx = None;
+                Some((a, self.tag))
+            }
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                self.rx = None;
+                None
+            }
+        }
+    }
+}
+
+/// Une partie en cours.
+pub struct Game {
+    pub engine: Engine,
+    pub spec: PlanetSpec,
+    pub seed: u64,
+    pub level: u32,
+    /// « sources » ou « mers ».
+    pub seeding: String,
+    pub sandbox: bool,
+    pub planet: Arc<PlanetInfo>,
+    /// Journal des événements relevés, dans l'ordre.
+    pub events: Vec<Event>,
+    pub lineages: Arc<Vec<LineageFrame>>,
+    pub history: Vec<Sample>,
+    pub rules: StopRules,
+    /// Messages pour le client (sauvegarde écrite, erreur).
+    pub notices: VecDeque<String>,
+    /// Événement qui a provoqué la dernière pause automatique.
+    pub auto_paused_by: Option<u64>,
+    /// Dernier détail de cellule reçu, et le pas où il a été demandé.
+    pub cell: Option<(CellDetail, u64)>,
+    pub pace: f64,
+    next_event: u64,
+    events_rx: Pending<()>,
+    lineages_rx: Pending<u64>,
+    lineages_step: Option<u64>,
+    history_rx: Pending<()>,
+    history_step: Option<u64>,
+    cell_rx: Pending<(u32, u64)>,
+    saves: Vec<(String, Receiver<io::Result<()>>)>,
+}
+
+impl Game {
     /// Nouvelle partie, en pause, sans vie.
-    pub fn start(spec: PlanetSpec, seed: u64, level: u32, seeding: Seeding) -> Runner {
-        let mut config = WorldConfig::with_planet(spec.to_params(), seed, level);
-        config.seeding = seeding;
-        Self::spawn(
+    pub fn start(spec: PlanetSpec, seed: u64, level: u32, seeding: &str, sandbox: bool) -> io::Result<Game> {
+        let engine = Engine::new_game(NewGame {
+            seed,
+            preset: spec.preset.clone(),
+            level,
+            threads: engine_threads(),
+            sandbox,
+            planet: Some(spec.to_params()),
+            seeding: seeding_of(seeding),
+        })?;
+        Ok(Self::wrap(engine, spec, seed, level, seeding.into(), sandbox))
+    }
+
+    /// Reprise d'un point de sauvegarde : l'état complet, sans rejeu.
+    pub fn load(path: &Path) -> Result<Game, String> {
+        let meta = read_meta(path)?;
+        let engine = Engine::load(path, engine_threads()).map_err(|e| format!("reprise impossible : {e}"))?;
+        let sandbox = meta.mode == "bac-a-sable";
+        let mut g = Self::wrap(engine, meta.spec, meta.seed, meta.level, meta.seeding, sandbox);
+        g.pace = g.engine.frame().current.step_years * STEPS_PER_SECOND;
+        g.engine.set_throttle(Some(g.pace));
+        Ok(g)
+    }
+
+    fn wrap(engine: Engine, spec: PlanetSpec, seed: u64, level: u32, seeding: String, sandbox: bool) -> Game {
+        let planet = planet_info(&spec, seed, level);
+        engine.set_throttle(Some(DEFAULT_SPEED));
+        Game {
+            engine,
             spec,
             seed,
             level,
-            move || {
-                let mut w = World::new(config);
-                // La vitesse de départ est un ordre comme un autre : le rejeu la
-                // retrouve dans le registre.
-                w.orders.submit(0.0, OrderKind::SetStepYears(step_years_for(DEFAULT_SPEED)));
-                w.orders.submit(0.0, OrderKind::Pause);
-                w.step();
-                w
-            },
-            None,
-        )
-    }
-
-    /// Reprise d'un point de sauvegarde : rejeu jusqu'au pas sauvegardé.
-    pub fn load(save: SaveFile) -> Runner {
-        let target = save.steps;
-        let mut config = save.config();
-        config.seeding = if save.seeding == "mers" { Seeding::AllOcean } else { Seeding::Vents };
-        let orders = save.orders.clone();
-        Self::spawn(save.spec.clone(), save.seed, save.level, move || World::replay(config, &orders), Some(target))
-    }
-
-    fn spawn(spec: PlanetSpec, seed: u64, level: u32, make: impl FnOnce() -> World + Send + 'static, replay_to: Option<u64>) -> Runner {
-        let (tx, rx) = channel();
-        let shared = Arc::new(Shared::default());
-        shared.alive.store(true, Ordering::SeqCst);
-        *shared.rules.lock().unwrap() = Some(StopRules::profile("naturaliste"));
-        if let Some(t) = replay_to {
-            *shared.loading.lock().unwrap() = Some((0, t));
+            seeding,
+            sandbox,
+            planet,
+            events: Vec::new(),
+            lineages: Arc::default(),
+            history: Vec::new(),
+            rules: StopRules::profile("naturaliste"),
+            notices: VecDeque::new(),
+            auto_paused_by: None,
+            cell: None,
+            pace: DEFAULT_SPEED,
+            next_event: 0,
+            events_rx: Pending::new(()),
+            lineages_rx: Pending::new(0),
+            lineages_step: None,
+            history_rx: Pending::new(()),
+            history_step: None,
+            cell_rx: Pending::new((0, 0)),
+            saves: Vec::new(),
         }
-        let sh = shared.clone();
-        let spec_run = spec.clone();
-        let handle = std::thread::Builder::new()
-            .name("evonisium-moteur".into())
-            .spawn(move || {
-                let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
-                // Deux cœurs pour l'affichage, au moins un pour le moteur.
-                let pool = rayon::ThreadPoolBuilder::new().num_threads(cores.saturating_sub(2).max(1)).build().expect("fils de calcul");
-                pool.install(|| run(make, replay_to, spec_run, rx, sh));
-            })
-            .expect("fil du moteur");
-        Runner { tx, shared, spec, seed, level, handle: Some(handle) }
     }
 
-    pub fn send(&self, c: Command) {
-        let _ = self.tx.send(c);
+    pub fn order(&self, kind: OrderKind) -> u64 {
+        self.engine.submit(When::Now, kind)
     }
 
-    pub fn frame(&self) -> Option<Arc<Frame>> {
-        self.shared.current.lock().unwrap().clone()
+    pub fn order_at(&self, years: f64, kind: OrderKind) -> u64 {
+        self.engine.submit(When::At(years), kind)
     }
 
-    pub fn previous(&self) -> Option<Arc<Frame>> {
-        self.shared.previous.lock().unwrap().clone()
+    /// Vitesse visée : le frein du moteur, et la durée du pas par un ordre
+    /// (elle change l'histoire, donc le registre la garde).
+    pub fn set_speed(&mut self, years_per_second: f64) {
+        self.pace = years_per_second.max(1.0);
+        self.engine.set_throttle(Some(self.pace));
+        let old = self.engine.frame().current.step_years;
+        let new = step_years_for(self.pace);
+        if (new - old).abs() > 1e-9 {
+            self.order(OrderKind::SetStepYears(new));
+        }
+    }
+
+    pub fn observe(&self, zone: InterestZone) {
+        self.engine.set_interest(Some(zone));
+    }
+
+    pub fn save(&mut self, path: &str, name: &str) {
+        let f = self.engine.frame().current;
+        let meta = SaveFile {
+            name: name.into(),
+            engine_version: env!("CARGO_PKG_VERSION").into(),
+            spec: self.spec.clone(),
+            seed: self.seed,
+            level: self.level,
+            seeding: self.seeding.clone(),
+            steps: f.step,
+            years: f.years,
+            mode: if self.sandbox { "bac-a-sable" } else { "observateur" }.into(),
+        };
+        if let Err(e) = std::fs::write(meta_path(Path::new(path)), meta.to_text()) {
+            self.notices.push_back(format!("erreur\t{path}\t{e}"));
+            return;
+        }
+        self.saves.push((path.into(), self.engine.save(PathBuf::from(path))));
+    }
+
+    /// Demande le détail d'une cellule (inspecteur) ; la réponse arrive par
+    /// `pump`.
+    pub fn request_cell(&mut self, cell: u32, step: u64) {
+        let fresh = self.cell.as_ref().is_some_and(|(d, s)| d.cell == cell && *s == step);
+        let asked = !self.cell_rx.idle() && self.cell_rx.tag == (cell, step);
+        if !fresh && !asked {
+            self.cell_rx.ask(&self.engine, Query::Cell { cell }, (cell, step));
+        }
+    }
+
+    /// Relève les réponses arrivées et relance les requêtes périodiques.
+    /// Renvoie le nombre d'événements nouveaux.
+    pub fn pump(&mut self) -> usize {
+        let step = self.engine.status().steps;
+        let mut new_events = 0;
+        if let Some((Answer::Events(list), ())) = self.events_rx.take() {
+            let full = list.len() >= EVENTS_PER_POLL;
+            for v in list {
+                // Les identifiants se suivent ; un doublon (bornes de la
+                // requête) est ignoré.
+                if v.id < self.next_event {
+                    continue;
+                }
+                self.next_event = v.id + 1;
+                let e = chronicle::from_view(&v);
+                self.apply_rules(&e);
+                self.events.push(e);
+                new_events += 1;
+            }
+            if full {
+                self.ask_events();
+            }
+        }
+        if self.events_rx.idle() {
+            self.ask_events();
+        }
+        if let Some((Answer::Lineages(list), at)) = self.lineages_rx.take() {
+            self.lineages = Arc::new(list.iter().map(LineageFrame::from).collect());
+            self.lineages_step = Some(at);
+        }
+        // L'arbre du vivant n'a pas besoin de chaque pas quand les lignées se
+        // comptent par centaines de milliers.
+        let every = if self.lineages.len() > 200_000 { 20 } else { 1 };
+        if self.lineages_rx.idle() && self.lineages_step.is_none_or(|s| step >= s + every) {
+            self.lineages_rx.ask(&self.engine, Query::Lineages { since_years: f64::NEG_INFINITY }, step);
+        }
+        if let Some((Answer::GlobalHistory(list), ())) = self.history_rx.take() {
+            for s in list {
+                if self.history.last().is_none_or(|l| s.years > l.years) {
+                    self.history.push(s);
+                }
+            }
+        }
+        if self.history_rx.idle() && self.history_step != Some(step) {
+            let from = self.history.last().map_or(f64::NEG_INFINITY, |s| s.years);
+            self.history_rx.ask(&self.engine, Query::GlobalHistory { from_years: from }, ());
+            self.history_step = Some(step);
+        }
+        if let Some((Answer::Cell(Some(d)), (_, at))) = self.cell_rx.take() {
+            self.cell = Some((d, at));
+        }
+        self.saves.retain(|(path, rx)| match rx.try_recv() {
+            Ok(r) => {
+                self.notices.push_back(match r {
+                    Ok(()) => format!("ok\t{path}"),
+                    Err(e) => format!("erreur\t{path}\t{e}"),
+                });
+                false
+            }
+            Err(TryRecvError::Empty) => true,
+            Err(TryRecvError::Disconnected) => false,
+        });
+        new_events
+    }
+
+    fn ask_events(&mut self) {
+        let since_id = self.next_event.saturating_sub(1);
+        self.events_rx.ask(&self.engine, Query::Events { since_id, min_interest: 0.0, limit: EVENTS_PER_POLL }, ());
+    }
+
+    /// Règles d'arrêt : le client met le temps en pause par un ordre quand
+    /// un événement le demande.
+    fn apply_rules(&mut self, e: &Event) {
+        if e.origin == Origin::Player || self.auto_paused_by.is_some() {
+            return;
+        }
+        if self.rules.decide(e, self.pace) == Action::Pause && !self.engine.status().paused {
+            self.auto_paused_by = Some(e.id);
+            self.order(OrderKind::Pause);
+        }
     }
 }
 
-impl Drop for Runner {
-    fn drop(&mut self) {
-        let _ = self.tx.send(Command::Shutdown);
+/// Reprise d'une sauvegarde sur un fil à part : l'écran de chargement reste
+/// vivant pendant la lecture de l'état.
+pub struct Loading {
+    result: Arc<Mutex<Option<Result<Game, String>>>>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Loading {
+    pub fn start(path: PathBuf) -> Loading {
+        let result = Arc::new(Mutex::new(None));
+        let r = result.clone();
+        let handle = std::thread::Builder::new()
+            .name("evonisium-reprise".into())
+            .spawn(move || {
+                let g = Game::load(&path);
+                *r.lock().unwrap_or_else(|e| e.into_inner()) = Some(g);
+            })
+            .ok();
+        Loading { result, handle }
+    }
+
+    /// La partie, une fois chargée.
+    pub fn take(&mut self) -> Option<Result<Game, String>> {
+        let g = self.result.lock().unwrap_or_else(|e| e.into_inner()).take()?;
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
+        Some(g)
     }
-}
-
-struct State {
-    pace: f64,
-    seeding_label: &'static str,
-    events_seen: usize,
-    lineages_refreshed_at: u64,
-    speed_window: VecDeque<(Instant, f64)>,
-    pause_at: Option<u64>,
-}
-
-fn publish(world: &World, shared: &Shared, st: &mut State) {
-    let frame = Arc::new(Frame::from_world(world));
-    {
-        let mut cur = shared.current.lock().unwrap();
-        let old = cur.replace(frame);
-        *shared.previous.lock().unwrap() = old;
-    }
-    let new_events = &world.events.events[st.events_seen..];
-    if !new_events.is_empty() {
-        shared.events.lock().unwrap().extend_from_slice(new_events);
-    }
-    st.events_seen = world.events.events.len();
-    let n = world.lineages.records.len() as u64;
-    // L'arbre du vivant n'a pas besoin de chaque pas quand les lignées se
-    // comptent par centaines de milliers.
-    let every = if n > 200_000 { 20 } else { 1 };
-    if world.stats.steps >= st.lineages_refreshed_at + every || world.paused {
-        *shared.lineages.lock().unwrap() = Arc::new(lineages_of(world));
-        st.lineages_refreshed_at = world.stats.steps;
-    }
-    if world.paused {
-        *shared.hash.lock().unwrap() = Some((world.stats.steps, world.state_hash()));
-    }
-    let mut h = shared.history.lock().unwrap();
-    let have = h.len();
-    if have < world.history.samples.len() {
-        h.extend_from_slice(&world.history.samples[have..]);
-    }
-}
-
-fn save_text(world: &World, spec: &PlanetSpec, name: &str, seeding: &str) -> String {
-    SaveFile {
-        name: name.into(),
-        engine_version: env!("CARGO_PKG_VERSION").into(),
-        spec: spec.clone(),
-        seed: world.config.seed,
-        level: world.config.level,
-        seeding: seeding.into(),
-        steps: world.stats.steps,
-        years: world.years,
-        mode: "observateur".into(),
-        orders: world.orders.log(),
-    }
-    .to_text()
-}
-
-/// Suite à donner après une commande.
-enum Flow {
-    Continue,
-    Stop,
-}
-
-fn handle(c: Command, world: &mut World, shared: &Shared, st: &mut State, spec: &PlanetSpec) -> Flow {
-    match c {
-        Command::Shutdown => {
-            shared.alive.store(false, Ordering::SeqCst);
-            return Flow::Stop;
-        }
-        Command::Order(kind) => {
-            world.orders.submit(world.years, kind);
-        }
-        Command::Pace(p) => st.pace = p.max(1.0),
-        Command::Observe(o) => *shared.observation.lock().unwrap() = o,
-        Command::SetSeeding(s) => {
-            // Seulement avant le dépôt des premières cellules.
-            if world.lineages.records.is_empty() {
-                world.config.seeding = s;
-                st.seeding_label = if s == Seeding::AllOcean { "mers" } else { "sources" };
-            }
-        }
-        Command::PauseAtStep(step) => st.pause_at = Some(step),
-        Command::Save { path, name } => {
-            let text = save_text(world, spec, &name, st.seeding_label);
-            let msg = match std::fs::write(&path, text) {
-                Ok(()) => format!("ok\t{path}"),
-                Err(e) => format!("erreur\t{path}\t{e}"),
-            };
-            shared.notices.lock().unwrap().push_back(msg);
-        }
-    }
-    Flow::Continue
-}
-
-fn run(make: impl FnOnce() -> World, replay_to: Option<u64>, spec: PlanetSpec, rx: Receiver<Command>, shared: Arc<Shared>) {
-    let mut world = make();
-    let mut st = State {
-        pace: DEFAULT_SPEED,
-        seeding_label: if world.config.seeding == Seeding::AllOcean { "mers" } else { "sources" },
-        events_seen: 0,
-        lineages_refreshed_at: 0,
-        speed_window: VecDeque::new(),
-        pause_at: None,
-    };
-    // Rejeu d'un point de sauvegarde : au plus vite, sans cadence.
-    if let Some(target) = replay_to {
-        while world.stats.steps < target {
-            world.step();
-            *shared.loading.lock().unwrap() = Some((world.stats.steps, target));
-            if let Ok(Command::Shutdown) = rx.try_recv() {
-                shared.alive.store(false, Ordering::SeqCst);
-                return;
-            }
-        }
-        *shared.loading.lock().unwrap() = None;
-        // On reprend en pause : le joueur relance quand il veut. Si la partie
-        // sauvegardée était en pause, son ordre de pause attend dans la file,
-        // dû maintenant : l'appliquer suffit, sans en ajouter un second.
-        let pause_due = world.orders.pending().iter().any(|o| o.due_years <= world.years && o.kind == OrderKind::Pause);
-        if !world.paused && !pause_due {
-            world.orders.submit(world.years, OrderKind::Pause);
-        }
-        if !world.paused {
-            world.step();
-        }
-    }
-    publish(&world, &shared, &mut st);
-    loop {
-        // 1. Les commandes : sans attendre si le monde avance, avec une
-        //    attente courte s'il est en pause.
-        if world.paused && world.orders.pending().is_empty() {
-            match rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(c) => {
-                    if let Flow::Stop = handle(c, &mut world, &shared, &mut st, &spec) {
-                        return;
-                    }
-                }
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => return,
-            }
-        }
-        while let Ok(c) = rx.try_recv() {
-            if let Flow::Stop = handle(c, &mut world, &shared, &mut st, &spec) {
-                return;
-            }
-        }
-        if world.paused && world.orders.pending().is_empty() {
-            st.speed_window.clear();
-            shared.real_speed.store(0f64.to_bits(), Ordering::Relaxed);
-            continue;
-        }
-        // 2. Un pas (en pause, il n'applique que les ordres dus).
-        let t0 = Instant::now();
-        let was_paused = world.paused;
-        let before = world.years;
-        world.step();
-        // 3. Règles d'arrêt : le moteur se met lui-même en pause sur un
-        //    événement qui le demande, par un ordre, donc dans le rejeu.
-        if !world.paused {
-            let rules = shared.rules.lock().unwrap().clone();
-            if let Some(rules) = rules {
-                let new = &world.events.events[st.events_seen..];
-                if let Some(e) = new.iter().find(|e| e.origin != Origin::Player && rules.decide(e, st.pace) == Action::Pause) {
-                    *shared.auto_paused_by.lock().unwrap() = Some(e.id);
-                    world.orders.submit(world.years, OrderKind::Pause);
-                    world.step();
-                }
-            }
-        }
-        if st.pause_at.is_some_and(|n| world.stats.steps >= n) && !world.paused {
-            st.pause_at = None;
-            world.orders.submit(world.years, OrderKind::Pause);
-            world.step();
-        }
-        publish(&world, &shared, &mut st);
-        // 4. Cadence : un pas de `step_years` doit durer step_years / pace.
-        let advanced = world.years - before;
-        if !was_paused && advanced > 0.0 {
-            let target = Duration::from_secs_f64((advanced / st.pace).min(2.0));
-            let spent = t0.elapsed();
-            if spent < target {
-                // Attente interruptible : une commande réveille le fil.
-                match rx.recv_timeout(target - spent) {
-                    Ok(c) => {
-                        if let Flow::Stop = handle(c, &mut world, &shared, &mut st, &spec) {
-                            return;
-                        }
-                    }
-                    Err(RecvTimeoutError::Disconnected) => return,
-                    Err(RecvTimeoutError::Timeout) => {}
-                }
-            }
-            st.speed_window.push_back((Instant::now(), advanced));
-            while st.speed_window.len() > 20 {
-                st.speed_window.pop_front();
-            }
-            if st.speed_window.len() > 1 {
-                let dt = st.speed_window.back().unwrap().0.duration_since(st.speed_window.front().unwrap().0).as_secs_f64();
-                let years: f64 = st.speed_window.iter().skip(1).map(|x| x.1).sum();
-                if dt > 0.0 {
-                    shared.real_speed.store((years / dt).to_bits(), Ordering::Relaxed);
-                }
-            }
-        }
-    }
-}
-
-/// Nombre d'événements d'un type, pour les tests.
-pub fn count_kind(events: &[Event], pred: impl Fn(&EventKind) -> bool) -> usize {
-    events.iter().filter(|e| pred(&e.kind)).count()
 }

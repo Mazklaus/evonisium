@@ -9,6 +9,10 @@
 //! La DA est une peau posée sur la forme : la forme et le sens des couleurs
 //! viennent des traits, jamais d'un choix artistique.
 
+// Affichage seulement : rien de ce crate n'entre dans l'état simulé, les
+// mathématiques de la plateforme y suffisent (voir clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 pub mod canvas;
 pub mod microbe;
 

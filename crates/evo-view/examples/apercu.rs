@@ -20,7 +20,13 @@ fn main() {
     while engine.status().years < years || !engine.status().paused {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    let info = PlanetInfo { name: planet.name.clone(), seed: 42, level: 4, radius_m: planet.radius_m, star_temperature_k: planet.star_temperature_k };
+    let info = PlanetInfo {
+        name: planet.name.clone(),
+        seed: 42,
+        level: 4,
+        radius_m: planet.radius_m,
+        star_temperature_k: planet.star_temperature_k,
+    };
     let f = Frame::new(engine.frame().current, Arc::new(info));
     let best = f.state.species.first().expect("vie");
     let Ok(Answer::Habitat(Some(eh))) = engine.query(Query::SpeciesHabitat { species: best.id }).recv() else { panic!("milieu") };

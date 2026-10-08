@@ -20,15 +20,17 @@ pub struct Jobs {
 }
 
 impl Jobs {
-    pub fn spawn(&mut self, key: String, seed: u64, work: impl FnOnce() -> (Canvas, VarDictionaryLite) + Send + 'static) {
+    pub fn spawn(&mut self, key: String, seed: u64, work: impl FnOnce() -> Option<(Canvas, VarDictionaryLite)> + Send + 'static) {
         if self.asked.get(&key) == Some(&seed) {
             return;
         }
         self.asked.insert(key.clone(), seed);
         let done = self.done.clone();
         std::thread::spawn(move || {
-            let result = work();
-            done.lock().unwrap().insert(key, result);
+            // Sans résultat (le moteur n'a pas répondu), rien n'est rangé.
+            if let Some(result) = work() {
+                done.lock().unwrap().insert(key, result);
+            }
         });
     }
 

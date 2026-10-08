@@ -136,14 +136,8 @@ mod tests {
     fn summary_of_the_first_species() {
         let f = sample_frame(8);
         let s = &f.state.species[0];
-        let lineage = LineageFrame {
-            id: 0,
-            parent: 0,
-            born_years: 0.0,
-            extinct_years: None,
-            origin_cell: s.origin_bio_cell,
-            signature: s.signature,
-        };
+        let lineage =
+            LineageFrame { id: 0, parent: 0, born_years: 0.0, extinct_years: None, origin_cell: s.origin_bio_cell, signature: s.signature };
         let sum = summary(&f, &GeodesicGrid::new(3), s, &[lineage], Lang::Fr);
         assert!(sum.range_cells > 0 && sum.range_share > 0.0 && sum.biomass > 0.0);
         assert!(sum.metabolisms.contains(&"méthanogenèse"));

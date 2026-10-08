@@ -136,6 +136,7 @@ name = "evo-godot"
 version = "0.1.0"
 dependencies = [
  "evo-core",
+ "evo-engine",
  "evo-life",
  "evo-morph",
  "evo-planet",
@@ -196,6 +197,7 @@ name = "evo-view"
 version = "0.1.0"
 dependencies = [
  "evo-core",
+ "evo-engine",
  "evo-genetics",
  "evo-life",
  "evo-morph",

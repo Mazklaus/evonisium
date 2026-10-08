@@ -8,6 +8,10 @@
 //! la file d'ordres et le canal d'observation (architecture, « Deux canaux
 //! du client vers le moteur »).
 
+// Affichage seulement : rien de ce crate n'entre dans l'état simulé, les
+// mathématiques de la plateforme y suffisent (voir clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 pub mod chronicle;
 pub mod decor;
 pub mod format;

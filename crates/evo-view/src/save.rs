@@ -5,6 +5,7 @@
 //! nom, planète, date atteinte, mode. Elle sert à la liste des sauvegardes
 //! sans ouvrir l'état, et à retrouver le code de planète.
 
+use evo_core::math::Det;
 use evo_planet::{Gas, PlanetParams};
 use evo_sim::Seeding;
 
@@ -45,7 +46,9 @@ impl PlanetSpec {
         p.water_inventory_m *= self.water_factor.clamp(0.05, 10.0);
         if let Some(t) = self.star_temperature_k {
             let t = t.clamp(3000.0, 8000.0);
-            p.star_luminosity_w *= (t / p.star_temperature_k).powf(5.6);
+            // Calcul déterministe : la planète d'un code partagé est la même
+            // sur toutes les plateformes.
+            p.star_luminosity_w *= (t / p.star_temperature_k).dpowf(5.6);
             p.star_temperature_k = t;
         }
         p

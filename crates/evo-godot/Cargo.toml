@@ -13,6 +13,7 @@ evo-core.workspace = true
 evo-planet.workspace = true
 evo-life.workspace = true
 evo-sim.workspace = true
+evo-engine.workspace = true
 evo-view.workspace = true
 evo-morph.workspace = true
 mimalloc.workspace = true
