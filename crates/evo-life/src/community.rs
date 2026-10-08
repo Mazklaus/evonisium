@@ -56,8 +56,8 @@ impl CellContext<'_> {
     /// Lumière absorbée par mole de carbone phototrophe, kJ·molC⁻¹·an⁻¹,
     /// quand la biomasse phototrophe vaut `photo_biomass`.
     pub fn light_per_biomass(&self, photo_biomass: f64) -> f64 {
-        let b_ref = self.light_biomass_per_m2 * self.env.area_m2;
-        let incoming = watts_to_kj_per_year(self.env.light_par_w_m2 * self.env.area_m2);
+        let b_ref = self.light_biomass_per_m2 * self.env.water_area_m2.max(1.0);
+        let incoming = watts_to_kj_per_year(self.env.light_par_w_m2 * self.env.water_area_m2);
         let x = photo_biomass / b_ref;
         if x < 1e-9 {
             // Limite à faible biomasse : toute la lumière est disponible.
@@ -255,6 +255,9 @@ mod tests {
             is_ocean: true,
             area_m2: 1e10,
             water_volume_m3: 1e12,
+            water_area_m2: 1e10,
+            flushing_per_year: 0.0,
+            rain_mm_yr: 1000.0,
             temperature_k: 300.0,
             seasonal_amplitude_k: 0.0,
             light_par_w_m2: 50.0,

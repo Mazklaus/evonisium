@@ -2,19 +2,21 @@
 //! vecteur d'environnement par cellule.
 //!
 //! Contrat Planète → Organismes : unités SI, une valeur par cellule. La vie
-//! occupe la couche d'eau de surface des cellules océaniques ; cette couche
-//! échange avec l'atmosphère, l'océan profond et les sédiments (réservoirs
-//! globaux), et reçoit les sources hydrothermales des dorsales.
+//! occupe la couche d'eau de surface : celle des mers, et depuis l'étape 3
+//! celle des lacs et des sols humides des terres. Cette couche échange avec
+//! l'atmosphère, l'océan profond et les sédiments (réservoirs globaux) ; en
+//! mer, elle reçoit les sources hydrothermales des dorsales.
 
 use crate::climate::{ClimateState, Greenhouse};
 use crate::geochem::{BoxContext, Gas, GlobalReservoirs};
 use crate::grid::GeodesicGrid;
+use crate::hydrology::{diagnose, CellDisplay};
 use crate::params::PlanetParams;
 use crate::pools::{WaterPool, WATER_POOLS, WATER_POOL_COUNT};
 use crate::tectonics::{sea_level, Tectonics};
 
 /// Conditions physiques d'une cellule, recalculées à chaque pas.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CellEnvironment {
     pub latitude_rad: f64,
     /// Altitude (positive) ou profondeur (négative) par rapport au niveau de la mer, m.
@@ -22,8 +24,16 @@ pub struct CellEnvironment {
     pub is_ocean: bool,
     /// Aire de la cellule, m².
     pub area_m2: f64,
-    /// Volume de la couche d'eau simulée, m³ (nul sur les terres).
+    /// Volume de la couche d'eau simulée, m³ : la couche de mélange en mer,
+    /// les lacs et sols humides sur les terres (nul sur une terre sèche).
     pub water_volume_m3: f64,
+    /// Surface de cette eau, m² (toute la cellule en mer).
+    pub water_area_m2: f64,
+    /// Renouvellement des eaux douces par la pluie et les rivières, an⁻¹
+    /// (nul en mer, où l'échange avec l'océan profond s'en charge).
+    pub flushing_per_year: f64,
+    /// Pluie, mm·an⁻¹.
+    pub rain_mm_yr: f64,
     /// Température moyenne annuelle, K.
     pub temperature_k: f64,
     /// Amplitude saisonnière, K.
@@ -58,6 +68,10 @@ pub struct ExchangeTargets {
     pub rate: [f64; WATER_POOL_COUNT],
     /// Rapport C/P de la matière organique qui sédimente.
     pub export_carbon_to_phosphorus: f64,
+    /// Cibles des eaux douces (lacs et sols humides) ; leurs vitesses
+    /// d'échange avec l'extérieur par l'eau sont celles du renouvellement de
+    /// chaque cellule, les gaz s'échangent comme en mer.
+    pub lake_target: [f64; WATER_POOL_COUNT],
 }
 
 /// Cellule qui a changé d'état (océan ou terre) au dernier rafraîchissement.
@@ -85,6 +99,9 @@ pub struct Planet {
     /// croûte jeune (dorsales) qui est sous l'eau, avec un plancher pour la
     /// circulation hors axe. Vaut 1 quand toutes les dorsales sont immergées.
     pub hydrothermal_share: f64,
+    /// Diagnostics de surface par cellule (vents, pluie, rivières, nuages,
+    /// courants, plaques), pour l'affichage.
+    pub display: Vec<CellDisplay>,
 }
 
 /// Pas tectonique, années (document Planète : 0,1 à 1 Ma).
@@ -103,6 +120,11 @@ impl Planet {
 
     pub fn ocean_cells(&self) -> impl Iterator<Item = usize> + '_ {
         self.cells.iter().enumerate().filter(|(_, e)| e.is_ocean).map(|(i, _)| i)
+    }
+
+    /// Cellules qui portent une couche d'eau (mers, lacs, sols humides).
+    pub fn wet_cells(&self) -> impl Iterator<Item = usize> + '_ {
+        self.cells.iter().enumerate().filter(|(_, e)| e.water_volume_m3 > 0.0).map(|(i, _)| i)
     }
 
     /// Cellules portant une source hydrothermale.
@@ -173,6 +195,9 @@ impl Planet {
         }
         let activity = self.activity(years);
         let per_vent = activity * self.hydrothermal_share * p.vent_local_share / vents.len().max(1) as f64;
+        let temperature: Vec<f64> = climate.iter().map(|c| c.temperature_k).collect();
+        let ice: Vec<bool> = climate.iter().map(|c| c.ice).collect();
+        let (display, land_water) = diagnose(p, &self.grid, &self.tectonics, &elevation, &is_ocean, &temperature, &ice, &areas);
 
         let k = p.water_light_attenuation;
         let gravity = p.gravity();
@@ -184,13 +209,15 @@ impl Planet {
             let cl = climate[c];
             let ocean = is_ocean[c];
             let depth = (-elevation[c]).max(0.0);
-            let layer = p.mixed_layer_m.min(depth.max(10.0));
+            let lw = land_water[c];
+            let layer = if ocean { p.mixed_layer_m.min(depth.max(10.0)) } else { p.lake_layer_m };
+            let water_area = if ocean { areas[c] } else { areas[c] * lw.wet_fraction };
             let ice_cover = if cl.ice { 1.0 } else { 0.0 };
-            let transmission = if ocean { (1.0 - (-k * layer).exp()) / (k * layer) } else { 1.0 };
+            let transmission = if water_area > 0.0 { (1.0 - (-k * layer).exp()) / (k * layer) } else { 1.0 };
             let light = cl.insolation_w_m2 * (1.0 - p.albedo) * self.climate.light_share * transmission * (1.0 - 0.95 * ice_cover);
             let uv = cl.insolation_w_m2 * self.climate.uv_share * self.climate.uv_transmission * (1.0 - ice_cover);
             let is_vent = ocean && vents.binary_search(&c).is_ok();
-            let volume = if ocean { areas[c] * layer } else { 0.0 };
+            let volume = water_area * layer;
             surface_volume += volume;
             let env = CellEnvironment {
                 latitude_rad: lat,
@@ -198,13 +225,16 @@ impl Planet {
                 is_ocean: ocean,
                 area_m2: areas[c],
                 water_volume_m3: volume,
+                water_area_m2: water_area,
+                flushing_per_year: if ocean { 0.0 } else { lw.flushing_per_year },
+                rain_mm_yr: display[c].rain_mm_yr as f64,
                 temperature_k: cl.temperature_k,
                 seasonal_amplitude_k: 40.0 * self.climate.obliquity_rad.sin() * lat.sin().abs() * if ocean { 0.3 } else { 1.0 },
                 light_par_w_m2: light,
                 uv_w_m2: uv,
                 ph: p.ocean_ph,
                 salinity: if ocean { p.salinity } else { 0.0 },
-                pressure_pa: surface_pressure + if ocean { p.seawater_density * gravity * layer / 2.0 } else { 0.0 },
+                pressure_pa: surface_pressure + if volume > 0.0 { p.seawater_density * gravity * layer / 2.0 } else { 0.0 },
                 vent_h2_supply: if is_vent { p.vent_h2_flux * per_vent } else { 0.0 },
                 vent_h2s_supply: if is_vent { p.vent_h2s_flux * per_vent } else { 0.0 },
                 vent_fe_supply: if is_vent { p.vent_fe_flux * per_vent } else { 0.0 },
@@ -212,7 +242,7 @@ impl Planet {
                 ice_cover,
             };
             if let Some(old) = self.cells.get(c) {
-                if old.is_ocean != ocean || (ocean && old.water_volume_m3 != volume) {
+                if old.is_ocean != ocean || old.water_volume_m3 != volume {
                     changes.push(CellChange { cell: c, now_ocean: ocean });
                 }
             }
@@ -223,6 +253,7 @@ impl Planet {
             }
         }
         self.deep_volume_m3 = (p.water_inventory_m * p.surface_area() - surface_volume).max(1.0);
+        self.display = display;
         changes
     }
 
@@ -256,22 +287,55 @@ impl Planet {
             target[pool as usize] = moles.max(0.0) / deep;
             rate[pool as usize] = p.upwelling_rate;
         }
-        ExchangeTargets { target, rate, export_carbon_to_phosphorus }
+        // Eaux douces : gaz et carbone inorganique à l'équilibre avec l'air ;
+        // phosphate de l'altération du bassin versant (une part de celui de
+        // l'océan profond, où il finit) ; ni fer, ni manganèse, ni sulfate
+        // marins.
+        let mut lake_target = target;
+        lake_target[WaterPool::Po4 as usize] = target[WaterPool::Po4 as usize] * p.lake_phosphate_share;
+        lake_target[WaterPool::Fe2 as usize] = 0.0;
+        lake_target[WaterPool::Mn2 as usize] = 0.0;
+        lake_target[WaterPool::Sulfate as usize] = 0.05 * target[WaterPool::Sulfate as usize];
+        ExchangeTargets { target, rate, export_carbon_to_phosphorus, lake_target }
     }
 
     /// Chimie de départ d'une cellule océanique : chaque pool à l'équilibre
     /// de ses échanges.
-    pub fn equilibrium_chemistry(&self, cell: usize, targets: &ExchangeTargets) -> WaterChemistry {
-        let env = &self.cells[cell];
+    pub fn equilibrium_chemistry(&self, env: &CellEnvironment, targets: &ExchangeTargets) -> WaterChemistry {
         let mut chem = [0.0; WATER_POOL_COUNT];
-        if env.is_ocean {
+        if env.water_volume_m3 > 0.0 {
             for pool in WATER_POOLS {
                 let i = pool as usize;
-                let rate = targets.rate[i] * self.gas_factor(env, pool);
-                chem[i] = targets.target[i] + if rate > 0.0 { self.vent_supply(env, pool) / env.water_volume_m3 / rate } else { 0.0 };
+                let (target, rate) = Self::target_and_rate(env, targets, pool);
+                chem[i] = target + if rate > 0.0 { self.vent_supply(env, pool) / env.water_volume_m3 / rate } else { 0.0 };
             }
         }
         chem
+    }
+
+    /// Cible et vitesse d'échange d'un pool pour la couche d'une cellule :
+    /// celles de la mer, ou celles des eaux douces (renouvelées par la pluie)
+    /// pour les cellules du vivant faites surtout de lacs.
+    fn target_and_rate(env: &CellEnvironment, targets: &ExchangeTargets, pool: WaterPool) -> (f64, f64) {
+        let i = pool as usize;
+        let ice = if pool.is_gas() || pool == WaterPool::Dic { 1.0 - 0.9 * env.ice_cover } else { 1.0 };
+        if env.is_ocean {
+            return (targets.target[i], targets.rate[i] * ice);
+        }
+        let rate = match pool {
+            // Gaz, carbone inorganique, sédimentation : comme en mer.
+            WaterPool::Dic
+            | WaterPool::H2
+            | WaterPool::Ch4
+            | WaterPool::O2
+            | WaterPool::H2s
+            | WaterPool::Doc
+            | WaterPool::FeOx
+            | WaterPool::MnOx => targets.rate[i],
+            // Le reste suit le renouvellement de l'eau.
+            _ => env.flushing_per_year,
+        };
+        (targets.lake_target[i], rate * ice)
     }
 
     /// Apport des sources hydrothermales d'une cellule, mol·an⁻¹.
@@ -285,33 +349,30 @@ impl Planet {
         }
     }
 
-    /// La glace freine les échanges de gaz.
-    fn gas_factor(&self, env: &CellEnvironment, pool: WaterPool) -> f64 {
-        if pool.is_gas() || pool == WaterPool::Dic {
-            1.0 - 0.9 * env.ice_cover
-        } else {
-            1.0
-        }
-    }
-
     /// Fait évoluer la chimie d'une cellule pendant `dt` années sous l'effet
     /// des échanges avec l'extérieur de la couche et des oxydations
     /// abiotiques. `out` cumule les moles sorties de la cellule vers chaque
     /// réservoir extérieur (négatif : entrées), sources hydrothermales exclues.
-    pub fn exchange(&self, cell: usize, chem: &mut WaterChemistry, dt: f64, targets: &ExchangeTargets, out: &mut [f64; WATER_POOL_COUNT]) {
-        let env = &self.cells[cell];
-        if !env.is_ocean {
+    pub fn exchange(
+        &self,
+        env: &CellEnvironment,
+        chem: &mut WaterChemistry,
+        dt: f64,
+        targets: &ExchangeTargets,
+        out: &mut [f64; WATER_POOL_COUNT],
+    ) {
+        if env.water_volume_m3 <= 0.0 {
             return;
         }
         let v = env.water_volume_m3;
         for pool in WATER_POOLS {
             let i = pool as usize;
-            let rate = targets.rate[i] * self.gas_factor(env, pool);
+            let (target, rate) = Self::target_and_rate(env, targets, pool);
             let supply = self.vent_supply(env, pool);
             let before = chem[i];
             if rate > 0.0 {
                 // Solution exacte de dc/dt = rate·(target − c) + supply/V.
-                let eq = targets.target[i] + supply / v / rate;
+                let eq = target + supply / v / rate;
                 chem[i] = eq + (before - eq) * (-rate * dt).exp();
             } else {
                 chem[i] += supply / v * dt;
@@ -347,21 +408,25 @@ impl Planet {
         }
     }
 
-    /// Carbone total de la couche d'eau, mol.
-    pub fn water_carbon(&self, chemistry: &[WaterChemistry]) -> f64 {
-        self.water_sum(chemistry, |p| p.carbon_atoms())
+    /// Carbone total des couches d'eau `envs`, mol.
+    pub fn water_carbon(envs: &[CellEnvironment], chemistry: &[WaterChemistry]) -> f64 {
+        Self::water_sum(envs, chemistry, |p| p.carbon_atoms())
     }
 
-    /// Phosphore total de la couche d'eau, mol.
-    pub fn water_phosphorus(&self, chemistry: &[WaterChemistry]) -> f64 {
-        self.water_sum(chemistry, |p| p.phosphorus_atoms())
+    /// Phosphore total des couches d'eau, mol.
+    pub fn water_phosphorus(envs: &[CellEnvironment], chemistry: &[WaterChemistry]) -> f64 {
+        Self::water_sum(envs, chemistry, |p| p.phosphorus_atoms())
     }
 
-    fn water_sum(&self, chemistry: &[WaterChemistry], atoms: impl Fn(WaterPool) -> f64) -> f64 {
-        self.cells
-            .iter()
+    /// Pouvoir oxydant total des couches d'eau, mol d'équivalent O₂.
+    pub fn water_electrons(envs: &[CellEnvironment], chemistry: &[WaterChemistry]) -> f64 {
+        Self::water_sum(envs, chemistry, |p| p.oxidant_equivalents())
+    }
+
+    fn water_sum(envs: &[CellEnvironment], chemistry: &[WaterChemistry], atoms: impl Fn(WaterPool) -> f64) -> f64 {
+        envs.iter()
             .zip(chemistry)
-            .filter(|(e, _)| e.is_ocean)
+            .filter(|(e, _)| e.water_volume_m3 > 0.0)
             .map(|(e, c)| WATER_POOLS.iter().map(|&p| c[p as usize] * atoms(p)).sum::<f64>() * e.water_volume_m3)
             .sum()
     }

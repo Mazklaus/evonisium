@@ -47,7 +47,7 @@ pub fn planck_fraction(t: f64, a_nm: f64, b_nm: f64) -> f64 {
 }
 
 /// État du climat, gardé d'un pas à l'autre.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClimateState {
     /// Cellules englacées.
     pub ice: Vec<bool>,

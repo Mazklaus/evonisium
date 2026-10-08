@@ -12,7 +12,7 @@
 //! monde, si l'accélérateur a dû agir.
 
 use crate::history::Sample;
-use crate::orders::OrderKind;
+use crate::orders::{Intervention, OrderKind};
 use crate::report::{causes, format_years};
 use crate::world::{World, WorldConfig};
 use evo_core::events::{EventKind, Origin};
@@ -94,8 +94,8 @@ pub fn replay_check(params: &PlanetParams, seed: u64, level: u32, step_years: f6
     let mut a = World::new(cfg.clone());
     a.orders.submit(0.0, OrderKind::SeedLife);
     a.orders.submit(step_years * 3.0, OrderKind::SetStepYears(step_years / 2.0));
-    a.orders.submit(step_years * 5.0, OrderKind::AddPhosphate { moles: 1e14 });
-    a.orders.submit(step_years * 6.0, OrderKind::InjectGas { gas: Gas::Co2, moles: 1e16 });
+    a.orders.submit(step_years * 5.0, OrderKind::Intervene(Intervention::Fertilize { cell: 0, radius_km: 2000.0, moles_p: 1e13 }));
+    a.orders.submit(step_years * 6.0, OrderKind::Intervene(Intervention::Eruption { cell: 0, gas: Gas::Co2, moles: 1e16 }));
     for _ in 0..steps {
         a.step();
     }
@@ -137,12 +137,12 @@ pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
     }
     let seconds = start.elapsed().as_secs_f64();
     let events = &world.events.events;
-    let oxygenic_origin = events.iter().find_map(|e| match e.kind {
-        EventKind::Innovation { stage: 4, pathway, .. } if pathway == evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY => Some(e.origin),
+    let oxygenic_origin = events.iter().find_map(|e| match &e.kind {
+        EventKind::Innovation { stage: 4, pathway, .. } if *pathway == evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY => Some(e.origin),
         _ => None,
     });
-    let rhodopsin_years = events.iter().find_map(|e| match e.kind {
-        EventKind::Innovation { pathway, .. } if pathway == evo_life::metabolism::RHODOPSIN_PATHWAY => Some(e.years),
+    let rhodopsin_years = events.iter().find_map(|e| match &e.kind {
+        EventKind::Innovation { pathway, .. } if *pathway == evo_life::metabolism::RHODOPSIN_PATHWAY => Some(e.years),
         _ => None,
     });
     let held = above_since.is_some_and(|since| world.years - since >= opts.hold_years);

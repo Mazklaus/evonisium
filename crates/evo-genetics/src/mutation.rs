@@ -7,7 +7,7 @@ use crate::genome::{
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MutationKind {
     /// Décale un paramètre d'un domaine (petit pas le plus souvent).
     Point,
@@ -31,7 +31,7 @@ pub enum MutationKind {
 pub const MUTATION_KIND_COUNT: usize = 7;
 
 /// Taux et poids relatifs des classes de mutations.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MutationParams {
     /// Mutations par gène et par génération en l'absence de réparation.
     pub rate_per_gene: f64,

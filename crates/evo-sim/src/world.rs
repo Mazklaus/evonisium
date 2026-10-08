@@ -1,4 +1,9 @@
-//! Le monde de l'étape 2 : une planète vivante peuplée de microbes.
+//! Le monde des étapes 2 et 3 : une planète vivante peuplée de microbes.
+//!
+//! Depuis l'étape 3, le vivant est calculé sur la grille du vivant
+//! ([`BioGrid`], niveau 5 sous une planète de niveau 6) et évolue par dème
+//! (module `evolution`). Les cellules du vivant ont une couche d'eau dès
+//! qu'une de leurs cellules physiques en a une : mer, lacs ou sols humides.
 //!
 //! Un pas planétaire enchaîne :
 //! 0. ordres : application des ordres dus (file d'ordres), entre deux pas ;
@@ -22,9 +27,11 @@
 //! La même graine et le même registre d'ordres donnent donc la même histoire,
 //! quel que soit le nombre de coeurs.
 
-use crate::evolution::{evolve_cell, CellEvolution, EvolutionParams, EvolutionStats, Target};
-use crate::history::{CellView, ClimateMode, History, Publication, PublishedState, Sample};
-use crate::orders::{AppliedOrder, Order, OrderKind, OrderQueue};
+use crate::evolution::{evolve_deme, habitat_class, EvolutionParams, EvolutionStats, Fixation};
+use crate::history::{CellView, ClimateMode, EventView, History, Publication, PublishedState, Sample, SpeciesView};
+use crate::influence::{InfluenceParams, InfluenceReserve, InfluenceView};
+use crate::observation::{Focus, FocusCell, InterestZone, PopulationView, MAX_FOCUS_CELLS};
+use crate::orders::{AppliedOrder, Intervention, Order, OrderKind, OrderQueue};
 use evo_core::events::{EventKind, EventLog, Origin};
 use evo_core::flux::{Element, FluxRegistry};
 use evo_core::rng::{rng_for, Stream};
@@ -35,12 +42,12 @@ use evo_genetics::{
 };
 use evo_life::community::{evaluate, substep, CellContext, Population};
 use evo_life::metabolism::{
-    domain_relations, photosynthesis_stage, FERMENTATION, METHANOGENESIS, PHOTOSYNTHESIS_PATHWAY, PHOTOSYNTHESIS_STAGES, REACTION_COUNT,
-    RHODOPSIN_PATHWAY,
+    domain_relations, guild_label, photosynthesis_stage, FERMENTATION, METHANOGENESIS, PHOTOSYNTHESIS_PATHWAY, PHOTOSYNTHESIS_STAGES,
+    REACTION_COUNT, RHODOPSIN_PATHWAY,
 };
 use evo_life::{growth_rates, pigment_colour, selection_coefficient, LightSpectrum, Phenotype, Physiology};
 use evo_planet::generate::generate;
-use evo_planet::{Gas, Planet, PlanetParams, WaterChemistry, WaterPool, TECTONIC_STEP_YEARS, WATER_POOLS, WATER_POOL_COUNT};
+use evo_planet::{BioGrid, Gas, Planet, PlanetParams, WaterChemistry, WaterPool, TECTONIC_STEP_YEARS, WATER_POOLS, WATER_POOL_COUNT};
 use rand::Rng;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
@@ -48,7 +55,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Où déposer les cellules minimales au départ.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Seeding {
     /// Près des sources hydrothermales (choix par défaut du moteur).
     Vents,
@@ -61,11 +68,19 @@ pub enum Seeding {
 /// passer de moins de 10⁻⁶ à plus de 10⁻³.
 pub const OXYGEN_THRESHOLDS: [f64; 5] = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WorldConfig {
     pub seed: u64,
-    /// Niveau de subdivision de la grille (6 : 40 962 cellules).
+    /// Niveau de subdivision de la grille physique (6 : 40 962 cellules).
     pub level: u32,
+    /// Niveau de la grille du vivant (par défaut un de moins que la planète :
+    /// 10 242 cellules sous une planète de niveau 6).
+    pub bio_level: u32,
+    /// Niveau de la grille des dèmes (par défaut un de moins que le vivant :
+    /// environ 4 cellules du vivant par maille).
+    pub deme_level: Option<u32>,
+    /// Réserve d'influence du joueur.
+    pub influence: InfluenceParams,
     pub planet: PlanetParams,
     /// Durée d'un pas planétaire au départ, années (les ordres de vitesse la
     /// changent).
@@ -105,6 +120,9 @@ impl WorldConfig {
         Self {
             seed,
             level,
+            bio_level: level.saturating_sub(1),
+            deme_level: None,
+            influence: InfluenceParams::default(),
             planet,
             step_years: 100_000.0,
             eco_substeps: 30,
@@ -126,7 +144,7 @@ impl WorldConfig {
 }
 
 /// Compteurs cumulés depuis le début de la partie.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorldStats {
     pub steps: u64,
     pub substitutions: u64,
@@ -200,7 +218,7 @@ impl PhaseTimings {
 }
 
 /// Suivi des innovations, de l'accélérateur et des seuils globaux.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Progress {
     /// Étape la plus avancée jamais atteinte sur le chemin de la photosynthèse.
     pub best_stage: u8,
@@ -230,6 +248,15 @@ struct MigrationWinner {
 pub struct World {
     pub config: WorldConfig,
     pub planet: Planet,
+    /// Grille du vivant ; `communities` et `chemistry` sont indexés par ses
+    /// cellules.
+    pub bio: BioGrid,
+    /// Cellules du vivant de chaque dème, et dème de chaque cellule.
+    pub demes: Vec<Vec<u32>>,
+    pub deme_index: Vec<u32>,
+    pub influence: InfluenceReserve,
+    /// Zone d'intérêt de la caméra (canal d'observation, hors histoire).
+    pub interest: Option<InterestZone>,
     pub chemistry: Vec<WaterChemistry>,
     pub communities: Vec<Vec<Population>>,
     pub lineages: LineageRegistry,
@@ -254,6 +281,8 @@ pub struct World {
     previous_rates: Option<[f64; WATER_POOL_COUNT]>,
     pub stats: WorldStats,
     pub timings: PhaseTimings,
+    /// Premier événement non encore publié.
+    published_events: usize,
 }
 
 impl World {
@@ -261,15 +290,45 @@ impl World {
         let planet = generate(config.planet.clone(), config.level, config.seed);
         // Les pigments sont jugés sous l'étoile de cette partie, dans l'eau.
         config.physiology.spectrum = LightSpectrum::new(planet.params.star_temperature_k, planet.params.mixed_layer_m);
+        config.bio_level = config.bio_level.min(config.level);
+        let mut bio = BioGrid::new(&planet.grid, config.bio_level);
+        bio.aggregate(&planet.cells);
         let targets = planet.exchange_targets(config.physiology.carbon_to_phosphorus);
-        let chemistry: Vec<WaterChemistry> = (0..planet.cells.len()).map(|c| planet.equilibrium_chemistry(c, &targets)).collect();
-        let n = planet.cells.len();
-        let mut world = Self {
+        let chemistry: Vec<WaterChemistry> = bio.env.iter().map(|e| planet.equilibrium_chemistry(e, &targets)).collect();
+        let n = bio.len();
+        let mut world = Self::assemble(config, planet, bio, chemistry, vec![Vec::new(); n]);
+        world.flux.set_initial(Element::Carbon, world.total_carbon());
+        world.flux.set_initial(Element::Phosphorus, world.total_phosphorus());
+        world.flux.set_initial(Element::Electrons, world.total_electrons());
+        world.record_history();
+        world.publish();
+        world
+    }
+
+    /// Monde construit à partir de ses parties, compteurs à zéro (création
+    /// d'une partie, reprise d'un point de sauvegarde).
+    pub(crate) fn assemble(
+        config: WorldConfig,
+        planet: Planet,
+        bio: BioGrid,
+        chemistry: Vec<WaterChemistry>,
+        communities: Vec<Vec<Population>>,
+    ) -> Self {
+        let deme_level = config.deme_level.unwrap_or(config.bio_level.saturating_sub(1)).min(config.bio_level);
+        let deme_grid = BioGrid::new(&bio.grid, deme_level);
+        let (demes, deme_index) = (deme_grid.children, deme_grid.parent);
+        Self {
             history: History::new(config.history_every_years),
+            influence: InfluenceReserve::new(&config.influence),
             config,
             planet,
+            bio,
+            demes,
+            deme_index,
+            interest: None,
+            published_events: 0,
             chemistry,
-            communities: vec![Vec::new(); n],
+            communities,
             lineages: LineageRegistry::default(),
             events: EventLog::default(),
             journal: GenomeJournal::default(),
@@ -284,12 +343,29 @@ impl World {
             previous_rates: None,
             stats: WorldStats::default(),
             timings: PhaseTimings::default(),
-        };
-        world.flux.set_initial(Element::Carbon, world.total_carbon());
-        world.flux.set_initial(Element::Phosphorus, world.total_phosphorus());
-        world.record_history();
-        world.publish();
-        world
+        }
+    }
+
+    pub(crate) fn previous_rates(&self) -> Option<[f64; WATER_POOL_COUNT]> {
+        self.previous_rates
+    }
+
+    pub(crate) fn set_previous_rates(&mut self, r: Option<[f64; WATER_POOL_COUNT]>) {
+        self.previous_rates = r;
+    }
+
+    pub(crate) fn published_events(&self) -> usize {
+        self.published_events
+    }
+
+    pub(crate) fn set_published_events(&mut self, n: usize) {
+        self.published_events = n;
+    }
+
+    /// Republie l'état courant sans avancer (après une reprise, un ordre
+    /// appliqué en pause ou un déplacement de la zone d'intérêt).
+    pub fn republish(&mut self) {
+        self.publish();
     }
 
     /// Monde rejoué : même configuration, même registre d'ordres.
@@ -339,15 +415,15 @@ impl World {
         let genome = Arc::new(self.minimal_cell());
         let phenotype = Arc::new(Phenotype::from_genome(&genome, &self.config.physiology));
         let cells: Vec<usize> = match self.config.seeding {
-            Seeding::Vents => self.planet.vent_cells(),
-            Seeding::AllOcean => self.planet.ocean_cells().collect(),
+            Seeding::Vents => self.bio.vent_cells(),
+            Seeding::AllOcean => self.bio.wet_cells().collect(),
         };
         let first = cells.first().copied().unwrap_or(0) as u32;
         let lineage = self.lineages.found(None, self.years, first, phenotype.signature, genome.clone());
         let event = self.events.push_with(self.years, Some(first), EventKind::LifeSeeded { lineage }, origin, cause);
         let cp = self.config.physiology.carbon_to_phosphorus;
         for c in cells {
-            let v = self.planet.cells[c].water_volume_m3;
+            let v = self.bio.env[c].water_volume_m3;
             let chem = &mut self.chemistry[c];
             let b = self.config.seed_biomass.min(0.5 * chem[WaterPool::Dic as usize] * v).min(0.5 * chem[WaterPool::Po4 as usize] * v * cp);
             if b < self.config.extinction_biomass {
@@ -355,6 +431,9 @@ impl World {
             }
             chem[WaterPool::Dic as usize] -= b / v;
             chem[WaterPool::Po4 as usize] -= b / cp / v;
+            // Les cellules déposées apportent leur matière organique réduite
+            // (CH₂O) de l'extérieur du système suivi.
+            self.flux.exchange(Element::Electrons, -b);
             self.communities[c].push(Population {
                 lineage,
                 genome: genome.clone(),
@@ -376,12 +455,18 @@ impl World {
 
     /// Carbone total du système (couche d'eau, biomasse, réservoirs), mol.
     pub fn total_carbon(&self) -> f64 {
-        self.planet.water_carbon(&self.chemistry) + self.biomass() + self.planet.reservoirs.carbon()
+        Planet::water_carbon(&self.bio.env, &self.chemistry) + self.biomass() + self.planet.reservoirs.carbon()
+    }
+
+    /// Pouvoir oxydant total du système, mol d'équivalent O₂ : couches d'eau,
+    /// biomasse (CH₂O, −1 par carbone) et réservoirs.
+    pub fn total_electrons(&self) -> f64 {
+        Planet::water_electrons(&self.bio.env, &self.chemistry) - self.biomass() + self.planet.reservoirs.electrons()
     }
 
     /// Phosphore total du système, mol.
     pub fn total_phosphorus(&self) -> f64 {
-        self.planet.water_phosphorus(&self.chemistry)
+        Planet::water_phosphorus(&self.bio.env, &self.chemistry)
             + self.biomass() / self.config.physiology.carbon_to_phosphorus
             + self.planet.reservoirs.phosphorus()
     }
@@ -393,6 +478,11 @@ impl World {
 
     pub fn phosphorus_balance_error(&self) -> f64 {
         self.flux.relative_error(Element::Phosphorus, self.total_phosphorus())
+    }
+
+    /// Écart relatif du bilan des électrons (pouvoir oxydant).
+    pub fn electron_balance_error(&self) -> f64 {
+        self.flux.relative_error(Element::Electrons, self.total_electrons())
     }
 
     /// Applique les ordres dus à la date courante.
@@ -415,17 +505,17 @@ impl World {
                 OrderKind::Pause => self.paused = true,
                 OrderKind::Resume => self.paused = false,
                 OrderKind::SeedLife => self.seed_life_with(Origin::Player, Some(event)),
-                OrderKind::AddPhosphate { moles } => {
-                    let m = moles.max(0.0);
-                    self.planet.reservoirs.deep_po4 += m;
-                    self.flux.exchange(Element::Phosphorus, m);
-                }
-                OrderKind::InjectGas { gas, moles } => {
-                    let r = &mut self.planet.reservoirs.atmosphere[gas as usize];
-                    let m = moles.max(-*r);
-                    *r += m;
-                    if matches!(gas, Gas::Co2 | Gas::Ch4) {
-                        self.flux.exchange(Element::Carbon, m);
+                OrderKind::Intervene(ref i) => {
+                    if self.influence.try_spend(&self.config.influence, i.cost()) {
+                        self.intervene(i);
+                    } else {
+                        self.events.push_with(
+                            self.years,
+                            Some(i.cell()),
+                            EventKind::OrderRefused { order: order.id, reason: "réserve d'influence insuffisante".into() },
+                            Origin::Player,
+                            Some(event),
+                        );
                     }
                 }
                 OrderKind::MarkLineage { lineage } => {
@@ -436,6 +526,63 @@ impl World {
             }
             self.orders.applied.push(AppliedOrder { order, step: self.stats.steps, years: self.years, event });
         }
+    }
+
+    /// Applique une intervention déjà payée.
+    fn intervene(&mut self, i: &Intervention) {
+        match *i {
+            Intervention::Fertilize { cell, radius_km, moles_p } => {
+                let m = moles_p.max(0.0);
+                if m <= 0.0 {
+                    return;
+                }
+                // Cellules du vivant mouillées dans le rayon, au prorata de
+                // leur volume d'eau ; sans eau, l'apport va à l'océan profond.
+                let center = self.planet.grid.centers[(cell as usize).min(self.planet.grid.len() - 1)];
+                let radius = radius_km.max(1.0) * 1e3 / self.planet.params.radius_m;
+                let targets: Vec<usize> = self
+                    .bio
+                    .wet_cells()
+                    .filter(|&b| {
+                        let p = self.bio.grid.centers[b];
+                        (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).acos() <= radius
+                    })
+                    .collect();
+                let volume: f64 = targets.iter().map(|&b| self.bio.env[b].water_volume_m3).sum();
+                if volume > 0.0 {
+                    for b in targets {
+                        self.chemistry[b][WaterPool::Po4 as usize] += m / volume;
+                    }
+                } else {
+                    self.planet.reservoirs.deep_po4 += m;
+                }
+                self.flux.exchange(Element::Phosphorus, m);
+            }
+            Intervention::Eruption { gas, moles, .. } => {
+                // L'oxygène ne sort pas des volcans.
+                if gas == Gas::O2 {
+                    return;
+                }
+                let r = &mut self.planet.reservoirs.atmosphere[gas as usize];
+                let m = moles.max(-*r);
+                *r += m;
+                if matches!(gas, Gas::Co2 | Gas::Ch4) {
+                    self.flux.exchange(Element::Carbon, m);
+                }
+                let ox = match gas {
+                    Gas::Ch4 => -2.0,
+                    Gas::H2 => -0.5,
+                    _ => 0.0,
+                };
+                self.flux.exchange(Element::Electrons, ox * m);
+            }
+        }
+    }
+
+    /// Zone d'intérêt de la caméra (canal d'observation). Ne change jamais
+    /// l'histoire : seul l'état publié du prochain pas en tient compte.
+    pub fn set_interest(&mut self, zone: Option<InterestZone>) {
+        self.interest = zone;
     }
 
     /// Avance d'un pas planétaire (en pause, n'applique que les ordres dus).
@@ -450,29 +597,42 @@ impl World {
         let step_index = self.stats.steps;
         let years = self.years;
 
+        let debug = std::env::var_os("EVO_DEBUG_ELECTRONS").is_some();
+        let check = |w: &World, what: &str| {
+            if debug {
+                let e = w.total_electrons() - w.flux.expected(Element::Electrons);
+                eprintln!("{what}: écart {e:.6e}");
+            }
+        };
+        check(self, "début");
         // 1. Planète lente.
         self.planet_phase(years, dt, step_index);
+        check(self, "planète");
         timings.planet = t0.elapsed();
 
         // 2. Écologie et cycles globaux.
         let t1 = Instant::now();
         self.ecology_phase(years, dt);
+        check(self, "écologie");
         timings.ecology = t1.elapsed();
 
         // 3. Évolution.
         let t2 = Instant::now();
         let modified = self.evolution_phase(years, dt, step_index);
+        check(self, "évolution");
         timings.evolution = t2.elapsed();
 
         // 4. Migration.
         let t3 = Instant::now();
         self.migrate(dt, step_index);
         self.trim_communities();
+        check(self, "migration");
         timings.migration = t3.elapsed();
 
         // 5. Registres.
         let t4 = Instant::now();
         self.years = years + dt;
+        self.influence.recharge(&self.config.influence, dt);
         self.bookkeeping(modified);
         self.stats.steps += 1;
         timings.bookkeeping = t4.elapsed();
@@ -498,43 +658,45 @@ impl World {
         let gaussian = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
         planet.climate.drift_obliquity(&planet.params, dt, gaussian);
 
-        let before: Vec<(bool, f64)> = planet.cells.iter().map(|e| (e.is_ocean, e.water_volume_m3)).collect();
+        let before: Vec<f64> = self.bio.env.iter().map(|e| e.water_volume_m3).collect();
         let changes = planet.refresh(years);
+        self.bio.aggregate(&self.planet.cells);
         if changes.is_empty() {
             return;
         }
         let cp = self.config.physiology.carbon_to_phosphorus;
         let targets = self.planet.exchange_targets(cp);
-        for ch in changes {
-            let c = ch.cell;
-            let (was_ocean, old_volume) = before[c];
-            let new_volume = self.planet.cells[c].water_volume_m3;
-            match (was_ocean, ch.now_ocean) {
+        for (c, &old_volume) in before.iter().enumerate() {
+            let new_volume = self.bio.env[c].water_volume_m3;
+            if old_volume == new_volume {
+                continue;
+            }
+            match (old_volume > 0.0, new_volume > 0.0) {
                 (true, false) => {
                     // La couche d'eau disparaît : son contenu et la biomasse
                     // rejoignent les réservoirs et les sédiments.
                     let moles = self.chemistry[c].map(|x| x * old_volume);
                     let biomass: f64 = self.communities[c].iter().map(|p| p.biomass).sum();
-                    self.planet.reservoirs.absorb_layer(&moles, biomass, biomass / cp);
+                    self.planet.reservoirs.absorb_layer(&moles, biomass, biomass / cp, &mut self.flux);
                     self.stats.local_extinctions += self.communities[c].len() as u64;
                     self.communities[c].clear();
                     self.chemistry[c] = [0.0; WATER_POOL_COUNT];
                     self.stats.cells_emerged += 1;
                 }
                 (false, true) => {
-                    let wanted = self.planet.equilibrium_chemistry(c, &targets).map(|x| x * new_volume);
-                    let got = self.planet.reservoirs.fill_layer(&wanted);
+                    let wanted = self.planet.equilibrium_chemistry(&self.bio.env[c], &targets).map(|x| x * new_volume);
+                    let got = self.planet.reservoirs.fill_layer(&wanted, &mut self.flux);
                     self.chemistry[c] = got.map(|m| m / new_volume);
                     self.stats.cells_flooded += 1;
                 }
-                (true, true) if old_volume > 0.0 && new_volume > 0.0 => {
-                    // La couche change d'épaisseur : les moles restent.
+                (true, true) => {
+                    // La couche change de volume : les moles restent.
                     let k = old_volume / new_volume;
                     for x in self.chemistry[c].iter_mut() {
                         *x *= k;
                     }
                 }
-                _ => {}
+                (false, false) => {}
             }
         }
     }
@@ -542,6 +704,7 @@ impl World {
     fn ecology_phase(&mut self, years: f64, dt: f64) {
         let cfg = &self.config;
         let planet = &self.planet;
+        let envs = &self.bio.env;
         let cp = cfg.physiology.carbon_to_phosphorus;
         let targets = planet.exchange_targets(cp);
         let t_eco = cfg.eco_substeps as f64 * cfg.eco_dt_years;
@@ -566,8 +729,8 @@ impl World {
             .enumerate()
             .map(|(c, (pops, chem))| {
                 let mut r = zero();
-                let env = &planet.cells[c];
-                if !env.is_ocean {
+                let env = &envs[c];
+                if env.water_volume_m3 <= 0.0 {
                     return r;
                 }
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
@@ -579,7 +742,7 @@ impl World {
                         r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
                         r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
                     }
-                    planet.exchange(c, chem, cfg.eco_dt_years, &targets, &mut r.exact);
+                    planet.exchange(env, chem, cfg.eco_dt_years, &targets, &mut r.exact);
                 }
                 // Flux à prolonger : ceux d'une couche à l'équilibre, où ce qui
                 // s'accumule pendant l'écologie rapide serait sorti. Le simple
@@ -638,7 +801,18 @@ impl World {
         self.stats.redox_correction += total.redox_correction * (dt - t_eco).max(0.0);
         self.oxygen_production = total.oxygen / t_eco;
         self.planet.reservoirs.oxygen.photosynthesis += self.oxygen_production * dt;
-        self.planet.reservoirs.apply_exact(&self.planet.params, &total.exact);
+        // Les sources hydrothermales des couches de surface apportent leur
+        // pouvoir réducteur de l'extérieur du système suivi, sur tout le pas.
+        let vents: f64 = self
+            .bio
+            .env
+            .iter()
+            .map(|e| WATER_POOLS.iter().map(|&p| self.planet.vent_supply(e, p) * p.oxidant_equivalents()).sum::<f64>())
+            .sum();
+        // Pendant l'écologie rapide, elles sont mesurées ; le reste du pas,
+        // les boîtes inscrivent ce qu'elles reçoivent des couches prolongées.
+        self.flux.exchange(Element::Electrons, vents * t_eco.min(dt));
+        self.planet.reservoirs.apply_exact(&self.planet.params, &total.exact, &mut self.flux);
         let ctx = self.planet.box_context(years);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibré de la surface sont tenus constants sur tout le
@@ -649,68 +823,114 @@ impl World {
         // amorti qui supprime l'oscillation de période 2 sans changer
         // l'équilibre. Les deux jeux de flux étant équilibrés en carbone et en
         // phosphore, leur moyenne l'est aussi.
-        let rates = match self.previous_rates {
+        let mut rates = match self.previous_rates {
             Some(prev) => std::array::from_fn(|i| 0.5 * (total.rates[i] + prev[i])),
             None => total.rates,
         };
+        // La moyenne garde le carbone et le phosphore, pas forcément les
+        // électrons quand les sources ont changé d'un pas à l'autre : on la
+        // ramène exactement aux sources de ce pas.
+        let ox = |r: &[f64; WATER_POOL_COUNT]| WATER_POOLS.iter().map(|&p| r[p as usize] * p.oxidant_equivalents()).sum::<f64>();
+        let delta = vents - ox(&rates);
+        close_electrons(&mut rates, delta);
         self.previous_rates = Some(total.rates);
         self.planet.reservoirs.integrate(&self.planet.params, &ctx, &rates, rest, &mut self.flux);
     }
 
-    /// Évolution ; renvoie les populations modifiées (cellule, indice) avec la
-    /// cause de leur modification, pour la détection des innovations.
+    /// Évolution par dème ; renvoie les populations modifiées (cellule,
+    /// indice) avec la cause de leur modification, pour la détection des
+    /// innovations.
     fn evolution_phase(&mut self, years: f64, dt: f64, step_index: u64) -> Vec<(usize, usize, GenomeChangeCause)> {
         let cfg = &self.config;
-        let planet = &self.planet;
         let accelerator = self.progress.accelerator_on;
         if accelerator {
             self.stats.accelerator_steps += 1;
         }
-        let results: Vec<CellEvolution> = self
-            .communities
-            .par_iter_mut()
-            .zip(self.chemistry.par_iter())
+        let (communities, chemistry, envs) = (&self.communities, &self.chemistry, &self.bio.env);
+        let results: Vec<(Vec<Fixation>, EvolutionStats)> = self
+            .demes
+            .par_iter()
             .enumerate()
-            .map(|(c, (pops, chem))| {
-                let env = &planet.cells[c];
-                let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
-                evolve_cell(c, pops, chem, &ctx, cfg, dt, step_index, accelerator)
-            })
+            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, step_index, accelerator))
             .collect();
         let mut modified = Vec::new();
-        for (c, r) in results.into_iter().enumerate() {
-            self.stats.add_evolution(&r.stats);
-            let mut founder_index = Vec::with_capacity(r.founders.len());
-            for f in r.founders {
-                let mut p = f.population;
-                p.lineage = self.lineages.found(Some(f.parent), years, c as u32, p.signature(), p.genome.clone());
-                self.events.push(
-                    years,
-                    Some(c as u32),
-                    EventKind::NewLineage { lineage: p.lineage, parent: f.parent, signature: p.signature() },
-                );
-                self.stats.new_lineages += 1;
-                founder_index.push(self.communities[c].len());
-                self.communities[c].push(p);
-            }
-            for change in r.changes {
-                let index = match change.target {
-                    Target::Population(i) => i,
-                    Target::Founder(k) => founder_index[k],
-                };
-                let lineage = self.communities[c][index].lineage;
-                self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause: change.cause, element: change.element });
-                modified.push((c, index, change.cause));
+        for (fixations, stats) in results {
+            self.stats.add_evolution(&stats);
+            for f in fixations {
+                if let Some(m) = self.apply_fixation(years, f) {
+                    modified.push(m);
+                }
             }
         }
         modified
+    }
+
+    /// Applique une fixation d'un dème : au génotype dans toutes les cellules
+    /// du dème qui le portent, ou, pour une guilde nouvelle, dans la cellule
+    /// représentative.
+    fn apply_fixation(&mut self, years: f64, f: Fixation) -> Option<(usize, usize, GenomeChangeCause)> {
+        let (c, i) = f.rep;
+        let resident = &self.communities[c][i];
+        let parent_lineage = resident.lineage;
+        let old = resident.genome.clone();
+        let (index, ok) = if f.phenotype.signature == resident.signature() {
+            // Même guilde : le génotype est remplacé partout dans le dème.
+            let deme = &self.demes[self.deme_of(c)];
+            for &cell in deme {
+                if habitat_class(&self.bio.env[cell as usize]) != f.habitat {
+                    continue;
+                }
+                for p in self.communities[cell as usize].iter_mut() {
+                    if Arc::ptr_eq(&p.genome, &old) {
+                        p.genome = f.genome.clone();
+                        p.phenotype = f.phenotype.clone();
+                        p.rates = f.rates;
+                    }
+                }
+            }
+            (i, true)
+        } else if let Some(j) = self.communities[c].iter().position(|q| q.signature() == f.phenotype.signature) {
+            let q = &mut self.communities[c][j];
+            q.genome = f.genome;
+            q.phenotype = f.phenotype;
+            q.rates = f.rates;
+            q.lineage = parent_lineage;
+            (j, true)
+        } else {
+            // Nouvelle guilde : la biomasse fondatrice est prise au parent.
+            let give = self.config.founder_biomass.min(0.5 * self.communities[c][i].biomass);
+            if give < self.config.extinction_biomass {
+                (0, false)
+            } else {
+                self.communities[c][i].biomass -= give;
+                let signature = f.phenotype.signature;
+                let lineage = self.lineages.found(Some(parent_lineage), years, c as u32, signature, f.genome.clone());
+                self.events.push(years, Some(c as u32), EventKind::NewLineage { lineage, parent: parent_lineage, signature });
+                self.stats.new_lineages += 1;
+                self.communities[c].push(Population { lineage, genome: f.genome, phenotype: f.phenotype, biomass: give, rates: f.rates });
+                (self.communities[c].len() - 1, true)
+            }
+        };
+        if !ok {
+            return None;
+        }
+        self.stats.substitutions += 1;
+        self.stats.fixed_changes_by_cause[f.cause.index()] += 1;
+        let lineage = self.communities[c][index].lineage;
+        self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause: f.cause, element: f.element });
+        Some((c, index, f.cause))
+    }
+
+    /// Dème d'une cellule du vivant.
+    pub fn deme_of(&self, bio_cell: usize) -> usize {
+        self.deme_index[bio_cell] as usize
     }
 
     /// Chaque cellule océanique regarde les écotypes de ses voisines et
     /// retient, par guilde, le meilleur immigrant qui réussit à s'installer.
     fn migrate(&mut self, dt: f64, step_index: u64) {
         let cfg = &self.config;
-        let planet = &self.planet;
+        let bio = &self.bio;
         let communities = &self.communities;
         let chemistry = &self.chemistry;
         let physio = &cfg.physiology;
@@ -719,14 +939,14 @@ impl World {
             .into_par_iter()
             .map(|target| {
                 let mut best: Vec<MigrationWinner> = Vec::new();
-                let env = &planet.cells[target];
-                if !env.is_ocean {
+                let env = &bio.env[target];
+                if env.water_volume_m3 <= 0.0 {
                     return best;
                 }
                 let residents = &communities[target];
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
                 let cond = ctx.conditions(CellContext::photo_biomass(residents));
-                for src in planet.grid.neighbours_of(target) {
+                for src in bio.grid.neighbours_of(target) {
                     for (i, p) in communities[src].iter().enumerate() {
                         if p.rates.birth <= 0.0 {
                             continue;
@@ -799,7 +1019,7 @@ impl World {
     fn trim_communities(&mut self) {
         let max = self.config.max_populations_per_cell.max(1);
         let cp = self.config.physiology.carbon_to_phosphorus;
-        let planet = &self.planet;
+        let envs = &self.bio.env;
         let removed: u64 = self
             .communities
             .par_iter_mut()
@@ -816,7 +1036,7 @@ impl World {
                 for &i in &order[..max] {
                     keep[i] = true;
                 }
-                let v = planet.cells[c].water_volume_m3;
+                let v = envs[c].water_volume_m3;
                 let mut i = 0;
                 pops.retain(|p| {
                     let k = keep[i];
@@ -857,7 +1077,7 @@ impl World {
                 let id = self.events.push_with(
                     years,
                     Some(c as u32),
-                    EventKind::Innovation { lineage: p.lineage, pathway: RHODOPSIN_PATHWAY, stage: 1, label: "rhodopsine" },
+                    EventKind::Innovation { lineage: p.lineage, pathway: RHODOPSIN_PATHWAY.into(), stage: 1, label: "rhodopsine".into() },
                     origin_of(cause),
                     None,
                 );
@@ -870,7 +1090,12 @@ impl World {
             let id = self.events.push_with(
                 years,
                 Some(c as u32),
-                EventKind::Innovation { lineage, pathway: PHOTOSYNTHESIS_PATHWAY, stage, label: PHOTOSYNTHESIS_STAGES[stage as usize] },
+                EventKind::Innovation {
+                    lineage,
+                    pathway: PHOTOSYNTHESIS_PATHWAY.into(),
+                    stage,
+                    label: PHOTOSYNTHESIS_STAGES[stage as usize].into(),
+                },
                 origin_of(cause),
                 previous,
             );
@@ -885,7 +1110,7 @@ impl World {
                 self.events.push_with(
                     years,
                     None,
-                    EventKind::AcceleratorOff { pathway: PHOTOSYNTHESIS_PATHWAY },
+                    EventKind::AcceleratorOff { pathway: PHOTOSYNTHESIS_PATHWAY.into() },
                     Origin::Accelerator,
                     Some(id),
                 );
@@ -901,7 +1126,7 @@ impl World {
                     self.events.push_with(
                         years,
                         None,
-                        EventKind::AcceleratorOn { pathway: PHOTOSYNTHESIS_PATHWAY, stage },
+                        EventKind::AcceleratorOn { pathway: PHOTOSYNTHESIS_PATHWAY.into(), stage },
                         Origin::Accelerator,
                         None,
                     );
@@ -971,28 +1196,69 @@ impl World {
         self.history.push(s);
     }
 
-    /// Publie l'état du monde à la fin du pas (photographie immuable).
+    /// Publie l'état du monde à la fin du pas (photographie immuable). Ne
+    /// modifie rien de ce qui fait l'histoire.
     fn publish(&mut self) {
         let globals = self.history.last().filter(|s| s.years == self.years).copied().unwrap_or_else(|| self.sample());
+        // Résumé par cellule du vivant, recopié sur ses cellules physiques.
+        struct BioSummary {
+            biomass: f64,
+            dominant: u32,
+            pigment: Option<[u8; 3]>,
+            stage: u8,
+            oxygen: f32,
+        }
+        let bio: Vec<BioSummary> = (0..self.bio.len())
+            .map(|b| {
+                let pops = &self.communities[b];
+                let dominant = pops.iter().max_by(|x, y| x.biomass.total_cmp(&y.biomass));
+                let photo = pops.iter().filter(|p| p.phenotype.pigment_nm.is_some()).max_by(|x, y| x.biomass.total_cmp(&y.biomass));
+                BioSummary {
+                    biomass: pops.iter().map(|p| p.biomass).sum(),
+                    dominant: dominant.map_or(0, |p| p.signature()),
+                    pigment: photo.and_then(|p| p.phenotype.pigment_nm).map(pigment_colour),
+                    stage: pops.iter().map(|p| photosynthesis_stage(&p.phenotype)).max().unwrap_or(0),
+                    oxygen: self.chemistry[b][WaterPool::O2 as usize] as f32,
+                }
+            })
+            .collect();
         let cells = (0..self.planet.cells.len())
             .map(|c| {
                 let env = &self.planet.cells[c];
-                let pops = &self.communities[c];
-                let dominant = pops.iter().max_by(|a, b| a.biomass.total_cmp(&b.biomass));
-                let photo = pops.iter().filter(|p| p.phenotype.pigment_nm.is_some()).max_by(|a, b| a.biomass.total_cmp(&b.biomass));
+                let b = self.bio.parent[c] as usize;
+                let s = &bio[b];
+                let d = self.planet.display.get(c).copied().unwrap_or_default();
+                let water = self.bio.env[b].water_area_m2;
                 CellView {
                     elevation_m: env.elevation_m as f32,
                     temperature_k: env.temperature_k as f32,
                     is_ocean: env.is_ocean,
                     ice: env.ice_cover > 0.5,
-                    biomass: pops.iter().map(|p| p.biomass).sum::<f64>() as f32,
-                    dominant_guild: dominant.map_or(0, |p| p.signature()),
-                    pigment_rgb: photo.and_then(|p| p.phenotype.pigment_nm).map(pigment_colour),
-                    oxygen: self.chemistry[c][WaterPool::O2 as usize] as f32,
+                    ice_cover: env.ice_cover as f32,
+                    light_w_m2: env.light_par_w_m2 as f32,
+                    biomass: s.biomass as f32,
+                    biomass_per_m2: if water > 0.0 { (s.biomass / water) as f32 } else { 0.0 },
+                    dominant_guild: s.dominant,
+                    pigment_rgb: s.pigment,
+                    photosynthesis_stage: s.stage,
+                    oxygen: s.oxygen,
                     plate: self.planet.tectonics.parcel_of(c).plate,
+                    bio_cell: b as u32,
+                    wind_ms: d.wind_ms,
+                    current_ms: d.current_ms,
+                    plate_velocity_cm_yr: d.plate_velocity_cm_yr,
+                    rain_mm_yr: d.rain_mm_yr,
+                    cloud_cover: d.cloud_cover,
+                    river_flow_m3s: d.river_flow_m3s,
+                    river_downstream: d.river_downstream,
+                    lake_fraction: d.lake_fraction,
                 }
             })
             .collect();
+        let new_events =
+            self.events.events[self.published_events.min(self.events.events.len())..].iter().map(EventView::from_event).collect();
+        self.published_events = self.events.events.len();
+        let p = &self.config.influence;
         self.publication.publish(PublishedState {
             step: self.stats.steps,
             years: self.years,
@@ -1000,7 +1266,100 @@ impl World {
             climate_mode: ClimateMode::for_step(self.config.step_years),
             globals,
             cells,
+            bio_level: self.config.bio_level,
+            bio_cells: self.bio.len() as u32,
+            species: self.species(),
+            new_events,
+            influence: InfluenceView {
+                points: self.influence.points as f32,
+                max: p.max as f32,
+                recharge_per_myr: p.recharge_per_myr as f32,
+                sandbox: p.sandbox,
+            },
+            paused: self.paused,
+            focus: self.focus(),
         });
+    }
+
+    /// Espèces vivantes (guildes), par biomasse décroissante.
+    pub fn species(&self) -> Vec<SpeciesView> {
+        let mut map: BTreeMap<u32, (SpeciesView, f64, Vec<usize>)> = BTreeMap::new();
+        for (b, pops) in self.communities.iter().enumerate() {
+            for p in pops {
+                let sig = p.signature();
+                let e = map.entry(sig).or_insert_with(|| {
+                    (
+                        SpeciesView { id: sig, name: guild_label(sig), phototroph: p.phenotype.phototroph, ..Default::default() },
+                        0.0,
+                        Vec::new(),
+                    )
+                });
+                let v = &mut e.0;
+                v.biomass += p.biomass;
+                v.cells += 1;
+                v.photosynthesis_stage = v.photosynthesis_stage.max(photosynthesis_stage(&p.phenotype));
+                let key = Arc::as_ptr(&p.genome) as usize;
+                if !e.2.contains(&key) {
+                    e.2.push(key);
+                }
+                // Cellule et pigment de la population la plus abondante.
+                if p.biomass > e.1 {
+                    e.1 = p.biomass;
+                    v.peak_bio_cell = b as u32;
+                    if let Some(nm) = p.phenotype.pigment_nm {
+                        v.pigment_rgb = Some(pigment_colour(nm));
+                    }
+                }
+            }
+        }
+        let mut list: Vec<SpeciesView> = map
+            .into_values()
+            .map(|(mut v, _, eco)| {
+                v.ecotypes = eco.len() as u32;
+                v
+            })
+            .collect();
+        list.sort_by(|a, b| b.biomass.total_cmp(&a.biomass).then(a.id.cmp(&b.id)));
+        list
+    }
+
+    /// Détail des cellules du vivant dans la zone d'intérêt.
+    fn focus(&self) -> Focus {
+        let Some(zone) = self.interest else { return Focus::default() };
+        let n = self.planet.grid.len();
+        let center = self.planet.grid.centers[(zone.center_cell as usize).min(n - 1)];
+        let radius = zone.radius_km.max(1.0) * 1e3 / self.planet.params.radius_m;
+        let mut near: Vec<(f64, usize)> = (0..self.bio.len())
+            .filter_map(|b| {
+                let p = self.bio.grid.centers[b];
+                let d = (p[0] * center[0] + p[1] * center[1] + p[2] * center[2]).clamp(-1.0, 1.0).acos();
+                (d <= radius).then_some((d, b))
+            })
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        near.truncate(MAX_FOCUS_CELLS);
+        let physio = &self.config.physiology;
+        let cells = near
+            .into_iter()
+            .map(|(_, b)| FocusCell {
+                bio_cell: b as u32,
+                populations: self.communities[b]
+                    .iter()
+                    .map(|p| PopulationView {
+                        lineage: p.lineage,
+                        species: p.signature(),
+                        biomass: p.biomass as f32,
+                        growth_per_year: p.rates.r as f32,
+                        genes: p.genome.genes.len() as u16,
+                        pigment_rgb: p.phenotype.pigment_nm.map(pigment_colour),
+                        photosynthesis_stage: photosynthesis_stage(&p.phenotype),
+                    })
+                    .collect(),
+                chemistry: self.chemistry[b].iter().map(|&x| x as f32).collect(),
+            })
+            .collect();
+        let _ = physio;
+        Focus { zone: Some(zone), cells }
     }
 
     /// Empreinte de l'état complet (rejeu à l'identique).
@@ -1029,9 +1388,22 @@ impl World {
         for &x in &r.atmosphere {
             h.f(x);
         }
-        for x in [r.deep_fe2, r.deep_mn2, r.deep_po4, r.carbonate_c, r.organic_c, r.sediment_p, self.planet.climate.obliquity_rad] {
+        for x in [
+            r.deep_fe2,
+            r.deep_mn2,
+            r.deep_po4,
+            r.carbonate_c,
+            r.organic_c,
+            r.sediment_p,
+            r.iron_reduced,
+            r.manganese_reduced,
+            self.planet.climate.obliquity_rad,
+            self.influence.points,
+            self.config.step_years,
+        ] {
             h.f(x);
         }
+        h.u(u64::from(self.paused));
         for e in &self.planet.cells {
             h.f(e.elevation_m);
             h.f(e.temperature_k);
@@ -1052,17 +1424,20 @@ impl World {
                 e.0 += 1;
                 e.1 += p.biomass;
                 if let Some(t) = used_t_opt(p) {
-                    mismatch += p.biomass * (t - self.planet.cells[c].temperature_k).abs();
+                    mismatch += p.biomass * (t - self.bio.env[c].temperature_k).abs();
                     weight += p.biomass;
                 }
             }
         }
-        let ocean: Vec<usize> = self.planet.ocean_cells().collect();
+        let ocean: Vec<usize> = self.bio.wet_cells().collect();
+        let lakes = ocean.iter().filter(|&&c| !self.bio.env[c].is_ocean).count();
+        let lake_biomass: f64 =
+            ocean.iter().filter(|&&c| !self.bio.env[c].is_ocean).map(|&c| self.communities[c].iter().map(|p| p.biomass).sum::<f64>()).sum();
         let colonised = ocean.iter().filter(|&&c| !self.communities[c].is_empty()).count();
-        let volume: f64 = ocean.iter().map(|&c| self.planet.cells[c].water_volume_m3).sum();
+        let volume: f64 = ocean.iter().map(|&c| self.bio.env[c].water_volume_m3).sum();
         let mut mean_chem = [0.0; WATER_POOL_COUNT];
         for &c in &ocean {
-            let v = self.planet.cells[c].water_volume_m3;
+            let v = self.bio.env[c].water_volume_m3;
             for (m, x) in mean_chem.iter_mut().zip(self.chemistry[c]) {
                 *m += x * v / volume;
             }
@@ -1070,6 +1445,8 @@ impl World {
         Summary {
             years: self.years,
             ocean_cells: ocean.len(),
+            lake_cells: lakes,
+            lake_biomass,
             colonised_cells: colonised,
             populations: self.communities.iter().map(Vec::len).sum(),
             biomass: self.biomass(),
@@ -1082,6 +1459,7 @@ impl World {
             mean_chemistry: mean_chem,
             carbon_error: self.carbon_balance_error(),
             phosphorus_error: self.phosphorus_balance_error(),
+            electron_error: self.electron_balance_error(),
             globals: self.sample(),
             stats: self.stats,
         }
@@ -1099,7 +1477,9 @@ impl World {
         }
         let published = self.publication.current.as_ref().map_or(0, |s| s.cells.capacity() * std::mem::size_of::<CellView>());
         MemoryReport {
-            planet: self.planet.memory_bytes() + self.chemistry.capacity() * std::mem::size_of::<WaterChemistry>(),
+            planet: self.planet.memory_bytes()
+                + self.bio.memory_bytes()
+                + self.chemistry.capacity() * std::mem::size_of::<WaterChemistry>(),
             populations: self
                 .communities
                 .iter()
@@ -1240,7 +1620,11 @@ pub struct MemoryReport {
 #[derive(Clone, Debug)]
 pub struct Summary {
     pub years: f64,
+    /// Cellules du vivant qui ont une couche d'eau, dont celles faites
+    /// surtout d'eaux douces (lacs et sols humides) et leur biomasse.
     pub ocean_cells: usize,
+    pub lake_cells: usize,
+    pub lake_biomass: f64,
     pub colonised_cells: usize,
     pub populations: usize,
     pub biomass: f64,
@@ -1257,6 +1641,7 @@ pub struct Summary {
     pub mean_chemistry: WaterChemistry,
     pub carbon_error: f64,
     pub phosphorus_error: f64,
+    pub electron_error: f64,
     pub globals: Sample,
     pub stats: WorldStats,
 }
@@ -1267,6 +1652,9 @@ mod tests {
 
     fn small_world(seed: u64) -> World {
         let mut cfg = WorldConfig::new(seed, 3);
+        // Vivant à la résolution de la planète : sur une grille aussi petite,
+        // la grille plus grossière ne laisserait presque rien à coloniser.
+        cfg.bio_level = 3;
         cfg.step_years = 1000.0;
         let mut w = World::new(cfg);
         w.seed_life();
@@ -1315,6 +1703,7 @@ mod tests {
             w.step();
             assert!(w.carbon_balance_error() < 1e-9, "carbone : écart {}", w.carbon_balance_error());
             assert!(w.phosphorus_balance_error() < 1e-9, "phosphore : écart {}", w.phosphorus_balance_error());
+            assert!(w.electron_balance_error() < 1e-9, "électrons : écart {}", w.electron_balance_error());
         }
         assert!(w.planet.tectonics.steps >= tectonic_steps + 5, "la tectonique a tourné");
     }
@@ -1347,7 +1736,10 @@ mod tests {
         }
         let ancestral = a / b;
         assert!(
-            end.thermal_mismatch_k < 0.75 * ancestral,
+            // Le dème partage ses génotypes entre cellules voisines de
+            // températures proches : l'adaptation est un peu moins fine que
+            // cellule par cellule (0,75 à l'étape 2).
+            end.thermal_mismatch_k < 0.85 * ancestral,
             "écart thermique {} K contre {} K pour l'ancêtre",
             end.thermal_mismatch_k,
             ancestral
@@ -1361,8 +1753,8 @@ mod tests {
         let mut a = World::new(cfg.clone());
         a.orders.submit(0.0, OrderKind::SeedLife);
         a.orders.submit(150_000.0, OrderKind::SetStepYears(20_000.0));
-        a.orders.submit(200_000.0, OrderKind::AddPhosphate { moles: 1e14 });
-        a.orders.submit(240_000.0, OrderKind::InjectGas { gas: Gas::Co2, moles: 1e16 });
+        a.orders.submit(200_000.0, OrderKind::Intervene(Intervention::Fertilize { cell: 0, radius_km: 3000.0, moles_p: 1e14 }));
+        a.orders.submit(240_000.0, OrderKind::Intervene(Intervention::Eruption { cell: 5, gas: Gas::Co2, moles: 1e16 }));
         a.orders.submit(260_000.0, OrderKind::Pause);
         a.orders.submit(260_000.0, OrderKind::Resume);
         a.orders.submit(300_000.0, OrderKind::MarkLineage { lineage: 0 });
@@ -1372,7 +1764,7 @@ mod tests {
         assert_eq!(a.orders.applied.len(), 7);
         assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9);
         // Un ordre soumis en cours de partie est rejoué à la même date.
-        let late = a.orders.submit(a.years, OrderKind::InjectGas { gas: Gas::Ch4, moles: 1e13 });
+        let late = a.orders.submit(a.years, OrderKind::Intervene(Intervention::Eruption { cell: 9, gas: Gas::Ch4, moles: 1e13 }));
         for _ in 0..5 {
             a.step();
         }
@@ -1393,6 +1785,26 @@ mod tests {
             c.step();
         }
         assert_ne!(a.state_hash(), c.state_hash());
+    }
+
+    #[test]
+    fn the_camera_never_changes_history() {
+        // Deux parcours de caméra différents, même histoire au bit près.
+        let mut a = small_world(4);
+        let mut b = small_world(4);
+        for i in 0..12u32 {
+            a.set_interest(Some(InterestZone { center_cell: i * 37 % 642, radius_km: 500.0 + 300.0 * i as f64, zoom_band: (i % 4) as u8 }));
+            if i % 3 == 0 {
+                b.set_interest(None);
+            } else {
+                b.set_interest(Some(InterestZone { center_cell: 600 - i * 11, radius_km: 8000.0, zoom_band: 1 }));
+            }
+            a.step();
+            b.step();
+            assert_eq!(a.state_hash(), b.state_hash(), "pas {i}");
+        }
+        assert_eq!(a.events.events, b.events.events);
+        assert!(!a.publication.current.as_ref().unwrap().focus.cells.is_empty());
     }
 
     #[test]

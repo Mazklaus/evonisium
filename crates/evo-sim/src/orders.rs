@@ -8,13 +8,60 @@
 //! date réels : la graine et ce registre suffisent à rejouer une partie à
 //! l'identique.
 //!
-//! [Simplification] Le canal d'observation (zone d'intérêt de la caméra)
-//! arrive avec le client à l'étape 3 ; il ne change jamais l'histoire.
+//! Depuis l'étape 3, les interventions coûtent de l'influence (décision du
+//! 8 octobre 2026) : le moteur valide chaque ordre contre la réserve au
+//! moment de l'appliquer, de façon déterministe. Seule la demande est
+//! inscrite au registre ; au rejeu, la même validation redonne le même
+//! verdict. Le canal d'observation (zone d'intérêt de la caméra, module
+//! `observation`) ne passe pas par ici : il ne change jamais l'histoire.
 
 use evo_planet::Gas;
 
+/// Intervention du joueur sur l'environnement (jamais sur les gènes).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Intervention {
+    /// Apport de nutriments : du phosphate venu de l'extérieur du système
+    /// suivi (altération accrue d'un massif, cendres volcaniques, poussières)
+    /// est versé dans les eaux de surface autour d'une cellule physique.
+    /// Sans eau de surface dans le rayon, il rejoint l'océan profond.
+    Fertilize { cell: u32, radius_km: f64, moles_p: f64 },
+    /// Éruption provoquée : un gaz injecté dans l'atmosphère (CO₂ pour
+    /// réchauffer, H₂ ou CH₄ pour réduire, O₂ n'est pas permis). La cellule
+    /// situe l'événement dans la chronique.
+    Eruption { cell: u32, gas: Gas, moles: f64 },
+}
+
+impl Intervention {
+    /// Coût en points d'influence. Un apport de 10¹² mol de phosphate (la
+    /// moitié de ce que l'altération de la Terre actuelle apporte en un
+    /// siècle) coûte 10 points ; une éruption de 10¹⁶ mol de gaz (un grand
+    /// épanchement basaltique) en coûte 20. Le coût croît comme la racine de
+    /// la quantité, borné.
+    pub fn cost(&self) -> f64 {
+        match self {
+            Intervention::Fertilize { moles_p, .. } => (10.0 * (moles_p.max(0.0) / 1e12).sqrt()).clamp(2.0, 60.0),
+            Intervention::Eruption { moles, .. } => (20.0 * (moles.abs() / 1e16).sqrt()).clamp(2.0, 60.0),
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Intervention::Fertilize { cell, radius_km, moles_p } => {
+                format!("apport de {moles_p:.2e} mol de phosphate dans un rayon de {radius_km:.0} km autour de la cellule {cell}")
+            }
+            Intervention::Eruption { cell, gas, moles } => format!("éruption de {moles:.2e} mol de {} à la cellule {cell}", gas.label()),
+        }
+    }
+
+    pub fn cell(&self) -> u32 {
+        match self {
+            Intervention::Fertilize { cell, .. } | Intervention::Eruption { cell, .. } => *cell,
+        }
+    }
+}
+
 /// Ce que demande un ordre.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum OrderKind {
     /// Change la durée du pas planétaire, années (commande de vitesse).
     SetStepYears(f64),
@@ -24,16 +71,8 @@ pub enum OrderKind {
     Resume,
     /// Dépose des cellules minimales près des sources hydrothermales.
     SeedLife,
-    /// Apporte du phosphate à l'océan profond (intervention du joueur :
-    /// altération accrue d'un massif, par exemple), mol.
-    AddPhosphate {
-        moles: f64,
-    },
-    /// Injecte un gaz dans l'atmosphère (éruption provoquée), mol.
-    InjectGas {
-        gas: Gas,
-        moles: f64,
-    },
+    /// Intervention sur l'environnement, payée en influence.
+    Intervene(Intervention),
     /// Marque une lignée pour la suivre (sans effet sur l'histoire).
     MarkLineage {
         lineage: u32,
@@ -47,8 +86,7 @@ impl OrderKind {
             OrderKind::Pause => "pause".into(),
             OrderKind::Resume => "reprise".into(),
             OrderKind::SeedLife => "dépôt de cellules minimales".into(),
-            OrderKind::AddPhosphate { moles } => format!("apport de {moles:.2e} mol de phosphate"),
-            OrderKind::InjectGas { gas, moles } => format!("injection de {moles:.2e} mol de {}", gas.label()),
+            OrderKind::Intervene(i) => i.label(),
             OrderKind::MarkLineage { lineage } => format!("suivi de la lignée {lineage}"),
         }
     }
@@ -56,11 +94,11 @@ impl OrderKind {
     /// Les commandes du temps et le suivi ne sont pas des interventions sur
     /// le monde.
     pub fn is_intervention(&self) -> bool {
-        matches!(self, OrderKind::SeedLife | OrderKind::AddPhosphate { .. } | OrderKind::InjectGas { .. })
+        matches!(self, OrderKind::SeedLife | OrderKind::Intervene(_))
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Order {
     pub id: u64,
     /// Date de jeu demandée, années.
@@ -69,7 +107,7 @@ pub struct Order {
 }
 
 /// Ordre appliqué : date et pas réels.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AppliedOrder {
     pub order: Order,
     pub step: u64,
@@ -78,7 +116,7 @@ pub struct AppliedOrder {
     pub event: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OrderQueue {
     /// Ordres en attente, triés par date puis par identifiant.
     pending: Vec<Order>,
@@ -90,9 +128,20 @@ impl OrderQueue {
     /// Ajoute un ordre et renvoie son identifiant.
     pub fn submit(&mut self, due_years: f64, kind: OrderKind) -> u64 {
         let id = self.next_id;
-        self.next_id += 1;
-        self.insert(Order { id, due_years, kind });
+        self.submit_with_id(id, due_years, kind);
         id
+    }
+
+    /// Ajoute un ordre dont l'identifiant a été attribué par l'appelant (le
+    /// client numérote ses ordres sans attendre le fil de simulation).
+    pub fn submit_with_id(&mut self, id: u64, due_years: f64, kind: OrderKind) {
+        self.next_id = self.next_id.max(id + 1);
+        self.insert(Order { id, due_years, kind });
+    }
+
+    /// Prochain identifiant libre.
+    pub fn next_id(&self) -> u64 {
+        self.next_id
     }
 
     fn insert(&mut self, order: Order) {
@@ -159,7 +208,7 @@ mod tests {
     fn log_round_trips() {
         let mut q = OrderQueue::default();
         q.submit(10.0, OrderKind::SetStepYears(5000.0));
-        q.submit(0.0, OrderKind::AddPhosphate { moles: 1e12 });
+        q.submit(0.0, OrderKind::Intervene(Intervention::Fertilize { cell: 3, radius_km: 500.0, moles_p: 1e12 }));
         let r = OrderQueue::from_log(&q.log());
         assert_eq!(r.pending(), q.pending());
         let mut r2 = r.clone();

@@ -25,7 +25,7 @@ use crate::pools::{WaterPool, WATER_POOL_COUNT};
 use evo_core::flux::{Element, FluxRegistry};
 
 /// Gaz de l'atmosphère suivis.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Gas {
     N2 = 0,
     O2 = 1,
@@ -61,7 +61,7 @@ impl Gas {
 }
 
 /// Puits d'oxygène, cumulés depuis le début de la partie, mol d'O₂.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OxygenBudget {
     /// O₂ produit par la photosynthèse oxygénique dans les cellules (brut).
     pub photosynthesis: f64,
@@ -75,6 +75,8 @@ pub struct OxygenBudget {
     pub iron_manganese: f64,
     pub oxidative_weathering: f64,
     pub sulfide: f64,
+    /// Oxydation de la croûte océanique jeune par l'eau de mer (étape 3).
+    pub seafloor_oxidation: f64,
 }
 
 impl OxygenBudget {
@@ -86,11 +88,12 @@ impl OxygenBudget {
             + self.iron_manganese
             + self.oxidative_weathering
             + self.sulfide
+            + self.seafloor_oxidation
     }
 }
 
 /// Réservoirs globaux de la planète.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalReservoirs {
     /// Atmosphère, mol par gaz.
     pub atmosphere: [f64; GAS_COUNT],
@@ -103,6 +106,8 @@ pub struct GlobalReservoirs {
     pub organic_c: f64,
     pub iron_oxides: f64,
     pub iron_reduced: f64,
+    /// Manganèse réduit déposé (carbonates de manganèse), mol.
+    pub manganese_reduced: f64,
     pub manganese_oxides: f64,
     pub sediment_p: f64,
     pub oxygen: OxygenBudget,
@@ -111,7 +116,7 @@ pub struct GlobalReservoirs {
 }
 
 /// Flux globaux moyens du dernier pas, mol·an⁻¹.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalFluxes {
     pub outgassing_co2: f64,
     pub weathering_co2: f64,
@@ -121,6 +126,9 @@ pub struct GlobalFluxes {
     pub oxygen_sinks: f64,
     pub methane_release: f64,
     pub hydrogen_escape: f64,
+    /// Pouvoir oxydant exporté par les couches de surface prolongées (leurs
+    /// sources hydrothermales), mol d'équivalent O₂ par an.
+    pub surface_redox: f64,
 }
 
 /// Ce que le reste de la planète fournit aux boîtes pour un pas.
@@ -161,7 +169,7 @@ impl GlobalReservoirs {
             // sources abiotiques (volcans, sources hydrothermales) et
             // l'échappement vers l'espace, atteint en quelques dizaines de
             // milliers d'années.
-            let sources = params.outgassing_co2 * params.outgassing_h2_ratio + params.vent_h2_flux;
+            let sources = params.outgassing_co2 * params.reduced_outgassing_ratio() + params.vent_h2_flux;
             let esc_per_mixing = params.hydrogen_escape * area * evo_core::units::SECONDS_PER_YEAR / 6.022_140_76e23;
             let total: f64 = atmosphere.iter().sum();
             let f = sources / esc_per_mixing;
@@ -177,6 +185,7 @@ impl GlobalReservoirs {
             organic_c: 0.0,
             iron_oxides: 0.0,
             iron_reduced: 0.0,
+            manganese_reduced: 0.0,
             manganese_oxides: 0.0,
             sediment_p: 0.0,
             oxygen: OxygenBudget::default(),
@@ -205,6 +214,20 @@ impl GlobalReservoirs {
     /// Carbone des réservoirs globaux, mol.
     pub fn carbon(&self) -> f64 {
         self.atmosphere[Gas::Co2 as usize] + self.atmosphere[Gas::Ch4 as usize] + self.carbonate_c + self.organic_c
+    }
+
+    /// Pouvoir oxydant des réservoirs globaux, mol d'équivalent O₂ (voir
+    /// [`evo_core::flux::Element::Electrons`]).
+    pub fn electrons(&self) -> f64 {
+        let a = &self.atmosphere;
+        a[Gas::O2 as usize]
+            - 2.0 * a[Gas::Ch4 as usize]
+            - 0.5 * a[Gas::H2 as usize]
+            - 0.25 * self.deep_fe2
+            - 0.5 * self.deep_mn2
+            - self.organic_c
+            - 0.25 * self.iron_reduced
+            - 0.5 * self.manganese_reduced
     }
 
     /// Phosphore des réservoirs globaux, mol.
@@ -302,7 +325,9 @@ impl GlobalReservoirs {
     /// terre) : chaque pool rejoint sa boîte, la matière organique dissoute et
     /// la biomasse (carbone `organic_c`, phosphore `organic_p`) vont aux
     /// sédiments. Le soufre n'est pas suivi.
-    pub fn absorb_layer(&mut self, moles: &[f64; WATER_POOL_COUNT], organic_c: f64, organic_p: f64) {
+    pub fn absorb_layer(&mut self, moles: &[f64; WATER_POOL_COUNT], organic_c: f64, organic_p: f64, flux: &mut FluxRegistry) {
+        // Le sulfure n'a pas de boîte : il quitte le système suivi.
+        flux.exchange(Element::Electrons, 2.0 * moles[WaterPool::H2s as usize]);
         for (i, &m) in moles.iter().enumerate() {
             if let Some(r) = self.counterpart(crate::pools::WATER_POOLS[i]) {
                 *r += m;
@@ -315,7 +340,7 @@ impl GlobalReservoirs {
     /// Fournit le contenu d'une couche d'eau nouvelle (cellule devenue océan)
     /// à partir des boîtes, sans en prendre plus que les neuf dixièmes.
     /// Renvoie les moles réellement fournies.
-    pub fn fill_layer(&mut self, wanted: &[f64; WATER_POOL_COUNT]) -> [f64; WATER_POOL_COUNT] {
+    pub fn fill_layer(&mut self, wanted: &[f64; WATER_POOL_COUNT], flux: &mut FluxRegistry) -> [f64; WATER_POOL_COUNT] {
         let mut got = [0.0; WATER_POOL_COUNT];
         for (i, &m) in wanted.iter().enumerate() {
             let pool = crate::pools::WATER_POOLS[i];
@@ -330,13 +355,21 @@ impl GlobalReservoirs {
                 None => got[i] = if pool == WaterPool::Doc { 0.0 } else { m.max(0.0) },
             }
         }
+        flux.exchange(Element::Electrons, -2.0 * got[WaterPool::H2s as usize]);
         got
     }
 
     /// Applique exactement les échanges mesurés pendant l'écologie rapide.
-    pub fn apply_exact(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT]) {
+    pub fn apply_exact(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT], flux: &mut FluxRegistry) {
         let deep_oxic = self.deep_oxic(params);
-        self.apply_surface(params, moles, deep_oxic);
+        let (_, h2s) = self.apply_surface(params, moles, deep_oxic);
+        // Le sulfure dégazé quitte le système suivi ; il y reprend de l'O₂
+        // en s'oxydant (puits « sulfure »).
+        flux.exchange(Element::Electrons, 2.0 * h2s);
+        let s = (2.0 * h2s.max(0.0)).min(self.atmosphere[Gas::O2 as usize]);
+        self.atmosphere[Gas::O2 as usize] -= s;
+        self.oxygen.sulfide += s;
+        flux.exchange(Element::Electrons, -s);
     }
 
     fn deep_oxic(&self, params: &PlanetParams) -> f64 {
@@ -380,6 +413,7 @@ impl GlobalReservoirs {
         let sinks_before = self.oxygen.total_sinks();
         let release_before = self.oxygen.surface_release;
         let p_ref = params.co2_pa;
+        let h2_ratio = params.reduced_outgassing_ratio();
         let esc_per_mixing = params.hydrogen_escape * ctx.area_m2 * evo_core::units::SECONDS_PER_YEAR / 6.022_140_76e23;
         for _ in 0..n {
             // 1. Échanges de surface. Les pools carbonés partagent un même
@@ -407,7 +441,15 @@ impl GlobalReservoirs {
                 *m *= if carbon_linked { phi_carbon.min(phi[i]) } else { phi[i] };
             }
             let deep_oxic = self.deep_oxic(params);
+            // Les couches de surface sont à l'équilibre : ce qu'elles exportent
+            // de pouvoir oxydant (ou réducteur) vient de leurs sources
+            // hydrothermales, hors du système suivi. On inscrit exactement ce
+            // qui est appliqué, y compris quand une boîte vide freine un flux.
+            let surface_ox: f64 = moles.iter().enumerate().map(|(i, m)| m * crate::pools::WATER_POOLS[i].oxidant_equivalents()).sum();
+            flux.exchange(Element::Electrons, surface_ox);
+            acc.surface_redox += surface_ox;
             let (export, h2s) = self.apply_surface(params, &moles, deep_oxic);
+            flux.exchange(Element::Electrons, 2.0 * h2s);
             acc.organic_export += export;
             acc.organic_burial += export.max(0.0) * params.burial_efficiency(deep_oxic);
 
@@ -433,18 +475,25 @@ impl GlobalReservoirs {
             atm[Gas::Co2 as usize] += destroyed;
             let h2_0 = atm[Gas::H2 as usize];
             atm[Gas::H2 as usize] = h2_0 / (1.0 + h * k_esc);
-            acc.hydrogen_escape += h2_0 - atm[Gas::H2 as usize] + 2.0 * (destroyed - oxidised);
+            let escaped_h2 = h2_0 - atm[Gas::H2 as usize] + 2.0 * (destroyed - oxidised);
+            acc.hydrogen_escape += escaped_h2;
+            // L'hydrogène qui s'échappe laisse la planète plus oxydée : ½ par
+            // H₂, 2 par CH₄ photolysé dont l'hydrogène part (CH₄ + 2 H₂O →
+            // CO₂ + 4 H₂).
+            flux.exchange(Element::Electrons, 0.5 * (h2_0 - atm[Gas::H2 as usize]) + 2.0 * (destroyed - oxidised));
             acc.methane_release += moles[WaterPool::Ch4 as usize];
 
             // 3. Volcanisme et hydrothermalisme profond.
             let v = params.outgassing_co2 * ctx.activity * h;
             self.atmosphere[Gas::Co2 as usize] += v;
-            self.atmosphere[Gas::H2 as usize] += v * params.outgassing_h2_ratio;
+            self.atmosphere[Gas::H2 as usize] += v * h2_ratio;
             flux.exchange(Element::Carbon, v);
+            flux.exchange(Element::Electrons, -0.5 * v * h2_ratio);
             acc.outgassing_co2 += v;
             let deep_share = (1.0 - params.vent_local_share) * ctx.activity * ctx.hydrothermal_share * h;
             self.deep_fe2 += params.vent_fe_flux * deep_share;
             self.deep_mn2 += params.vent_mn_flux * deep_share;
+            flux.exchange(Element::Electrons, -(0.25 * params.vent_fe_flux + 0.5 * params.vent_mn_flux) * deep_share);
 
             // 4. Altération des silicates (thermostat) et des fonds.
             let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
@@ -472,10 +521,20 @@ impl GlobalReservoirs {
                 .min(o2);
             self.atmosphere[Gas::O2 as usize] -= ow;
             self.oxygen.oxidative_weathering += ow;
+            flux.exchange(Element::Electrons, -ow);
             // Sulfure dégazé : oxydé en sulfate s'il y a de l'O₂.
             let s = (2.0 * h2s.max(0.0)).min(self.atmosphere[Gas::O2 as usize]);
             self.atmosphere[Gas::O2 as usize] -= s;
             self.oxygen.sulfide += s;
+            flux.exchange(Element::Electrons, -s);
+            // Oxydation de la croûte océanique jeune (fer et soufre du
+            // basalte) par une eau de mer oxygénée : proportionnelle à la
+            // production de croûte et à l'oxygénation de l'océan profond.
+            let so = (params.seafloor_oxidation_o2 * ctx.activity * ctx.hydrothermal_share * self.deep_oxic(params) * h)
+                .min(self.atmosphere[Gas::O2 as usize]);
+            self.atmosphere[Gas::O2 as usize] -= so;
+            self.oxygen.seafloor_oxidation += so;
+            flux.exchange(Element::Electrons, -so);
             // Fer et manganèse de l'océan profond : oxydés par l'O₂ (ventilation
             // millénaire), ou déposés lentement en milieu anoxique.
             let deep_oxic = self.deep_oxic(params);
@@ -496,12 +555,13 @@ impl GlobalReservoirs {
             let mn_ox = (mn_lost * k_mn / (k_mn + k_res)).min(2.0 * self.atmosphere[Gas::O2 as usize]);
             self.atmosphere[Gas::O2 as usize] -= mn_ox / 2.0;
             self.manganese_oxides += mn_ox;
-            self.iron_reduced += mn_lost - mn_ox;
+            self.manganese_reduced += mn_lost - mn_ox;
             self.oxygen.iron_manganese += fe_ox / 4.0 + mn_ox / 2.0;
 
             // 6. Subduction des sédiments.
             let sub = (ctx.subduction_per_year * h).min(1.0);
             let c_out = sub * (self.carbonate_c + self.organic_c);
+            flux.exchange(Element::Electrons, sub * self.organic_c);
             self.carbonate_c *= 1.0 - sub;
             self.organic_c *= 1.0 - sub;
             flux.exchange(Element::Carbon, -c_out);
@@ -520,6 +580,7 @@ impl GlobalReservoirs {
             oxygen_sinks: acc.oxygen_sinks / dt,
             methane_release: acc.methane_release / dt,
             hydrogen_escape: acc.hydrogen_escape / dt,
+            surface_redox: acc.surface_redox / dt,
         };
     }
 }
@@ -563,6 +624,26 @@ mod tests {
         cold.integrate(&p, &ctx(&p, 275.0), &[0.0; WATER_POOL_COUNT], 1e6, &mut f2);
         assert!(hot.atmosphere[Gas::Co2 as usize] < cold.atmosphere[Gas::Co2 as usize]);
         assert!(flux.relative_error(Element::Carbon, hot.carbon()) < 1e-12);
+    }
+
+    #[test]
+    fn electrons_are_conserved_by_the_boxes() {
+        let p = PlanetParams::earth_archean();
+        let mut r = GlobalReservoirs::new(&p, 1.3e18);
+        let mut flux = FluxRegistry::default();
+        flux.set_initial(Element::Electrons, r.electrons());
+        // Photosynthèse de surface, méthane et sulfure exportés.
+        let mut rates = [0.0; WATER_POOL_COUNT];
+        rates[WaterPool::O2 as usize] = 3e12;
+        rates[WaterPool::Doc as usize] = 2e12;
+        rates[WaterPool::Ch4 as usize] = 1e11;
+        rates[WaterPool::Dic as usize] = -2.1e12;
+        rates[WaterPool::H2s as usize] = 1e10;
+        for _ in 0..30 {
+            r.integrate(&p, &ctx(&p, 290.0), &rates, 1e5, &mut flux);
+            let e = flux.relative_error(Element::Electrons, r.electrons());
+            assert!(e < 1e-9, "écart {e}");
+        }
     }
 
     #[test]

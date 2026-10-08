@@ -20,7 +20,7 @@ use evo_planet::{WaterChemistry, WaterPool};
 /// grandeur de microbiologie, à calibrer ; aucune n'est propre à la Terre.
 /// Seul le spectre de lumière disponible dépend de la planète (étoile et
 /// couche d'eau) : le monde le remplace à sa création.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Physiology {
     /// Débit maximal d'une enzyme d'efficacité 1, mol de substrat par mole
     /// de carbone de biomasse et par an.
@@ -126,7 +126,7 @@ pub struct Conditions {
 }
 
 /// Résultat de l'évaluation d'un phénotype dans un milieu.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GrowthRates {
     /// Voies chimiques : mol de substrat limitant par mole de carbone de
     /// biomasse et par an. Voies lumineuses : énergie fournie,

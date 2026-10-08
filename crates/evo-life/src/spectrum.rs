@@ -53,7 +53,7 @@ fn water_absorption(nm: f64) -> f64 {
 
 /// Densité spectrale relative de photons disponible, tabulée de 300 à
 /// 1100 nm, normalisée à 1 au maximum.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LightSpectrum {
     pub start_nm: f64,
     pub step_nm: f64,

@@ -11,17 +11,21 @@
 //!   couche d'eau de surface avec les réservoirs.
 //! - [`pools`] : liste unique des pools chimiques.
 
+pub mod biogrid;
 pub mod climate;
 pub mod environment;
 pub mod generate;
 pub mod geochem;
 pub mod grid;
+pub mod hydrology;
 pub mod params;
 pub mod pools;
 pub mod tectonics;
 
+pub use biogrid::BioGrid;
 pub use environment::{CellChange, CellEnvironment, ExchangeTargets, Planet, WaterChemistry, TECTONIC_STEP_YEARS};
 pub use geochem::{Gas, GlobalReservoirs, GASES, GAS_COUNT};
 pub use grid::GeodesicGrid;
+pub use hydrology::CellDisplay;
 pub use params::PlanetParams;
 pub use pools::{Pool, WaterPool, WATER_POOLS, WATER_POOL_COUNT};

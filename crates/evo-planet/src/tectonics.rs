@@ -23,7 +23,7 @@ use crate::params::PlanetParams;
 use evo_core::rng::{rng_for, Stream};
 use rand::Rng;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Parcel {
     /// Position sur la sphère unité.
     pub pos: Vec3,
@@ -36,7 +36,7 @@ pub struct Parcel {
     pub cell: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Plate {
     /// Pôle de rotation (unitaire) et vitesse angulaire, rad·Ma⁻¹.
     pub pole: Vec3,
@@ -44,7 +44,7 @@ pub struct Plate {
 }
 
 /// Bilan d'un pas tectonique, en aire sur la sphère unité.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TectonicActivity {
     pub new_crust_area: f64,
     pub subducted_area: f64,
@@ -63,7 +63,7 @@ impl TectonicActivity {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Tectonics {
     pub plates: Vec<Plate>,
     pub parcels: Vec<Parcel>,

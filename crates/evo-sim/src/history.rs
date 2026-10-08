@@ -6,14 +6,19 @@
 //! fin de chaque pas. Le moteur garde la précédente : un affichage peut
 //! interpoler entre les deux sans jamais lire l'état pendant qu'il change.
 //!
-//! [Simplification] Le double tampon partagé entre fils, les historiques par
-//! région et par espèce et les points de sauvegarde arrivent à l'étape 3.
+//! Depuis l'étape 3, l'état publié porte aussi les sorties d'affichage de la
+//! planète, les espèces vivantes, les événements du pas, la réserve
+//! d'influence et le détail de la zone d'intérêt. Le partage entre fils est
+//! fait par le crate `evo-engine`.
 
+use crate::influence::InfluenceView;
+use crate::observation::Focus;
+use evo_core::events::Origin;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
 /// Un échantillon des grandeurs globales.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sample {
     pub years: f64,
     /// Fractions molaires de l'atmosphère.
@@ -43,7 +48,7 @@ pub struct Sample {
 }
 
 /// Historique échantillonné à intervalle fixe de temps de jeu.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct History {
     pub every_years: f64,
     pub samples: Vec<Sample>,
@@ -102,23 +107,103 @@ impl History {
     }
 }
 
-/// Ce qu'un affichage peut lire d'une cellule.
+/// Ce qu'un affichage peut lire d'une cellule physique. Les champs du vivant
+/// sont ceux de sa cellule du vivant (`bio_cell`), répétés sur ses cellules
+/// physiques.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CellView {
+    /// Altitude (positive) ou profondeur (négative) sous le niveau de la mer, m.
     pub elevation_m: f32,
     pub temperature_k: f32,
     pub is_ocean: bool,
     pub ice: bool,
-    /// Biomasse vivante, mol de carbone.
+    /// Couverture de glace, de 0 à 1.
+    pub ice_cover: f32,
+    /// Lumière utilisable par des pigments, W·m⁻².
+    pub light_w_m2: f32,
+    /// Biomasse vivante de la cellule du vivant, mol de carbone.
     pub biomass: f32,
-    /// Guilde dominante (signature métabolique), 0 sans vie.
+    /// Biomasse par m² d'eau, mol de carbone (pour les calques).
+    pub biomass_per_m2: f32,
+    /// Guilde dominante (signature métabolique), 0 sans vie. C'est aussi
+    /// l'identifiant d'espèce du vivant microbien (voir [`SpeciesView`]).
     pub dominant_guild: u32,
     /// Couleur du pigment de la population phototrophe dominante, s'il y en a.
     pub pigment_rgb: Option<[u8; 3]>,
+    /// Étape la plus avancée du chemin vers la photosynthèse dans la cellule.
+    pub photosynthesis_stage: u8,
     /// O₂ dissous, mol·m⁻³.
     pub oxygen: f32,
     /// Plaque qui porte la cellule.
     pub plate: u16,
+    /// Cellule du vivant qui contient la cellule physique.
+    pub bio_cell: u32,
+    // — Sorties d'affichage de la planète (lecture seule, sans effet sur
+    //   l'histoire) —
+    /// Vent de surface et courant marin, m·s⁻¹ (est, nord).
+    pub wind_ms: [f32; 2],
+    pub current_ms: [f32; 2],
+    /// Vitesse de la plaque, cm·an⁻¹ (est, nord).
+    pub plate_velocity_cm_yr: [f32; 2],
+    pub rain_mm_yr: f32,
+    pub cloud_cover: f32,
+    /// Débit sortant, m³·s⁻¹, et cellule aval (`u32::MAX` : mer ou lac fermé).
+    pub river_flow_m3s: f32,
+    pub river_downstream: u32,
+    /// Part de la cellule couverte d'eaux douces.
+    pub lake_fraction: f32,
+}
+
+/// Une espèce vivante. Pendant l'ère microbienne, une espèce est une guilde
+/// métabolique, identifiée par sa signature (l'ensemble des réactions
+/// qu'elle catalyse) ; ses écotypes sont les génotypes de ses populations.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SpeciesView {
+    pub id: u32,
+    /// Nom généré à partir du métabolisme (« méthanogènes », …).
+    pub name: String,
+    /// Biomasse totale, mol de carbone.
+    pub biomass: f64,
+    /// Cellules du vivant occupées.
+    pub cells: u32,
+    /// Écotypes (génotypes distincts).
+    pub ecotypes: u32,
+    pub phototroph: bool,
+    pub photosynthesis_stage: u8,
+    /// Couleur du pigment le plus abondant de l'espèce, s'il y en a.
+    pub pigment_rgb: Option<[u8; 3]>,
+    /// Cellule du vivant où l'espèce est la plus abondante.
+    pub peak_bio_cell: u32,
+}
+
+/// Un événement, tel que la chronique et les alertes le montrent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EventView {
+    pub id: u64,
+    pub years: f64,
+    /// Cellule du vivant concernée, s'il y en a une.
+    pub cell: Option<u32>,
+    pub type_name: &'static str,
+    /// Libellé en français.
+    pub label: String,
+    pub origin: Origin,
+    pub cause: Option<u64>,
+    pub interest: f32,
+}
+
+impl EventView {
+    pub fn from_event(e: &evo_core::events::Event) -> Self {
+        Self {
+            id: e.id,
+            years: e.years,
+            cell: e.cell,
+            type_name: e.kind.type_name(),
+            label: e.kind.describe(),
+            origin: e.origin,
+            cause: e.cause,
+            interest: e.interest as f32,
+        }
+    }
 }
 
 /// Photographie datée et immuable du monde à la fin d'un pas.
@@ -131,10 +216,22 @@ pub struct PublishedState {
     /// Mode du climat pour ce pas.
     pub climate_mode: ClimateMode,
     pub globals: Sample,
+    /// Une vue par cellule physique, dans l'ordre de la grille.
     pub cells: Vec<CellView>,
+    /// Niveau de la grille du vivant et nombre de ses cellules.
+    pub bio_level: u32,
+    pub bio_cells: u32,
+    /// Espèces vivantes, par biomasse décroissante.
+    pub species: Vec<SpeciesView>,
+    /// Événements inscrits pendant ce pas.
+    pub new_events: Vec<EventView>,
+    pub influence: InfluenceView,
+    pub paused: bool,
+    /// Détail de la zone d'intérêt de la caméra.
+    pub focus: Focus,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ClimateMode {
     /// Pas d'au moins 10 000 ans : climat d'équilibre, cycles orbitaux lissés.
     #[default]

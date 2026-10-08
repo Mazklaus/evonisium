@@ -69,7 +69,7 @@ pub fn wright_fisher_fixes(n: u64, s: f64, rng: &mut impl Rng) -> bool {
 ///
 /// [Simplification] Une seule substitution par population et par pas :
 /// l'interférence clonale entre mutations simultanées est ignorée.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OriginFixation {
     pub candidates: usize,
     /// Plafond de l'effectif efficace (les grandes populations microbiennes

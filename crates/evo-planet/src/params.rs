@@ -5,7 +5,7 @@
 
 use evo_core::units::{GRAVITATIONAL_CONSTANT, STEFAN_BOLTZMANN};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlanetParams {
     /// Nom affiché du préréglage.
     pub name: String,
@@ -141,10 +141,9 @@ pub struct PlanetParams {
 
     // — Volcanisme et hydrothermalisme (au départ, proportionnels à
     //   l'activité tectonique et à la chaleur interne) —
-    /// Dégazage volcanique de CO₂, mol·an⁻¹, et part de gaz réduits (H₂)
-    /// par mole de CO₂ (état d'oxydation du manteau).
+    /// Dégazage volcanique de CO₂, mol·an⁻¹ (la part de gaz réduits vient de
+    /// [`PlanetParams::reduced_outgassing_ratio`]).
     pub outgassing_co2: f64,
-    pub outgassing_h2_ratio: f64,
     /// Flux hydrothermaux globaux, mol·an⁻¹ ; une partie sort aux sources de
     /// la couche de surface, le reste va à l'océan profond.
     pub vent_h2_flux: f64,
@@ -186,6 +185,44 @@ pub struct PlanetParams {
     /// Temps de résidence du fer et du manganèse dans un océan profond
     /// anoxique (dépôt de sidérite, pyrite), ans.
     pub deep_metal_residence_years: f64,
+
+    // — Étape 3 : état d'oxydation du manteau, puits d'O₂ des fonds —
+    /// État d'oxydation du manteau, en unités logarithmiques par rapport au
+    /// tampon fayalite-magnétite-quartz (ΔFMQ). Il fixe, avec l'eau du
+    /// manteau et la pression de dégazage, la part de gaz réduits des volcans
+    /// (voir [`PlanetParams::reduced_outgassing_ratio`]).
+    pub mantle_delta_fmq: f64,
+    /// Rapport H₂/CO₂ des gaz volcaniques au manteau de référence (ΔFMQ = 0,
+    /// eau et pression terrestres de référence).
+    pub reference_h2_co2: f64,
+    /// Inventaire d'eau et pression de surface de référence de cette loi.
+    pub reference_water_m: f64,
+    pub reference_surface_pa: f64,
+    /// Oxydation de la croûte océanique jeune par l'eau de mer oxygénée
+    /// (fer et soufre du basalte, altération des fonds), mol d'O₂·an⁻¹ à
+    /// l'activité tectonique de départ et pour un océan profond oxygéné.
+    pub seafloor_oxidation_o2: f64,
+
+    // — Étape 3 : surface (diagnostics de la circulation paramétrée) —
+    /// Vent de surface de référence, m·s⁻¹.
+    pub wind_reference_ms: f64,
+    /// Distance à la mer sur laquelle l'humidité de l'air décroît d'un
+    /// facteur e, km.
+    pub moisture_range_km: f64,
+    /// Évaporation des mers libres de glace à 288 K, m·an⁻¹.
+    pub ocean_evaporation_m_yr: f64,
+    /// Part de la pluie qui ruisselle vers les rivières.
+    pub runoff_coefficient: f64,
+    /// Part d'un sol bien arrosé (un mètre de pluie par an) couverte de
+    /// croûtes et tapis microbiens humides.
+    pub wet_soil_fraction: f64,
+    /// Débit qui remplit à moitié la plaine d'un fleuve de lacs, m³·s⁻¹.
+    pub lake_flow_scale_m3s: f64,
+    /// Épaisseur de la couche d'eau des lacs et des sols humides, m.
+    pub lake_layer_m: f64,
+    /// Phosphate des eaux douces, en part de celui de l'océan profond : il
+    /// vient de l'altération du bassin versant et repart aux rivières.
+    pub lake_phosphate_share: f64,
 }
 
 impl PlanetParams {
@@ -252,7 +289,6 @@ impl PlanetParams {
             vent_off_axis_floor: 0.1,
             runoff_land_per_ocean: 1.0,
             outgassing_co2: 1.5e13,
-            outgassing_h2_ratio: 0.03,
             vent_h2_flux: 1.0e12,
             vent_h2s_flux: 2.0e11,
             vent_fe_flux: 5.0e11,
@@ -274,6 +310,22 @@ impl PlanetParams {
             oxidative_weathering_reference: 0.21,
             oxidative_weathering_exponent: 0.5,
             deep_metal_residence_years: 2.0e5,
+            mantle_delta_fmq: 0.0,
+            reference_h2_co2: 0.03,
+            reference_water_m: 2630.0,
+            reference_surface_pa: 9.0e4,
+            // Environ 1 à 3·10¹² mol d'O₂ par an aujourd'hui pour l'oxydation
+            // du fer et du soufre de la croûte jeune (Lécuyer et Ricard, 1999 ;
+            // Catling et Kasting, 2017).
+            seafloor_oxidation_o2: 2.0e12,
+            wind_reference_ms: 7.0,
+            moisture_range_km: 1500.0,
+            ocean_evaporation_m_yr: 1.2,
+            runoff_coefficient: 0.4,
+            wet_soil_fraction: 0.03,
+            lake_flow_scale_m3s: 5000.0,
+            lake_layer_m: 2.0,
+            lake_phosphate_share: 0.3,
         }
     }
 
@@ -365,6 +417,26 @@ impl PlanetParams {
     /// de l'océan profond (0 : anoxique, 1 : oxygéné).
     pub fn burial_efficiency(&self, deep_oxic: f64) -> f64 {
         self.organic_burial_efficiency * (1.0 - self.organic_burial_oxic_reduction * deep_oxic.clamp(0.0, 1.0))
+    }
+
+    /// Rapport H₂/CO₂ des gaz volcaniques de ce monde. Trois effets
+    /// (Gaillard et Scaillet, 2014 ; Catling et Kasting, 2017, chapitre 7) :
+    /// - l'état d'oxydation du manteau : H₂/H₂O varie comme fO₂^(−½), soit un
+    ///   facteur √10 par unité de ΔFMQ ;
+    /// - l'eau du manteau, qui suit l'inventaire d'eau de la planète : H₂O/CO₂
+    ///   des gaz croît comme sa racine carrée (dégazage limité par la
+    ///   solubilité), borné entre un cinquième et le triple ;
+    /// - la pression de dégazage : sous une atmosphère épaisse, les gaz
+    ///   sortent moins réduits (exposant −0,3).
+    ///
+    /// [Simplification] Loi d'échelle ajustée, pas de calcul d'équilibre des
+    /// gaz magmatiques.
+    pub fn reduced_outgassing_ratio(&self) -> f64 {
+        let fmq = 10f64.powf(-0.5 * self.mantle_delta_fmq);
+        let water = (self.water_inventory_m / self.reference_water_m).sqrt().clamp(0.2, 3.0);
+        let surface = self.n2_pa + self.co2_pa + self.ch4_pa + self.h2_pa;
+        let pressure = (surface.max(1.0) / self.reference_surface_pa).powf(-0.3);
+        self.reference_h2_co2 * fmq * water * pressure
     }
 
     /// Gravité de surface, m·s⁻², déduite de la masse et du rayon.

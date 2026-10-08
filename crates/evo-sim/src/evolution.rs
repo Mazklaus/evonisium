@@ -1,4 +1,25 @@
-//! Évolution dans les populations d'une cellule, pendant un pas planétaire.
+//! Évolution par dème, pendant un pas planétaire (étape 3).
+//!
+//! Le niveau génétique prévu par le document Vision est le dème : une région
+//! de nombreuses cellules du vivant. Les mutations, la fixation et le
+//! transfert horizontal sont calculés une fois par dème et par génotype
+//! (écotype d'une guilde partagé par plusieurs cellules), dans la cellule où
+//! ce génotype est le plus abondant, puis appliqués à toutes les cellules du
+//! dème qui le portent. L'écologie reste calculée par cellule. L'offre de
+//! mutants est celle de toutes ces cellules réunies : un dème ne découvre ni
+//! plus ni moins d'innovations que ses cellules à l'étape 2, pour un coût
+//! divisé par le nombre de cellules qui partagent un génotype.
+//!
+//! Un dème est une région sans barrière : les cellules d'une maille d'une
+//! grille géodésique plus grossière (niveau du vivant moins un : environ
+//! 4 cellules du vivant, 450 km) qui ont le même milieu (mer ou eaux
+//! douces) et une température voisine (classes de 4 K). Un fort gradient de
+//! température est une barrière pour la sélection : de part et d'autre, le
+//! même génotype s'adapte différemment.
+//!
+//! [Simplification] Les barrières physiques (détroits, reliefs) à
+//! l'intérieur d'une maille sont ignorées ; la migration entre cellules
+//! fait le reste.
 //!
 //! Régime « apparition puis fixation » de l'étape 1, complété à l'étape 2 par
 //! les mécanismes qui franchissent les innovations à plusieurs pièces
@@ -23,12 +44,13 @@ use evo_genetics::{
 use evo_life::community::{CellContext, Population};
 use evo_life::metabolism::photosynthesis_stage;
 use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
+use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
 use rand::Rng;
 use std::sync::Arc;
 
 /// Réglages de l'évolution.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvolutionParams {
     /// Candidats évalués par classe de mutation (ordre de [`MUTATION_KINDS`]).
     pub candidates_per_kind: [usize; MUTATION_KIND_COUNT],
@@ -59,7 +81,7 @@ impl Default for EvolutionParams {
 
 /// Accélérateur de l'émergence assistée (décision du 7 octobre 2026 : actif
 /// seulement quand l'évolution stagne).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AcceleratorParams {
     pub enabled: bool,
     /// Durée sans progrès sur le chemin de la photosynthèse, depuis l'arrivée
@@ -74,29 +96,6 @@ impl Default for AcceleratorParams {
     fn default() -> Self {
         Self { enabled: true, patience_years: 300e6, boost: 100.0 }
     }
-}
-
-/// Population fondée par mutation, en attente d'un identifiant de lignée.
-pub struct Founder {
-    pub parent: u32,
-    pub population: Population,
-}
-
-/// Où une modification fixée a pris place.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Target {
-    /// Population existante de la cellule (indice).
-    Population(usize),
-    /// Population fondatrice (indice dans la liste des fondateurs).
-    Founder(usize),
-}
-
-/// Modification de génome fixée pendant le pas.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FixedChange {
-    pub target: Target,
-    pub cause: GenomeChangeCause,
-    pub element: ChangedElement,
 }
 
 /// Compteurs de l'évolution d'une cellule.
@@ -119,12 +118,6 @@ impl EvolutionStats {
             *a += b;
         }
     }
-}
-
-pub struct CellEvolution {
-    pub founders: Vec<Founder>,
-    pub changes: Vec<FixedChange>,
-    pub stats: EvolutionStats,
 }
 
 /// Meilleur candidat fixé pour une population.
@@ -156,183 +149,301 @@ fn gains_function(new: &Phenotype, old: &Phenotype) -> bool {
         || (new.rhodopsin > 0.0 && old.rhodopsin <= 0.0)
 }
 
-/// Régime « apparition puis fixation » dans les populations d'une cellule.
+/// Largeur des classes de température qui séparent les dèmes d'une maille, K.
+pub const DEME_TEMPERATURE_BAND_K: f64 = 2.0;
+
+/// Classe de milieu d'une cellule du vivant : eaux douces ou mer, et
+/// température.
+pub fn habitat_class(env: &CellEnvironment) -> i64 {
+    let band = (env.temperature_k / DEME_TEMPERATURE_BAND_K).floor() as i64;
+    band * 2 + i64::from(env.is_ocean)
+}
+
+/// Groupe des populations d'un dème qui partagent un génotype.
+pub struct GenotypeGroup {
+    /// Classe de milieu du dème (voir [`habitat_class`]).
+    pub habitat: i64,
+    /// Cellule du vivant et indice de la population la plus abondante.
+    pub rep: (usize, usize),
+    /// Offre de mutants : somme des effectifs efficaces de chaque cellule.
+    pub supply_ne: f64,
+    /// Effectif total du groupe.
+    pub census: f64,
+    /// Cellules où le génotype est présent.
+    pub cells: u32,
+    /// Populations du groupe (cellule, indice, biomasse), les plus abondantes
+    /// d'abord, au plus [`MAX_JUDGED_CELLS`] : un mutant y est jugé.
+    pub members: Vec<(usize, usize, f64)>,
+}
+
+/// Cellules où un mutant est jugé, au plus, pour un génotype d'un dème.
+pub const MAX_JUDGED_CELLS: usize = 6;
+
+impl GenotypeGroup {
+    /// Multiplicateur du nombre de candidats évalués : un génotype répandu
+    /// sur plusieurs cellules y explore plus de mutants, comme ses cellules
+    /// le faisaient séparément, mais en racine carrée du nombre de cellules
+    /// (au plus 4) pour garder le gain de calcul.
+    pub fn candidate_factor(&self) -> usize {
+        ((self.cells as f64).sqrt().ceil() as usize).clamp(1, 4)
+    }
+}
+
+/// Rassemble les populations des cellules `cells` par génotype, dans l'ordre
+/// de première apparition (cellules croissantes, puis indices).
+pub fn genotype_groups(cells: &[u32], communities: &[Vec<Population>], envs: &[CellEnvironment], cfg: &WorldConfig) -> Vec<GenotypeGroup> {
+    let physio = &cfg.physiology;
+    let mut keys: Vec<(usize, i64)> = Vec::new();
+    let mut groups: Vec<GenotypeGroup> = Vec::new();
+    for &c in cells {
+        let c = c as usize;
+        let habitat = habitat_class(&envs[c]);
+        for (i, p) in communities[c].iter().enumerate() {
+            let key = (Arc::as_ptr(&p.genome) as usize, habitat);
+            let census = p.census(physio);
+            let ne = cfg.regime.effective_size(census);
+            match keys.iter().position(|&k| k == key) {
+                Some(g) => {
+                    let grp = &mut groups[g];
+                    grp.supply_ne += ne;
+                    grp.census += census;
+                    grp.cells += 1;
+                    let (rc, ri) = grp.rep;
+                    if p.biomass > communities[rc][ri].biomass {
+                        grp.rep = (c, i);
+                    }
+                    grp.members.push((c, i, p.biomass));
+                }
+                None => {
+                    keys.push(key);
+                    groups.push(GenotypeGroup { habitat, rep: (c, i), supply_ne: ne, census, cells: 1, members: vec![(c, i, p.biomass)] });
+                }
+            }
+        }
+    }
+    for g in groups.iter_mut() {
+        // Tri stable : à biomasse égale, l'ordre des cellules décide.
+        g.members.sort_by(|a, b| b.2.total_cmp(&a.2));
+        g.members.truncate(MAX_JUDGED_CELLS);
+    }
+    groups
+}
+
+/// Modification fixée pour un génotype d'un dème.
+pub struct Fixation {
+    pub habitat: i64,
+    pub rep: (usize, usize),
+    pub genome: Arc<Genome>,
+    pub phenotype: Arc<Phenotype>,
+    pub rates: GrowthRates,
+    pub cause: GenomeChangeCause,
+    pub element: ChangedElement,
+}
+
+/// Régime « apparition puis fixation » pour un génotype : le résident est la
+/// population `i` de la cellule `pops`, l'offre de mutants celle du groupe.
 #[allow(clippy::too_many_arguments)]
-pub fn evolve_cell(
-    cell: usize,
-    pops: &mut [Population],
-    chem: &WaterChemistry,
-    ctx: &CellContext,
+pub fn evolve_genotype(
+    communities: &[Vec<Population>],
+    chemistry: &[WaterChemistry],
+    envs: &[CellEnvironment],
     cfg: &WorldConfig,
     dt: f64,
-    step_index: u64,
+    group: &GenotypeGroup,
+    rng: &mut impl Rng,
     accelerator_on: bool,
-) -> CellEvolution {
-    let mut out = CellEvolution { founders: Vec::new(), changes: Vec::new(), stats: EvolutionStats::default() };
-    if pops.is_empty() {
-        return out;
-    }
+    stats: &mut EvolutionStats,
+) -> Option<(GenomeChange, Phenotype, GrowthRates)> {
     let physio = &cfg.physiology;
     let evo = &cfg.evolution;
-    let cond = ctx.conditions(CellContext::photo_biomass(pops));
+    let (rc, i) = group.rep;
+    let pops = &communities[rc];
+    let resident = &pops[i];
+    if resident.rates.birth <= 0.0 {
+        return None;
+    }
+    // Conditions des cellules où le mutant est jugé (la représentative
+    // d'abord).
+    let judged: Vec<(usize, usize, f64, evo_life::Conditions)> = group
+        .members
+        .iter()
+        .map(|&(c, j, b)| {
+            let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
+            (c, j, b, ctx.conditions(CellContext::photo_biomass(&communities[c])))
+        })
+        .collect();
+    let weight: f64 = judged.iter().map(|j| j.2).sum::<f64>().max(f64::MIN_POSITIVE);
+    let chem = &chemistry[rc];
+    let cond = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| j.3).unwrap_or_else(|| {
+        let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
+        ctx.conditions(CellContext::photo_biomass(pops))
+    });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
     let boost = if accelerator_on { evo.accelerator.boost } else { 1.0 };
-    let n = pops.len();
-    for i in 0..n {
-        let resident = &pops[i];
-        if resident.rates.birth <= 0.0 {
+    let generations = dt / resident.rates.generation_time(physio);
+    let ne = cfg.regime.effective_size(group.census);
+    let supply = group.supply_ne.max(ne);
+    let u = cfg.mutation.genomic_rate(&resident.genome);
+
+    // Évalue un génome candidat contre la population qu'il affronterait.
+    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
+        let phenotype = Phenotype::from_genome(genome, physio);
+        stats.genetic_evaluations += 1;
+        if phenotype.signature == 0 {
+            return None;
+        }
+        let rates = growth_rates(&phenotype, &cond, chem, physio);
+        // Un mutant de guilde nouvelle est jugé contre la population de
+        // cette guilde si elle existe déjà dans la cellule.
+        let against = |pops: &[Population], own: &Population, rates: &GrowthRates| {
+            let competitor = if phenotype.signature == own.signature() {
+                own
+            } else {
+                pops.iter().find(|q| q.signature() == phenotype.signature).unwrap_or(own)
+            };
+            selection_coefficient(rates, &competitor.rates, physio)
+        };
+        if phenotype.signature != resident.signature() || judged.len() <= 1 {
+            // Une guilde nouvelle naît dans la cellule représentative.
+            return Some((against(pops, resident, &rates), phenotype, rates));
+        }
+        // Même guilde : le mutant remplacera le génotype dans tout le dème ;
+        // son coefficient de sélection est la moyenne, pondérée par la
+        // biomasse, de ceux des cellules où il est jugé.
+        let mut s = 0.0;
+        for &(c, j, b, ref cnd) in &judged {
+            let r = if (c, j) == (rc, i) { rates } else { growth_rates(&phenotype, cnd, &chemistry[c], physio) };
+            s += b * against(&communities[c], &communities[c][j], &r);
+        }
+        Some((s / weight, phenotype, rates))
+    };
+
+    let mut best: Option<Best> = None;
+    let consider = |best: &mut Option<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
+        if best.as_ref().is_none_or(|b| s > b.s) {
+            *best = Some(Best { s, change, phenotype, rates });
+        }
+    };
+
+    for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
+        let count = evo.candidates_per_kind[k] * group.candidate_factor();
+        if count == 0 {
             continue;
         }
-        let mut rng = rng_for(cfg.seed, Stream::Mutation, &[step_index, cell as u64, i as u64]);
-        let generations = dt / resident.rates.generation_time(physio);
-        let ne = cfg.regime.effective_size(resident.census(physio));
-        let u = cfg.mutation.genomic_rate(&resident.genome);
-
-        // Évalue un génome candidat contre la population qu'il affronterait.
-        let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
-            let phenotype = Phenotype::from_genome(genome, physio);
-            stats.genetic_evaluations += 1;
-            if phenotype.signature == 0 {
-                return None;
-            }
-            let rates = growth_rates(&phenotype, &cond, chem, physio);
-            // Un mutant de guilde nouvelle est jugé contre la population de
-            // cette guilde si elle existe déjà dans la cellule.
-            let competitor = if phenotype.signature == resident.signature() {
-                resident
-            } else {
-                pops.iter().find(|q| q.signature() == phenotype.signature).unwrap_or(resident)
-            };
-            Some((selection_coefficient(&rates, &competitor.rates, physio), phenotype, rates))
-        };
-
-        let mut best: Option<Best> = None;
-        let consider = |best: &mut Option<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
-            if best.as_ref().is_none_or(|b| s > b.s) {
-                *best = Some(Best { s, change, phenotype, rates });
-            }
-        };
-
-        for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
-            let count = evo.candidates_per_kind[k];
-            if count == 0 {
+        let innovative = matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence);
+        let kind_boost = if innovative { boost } else { 1.0 };
+        let copies = supply * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
+        for _ in 0..count {
+            let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
+            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
                 continue;
             }
-            let innovative = matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence);
-            let kind_boost = if innovative { boost } else { 1.0 };
-            let copies = ne * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
-            for _ in 0..count {
-                let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, &mut rng);
-                let Some((s, phenotype, rates)) = evaluate(&change.genome, &mut out.stats) else { continue };
-                if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
-                    continue;
-                }
-                match fixes(&cfg.regime, s, ne, copies, kind_boost, &mut rng) {
-                    Some(accelerated) => {
-                        if accelerated {
-                            change.cause = GenomeChangeCause::Accelerator;
-                        }
-                        consider(&mut best, s, change, phenotype, rates);
-                    }
-                    None if evo.tunnel && s > evo.tunnel_min_selection => {
-                        // Tunnel stochastique : la lignée du premier mutant,
-                        // tant qu'elle survit, produit des doubles mutants.
-                        let second = mutate(&change.genome, &cfg.mutation, &mut rng);
-                        let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
-                        out.stats.tunnel_attempts += 1;
-                        let Some((s2, phenotype2, rates2)) = evaluate(&second.genome, &mut out.stats) else { continue };
-                        // Le tunnel sert à franchir une innovation à deux
-                        // pièces : le double mutant doit gagner une fonction
-                        // que le résident n'a pas. Sinon, la seconde mutation
-                        // seule, bien plus fréquente, l'emporte sur ce double
-                        // qui traîne la première comme un poids mort.
-                        if s2 <= 0.0 || !gains_function(&phenotype2, &resident.phenotype) || best.as_ref().is_some_and(|b| b.s >= s2) {
-                            continue;
-                        }
-                        let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
-                        let mu2 = u * cfg.mutation.weights[k2] / weight_total;
-                        let p2 = fixation_probability(s2, ne, 1.0 / ne);
-                        let p1 = tunnel_probability((-s).max(0.0), mu2, p2);
-                        if rng.random::<f64>() < OriginFixation::any_fixes(p1, copies) {
-                            out.stats.tunnel_successes += 1;
-                            let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
-                            consider(&mut best, s2, double, phenotype2, rates2);
-                        }
-                    }
-                    None => {}
-                }
-            }
-        }
-
-        // Transfert horizontal depuis une autre population de la cellule.
-        let others = cell_biomass - resident.biomass;
-        if evo.hgt_candidates > 0 && evo.hgt_rate > 0.0 && others > 0.0 {
-            for _ in 0..evo.hgt_candidates {
-                let mut x = rng.random::<f64>() * others;
-                let Some(donor) = pops.iter().enumerate().filter(|&(j, _)| j != i).find_map(|(_, q)| {
-                    x -= q.biomass;
-                    (x < 0.0).then_some(q)
-                }) else {
-                    continue;
-                };
-                let genes: Vec<_> = donor.genome.functional_genes().copied().collect();
-                if genes.is_empty() {
-                    continue;
-                }
-                let gene = genes[rng.random_range(0..genes.len())];
-                let mut change = transfer_gene(&resident.genome, gene, GenomeChangeCause::HorizontalTransfer);
-                let Some((s, phenotype, rates)) = evaluate(&change.genome, &mut out.stats) else { continue };
-                if best.as_ref().is_some_and(|b| b.s >= s) {
-                    continue;
-                }
-                let copies = ne * evo.hgt_rate * generations * donor.biomass / cell_biomass / evo.hgt_candidates as f64;
-                if let Some(accelerated) = fixes(&cfg.regime, s, ne, copies, boost, &mut rng) {
+            match fixes(&cfg.regime, s, ne, copies, kind_boost, rng) {
+                Some(accelerated) => {
                     if accelerated {
                         change.cause = GenomeChangeCause::Accelerator;
                     }
                     consider(&mut best, s, change, phenotype, rates);
                 }
+                None if evo.tunnel && s > evo.tunnel_min_selection => {
+                    // Tunnel stochastique : la lignée du premier mutant,
+                    // tant qu'elle survit, produit des doubles mutants.
+                    let second = mutate(&change.genome, &cfg.mutation, rng);
+                    let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
+                    stats.tunnel_attempts += 1;
+                    let Some((s2, phenotype2, rates2)) = evaluate(&second.genome, stats) else { continue };
+                    // Le tunnel sert à franchir une innovation à deux
+                    // pièces : le double mutant doit gagner une fonction
+                    // que le résident n'a pas. Sinon, la seconde mutation
+                    // seule, bien plus fréquente, l'emporte sur ce double
+                    // qui traîne la première comme un poids mort.
+                    if s2 <= 0.0 || !gains_function(&phenotype2, &resident.phenotype) || best.as_ref().is_some_and(|b| b.s >= s2) {
+                        continue;
+                    }
+                    let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
+                    let mu2 = u * cfg.mutation.weights[k2] / weight_total;
+                    let p2 = fixation_probability(s2, ne, 1.0 / ne);
+                    let p1 = tunnel_probability((-s).max(0.0), mu2, p2);
+                    if rng.random::<f64>() < OriginFixation::any_fixes(p1, copies) {
+                        stats.tunnel_successes += 1;
+                        let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
+                        consider(&mut best, s2, double, phenotype2, rates2);
+                    }
+                }
+                None => {}
             }
         }
+    }
 
-        let Some(Best { change, phenotype, rates, .. }) = best else { continue };
-        let GenomeChange { genome, cause, element } = change;
-        out.stats.fixed_by_cause[cause.index()] += 1;
-        let parent_lineage = pops[i].lineage;
-        let (genome, phenotype) = (Arc::new(genome), Arc::new(phenotype));
-        let target = if phenotype.signature == pops[i].signature() {
-            let p = &mut pops[i];
-            p.genome = genome;
-            p.phenotype = phenotype;
-            p.rates = rates;
-            Target::Population(i)
-        } else if let Some(j) = pops.iter().position(|q| q.signature() == phenotype.signature) {
-            let q = &mut pops[j];
-            q.genome = genome;
-            q.phenotype = phenotype;
-            q.rates = rates;
-            q.lineage = parent_lineage;
-            Target::Population(j)
-        } else if !out.founders.iter().any(|f| f.population.signature() == phenotype.signature) {
-            // Nouvelle guilde : la biomasse fondatrice est prise au parent.
-            let give = cfg.founder_biomass.min(0.5 * pops[i].biomass);
-            if give < cfg.extinction_biomass {
-                out.stats.fixed_by_cause[cause.index()] -= 1;
+    // Transfert horizontal depuis une autre population de la cellule.
+    let others = cell_biomass - resident.biomass;
+    if evo.hgt_candidates > 0 && evo.hgt_rate > 0.0 && others > 0.0 {
+        for _ in 0..evo.hgt_candidates {
+            let mut x = rng.random::<f64>() * others;
+            let Some(donor) = pops.iter().enumerate().filter(|&(j, _)| j != i).find_map(|(_, q)| {
+                x -= q.biomass;
+                (x < 0.0).then_some(q)
+            }) else {
+                continue;
+            };
+            let genes: Vec<_> = donor.genome.functional_genes().copied().collect();
+            if genes.is_empty() {
                 continue;
             }
-            pops[i].biomass -= give;
-            out.founders.push(Founder {
-                parent: parent_lineage,
-                population: Population { lineage: parent_lineage, genome, phenotype, biomass: give, rates },
-            });
-            Target::Founder(out.founders.len() - 1)
-        } else {
-            out.stats.fixed_by_cause[cause.index()] -= 1;
-            continue;
-        };
-        out.stats.substitutions += 1;
-        out.changes.push(FixedChange { target, cause, element });
+            let gene = genes[rng.random_range(0..genes.len())];
+            let mut change = transfer_gene(&resident.genome, gene, GenomeChangeCause::HorizontalTransfer);
+            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            if best.as_ref().is_some_and(|b| b.s >= s) {
+                continue;
+            }
+            let copies = supply * evo.hgt_rate * generations * donor.biomass / cell_biomass / evo.hgt_candidates as f64;
+            if let Some(accelerated) = fixes(&cfg.regime, s, ne, copies, boost, rng) {
+                if accelerated {
+                    change.cause = GenomeChangeCause::Accelerator;
+                }
+                consider(&mut best, s, change, phenotype, rates);
+            }
+        }
     }
-    out
+    best.map(|b| (b.change, b.phenotype, b.rates))
+}
+
+/// Évolution d'un dème : un tirage par génotype, dans sa cellule
+/// représentative. Ne modifie rien : les fixations sont appliquées ensuite,
+/// dans l'ordre des dèmes.
+#[allow(clippy::too_many_arguments)]
+pub fn evolve_deme(
+    deme: usize,
+    cells: &[u32],
+    communities: &[Vec<Population>],
+    chemistry: &[WaterChemistry],
+    envs: &[CellEnvironment],
+    cfg: &WorldConfig,
+    dt: f64,
+    step_index: u64,
+    accelerator_on: bool,
+) -> (Vec<Fixation>, EvolutionStats) {
+    let mut stats = EvolutionStats::default();
+    let mut out = Vec::new();
+    for group in genotype_groups(cells, communities, envs, cfg) {
+        let (c, i) = group.rep;
+        let mut rng = rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64]);
+        if let Some((change, phenotype, rates)) =
+            evolve_genotype(communities, chemistry, envs, cfg, dt, &group, &mut rng, accelerator_on, &mut stats)
+        {
+            let GenomeChange { genome, cause, element } = change;
+            out.push(Fixation {
+                habitat: group.habitat,
+                rep: group.rep,
+                genome: Arc::new(genome),
+                phenotype: Arc::new(phenotype),
+                rates,
+                cause,
+                element,
+            });
+        }
+    }
+    (out, stats)
 }

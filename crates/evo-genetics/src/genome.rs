@@ -12,7 +12,7 @@
 pub type ReactionId = u8;
 
 /// Famille d'un domaine protéique.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DomainFamily {
     /// Catalyse une réaction du catalogue métabolique.
     Catalytic(ReactionId),
@@ -38,7 +38,7 @@ pub enum DomainFamily {
 /// Parenté déclarée entre familles de domaines : une copie d'un domaine
 /// `from` peut diverger vers `to` avec le poids relatif `weight`. La table est
 /// tenue par le chantier qui donne leur sens aux familles (Organismes).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DomainRelation {
     pub from: DomainFamily,
     pub to: DomainFamily,
@@ -47,7 +47,7 @@ pub struct DomainRelation {
 
 /// Paramètres d'un domaine. Leur sens précis est fixé par le chantier qui les
 /// lit ; la mutation les fait varier sans connaître leur effet.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Domain {
     pub family: DomainFamily,
     /// Activité maximale, relative (1 = enzyme typique).
@@ -66,7 +66,7 @@ pub struct Domain {
     pub absorption_nm: f64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Gene {
     pub domain: Domain,
     /// Faux une fois devenu pseudogène.
@@ -76,7 +76,7 @@ pub struct Gene {
 /// Longueur du marqueur neutre, en bases.
 pub const MARKER_LEN: usize = 32;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Genome {
     pub genes: Vec<Gene>,
     /// Séquence neutre (bases 0 à 3) : horloge moléculaire et parenté.
@@ -116,7 +116,7 @@ impl Genome {
 /// Pourquoi un génome a changé : les huit causes du document Génétique
 /// (« Une seule porte d'entrée pour modifier un génome »). L'étape 1 n'utilise
 /// que la mutation spontanée ; les autres sont réservées.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GenomeChangeCause {
     SpontaneousMutation(crate::mutation::MutationKind),
     InducedMutation(crate::mutation::MutationKind),
@@ -162,7 +162,7 @@ impl GenomeChangeCause {
 }
 
 /// Élément modifié par un changement de génome (pour le journal).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ChangedElement {
     /// Paramètre d'un gène existant modifié, ou gène devenu pseudogène.
     Gene { index: u16, family: DomainFamily },
