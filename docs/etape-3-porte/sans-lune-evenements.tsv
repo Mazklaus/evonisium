@@ -1,0 +1,13 @@
+id	annees	cellule	type	origine	cause	interet	detail
+0	0	5	vie déposée	moteur		1.00	LifeSeeded { lineage: 0 }
+59	200000	8196	innovation	moteur		0.85	Innovation { lineage: 0, pathway: "rhodopsine", stage: 1, label: "rhodopsine" }
+60	200000	4754	innovation	moteur	0	0.70	Innovation { lineage: 0, pathway: "photosynthèse", stage: 2, label: "phototrophie simple" }
+107	400000	892	innovation	moteur	60	0.80	Innovation { lineage: 64, pathway: "photosynthèse", stage: 3, label: "photosynthèse anoxygénique" }
+5850	2800000	9115	innovation	moteur	107	0.90	Innovation { lineage: 4787, pathway: "photosynthèse", stage: 4, label: "photosynthèse oxygénique" }
+200704	9200000		glaciation globale	moteur		1.00	Snowball { ice_fraction: 1.0, starts: true }
+354123	18800000		glaciation globale	moteur		0.85	Snowball { ice_fraction: 0.01422932259763441, starts: false }
+945934	30000000		seuil d'oxygène	moteur	5850	1.00	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+964382	30200000		seuil d'oxygène	moteur	5850	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+1050528	31200000		seuil d'oxygène	moteur	5850	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1359588	35200000		seuil d'oxygène	moteur	5850	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1660267	38800000		seuil d'oxygène	moteur	5850	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }

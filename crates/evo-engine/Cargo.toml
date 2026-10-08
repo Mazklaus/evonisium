@@ -1,0 +1,17 @@
+[package]
+name = "evo-engine"
+description = "Moteur d'Evonisium vu du client : fil de simulation, file d'ordres, canal d'observation, état publié, requêtes et points de sauvegarde."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-life.workspace = true
+evo-sim.workspace = true
+rayon.workspace = true
+rusqlite.workspace = true
+bincode.workspace = true
+
+[dev-dependencies]

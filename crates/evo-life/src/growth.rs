@@ -12,7 +12,7 @@
 //! l'oxygène et, depuis l'étape 2, les ultraviolets.
 
 use crate::metabolism::{EnergySource, REACTIONS, REACTION_COUNT};
-use crate::phenotype::Phenotype;
+use crate::phenotype::{Capacities, Phenotype};
 use crate::spectrum::LightSpectrum;
 use evo_planet::{WaterChemistry, WaterPool};
 
@@ -20,7 +20,7 @@ use evo_planet::{WaterChemistry, WaterPool};
 /// grandeur de microbiologie, à calibrer ; aucune n'est propre à la Terre.
 /// Seul le spectre de lumière disponible dépend de la planète (étoile et
 /// couche d'eau) : le monde le remplace à sa création.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Physiology {
     /// Débit maximal d'une enzyme d'efficacité 1, mol de substrat par mole
     /// de carbone de biomasse et par an.
@@ -126,7 +126,7 @@ pub struct Conditions {
 }
 
 /// Résultat de l'évaluation d'un phénotype dans un milieu.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GrowthRates {
     /// Voies chimiques : mol de substrat limitant par mole de carbone de
     /// biomasse et par an. Voies lumineuses : énergie fournie,
@@ -178,7 +178,12 @@ fn monod(c: f64, k: f64) -> f64 {
 
 /// Évalue r(g, c) pour un phénotype dans une cellule.
 pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
-    let t = cond.temperature_k;
+    growth_rates_with(p, &p.capacities(cond.temperature_k, physio), cond, chem, physio)
+}
+
+/// [`growth_rates`] avec les capacités déjà calculées à la température de
+/// `cond`.
+pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
     let o2 = chem[WaterPool::O2 as usize].max(0.0);
     let anaerobic_factor = physio.oxygen_inhibition_half / (physio.oxygen_inhibition_half + o2);
     let chemical_gain = 1.0 + physio.electron_transport_gain * p.electron_transport;
@@ -186,13 +191,13 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
     let (mut het, mut auto) = (0.0, 0.0);
 
     // Second centre réactionnel (photosystème I) pour la voie oxygénique.
-    let partner = crate::metabolism::ANOXYGENIC_CENTRES.iter().map(|&r| p.capacity(r, t, physio).0.min(1.0)).fold(0.0, f64::max);
+    let partner = caps.partner;
 
     for reaction in REACTIONS.iter() {
         if p.signature & (1 << reaction.id) == 0 {
             continue;
         }
-        let (cap, affinity) = p.capacity(reaction.id, t, physio);
+        let (cap, affinity) = (caps.cap[reaction.id as usize], caps.affinity[reaction.id as usize]);
         if cap <= 0.0 {
             continue;
         }

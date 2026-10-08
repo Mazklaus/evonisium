@@ -4,10 +4,10 @@
 use crate::genome::{
     ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId, MARKER_LEN,
 };
+use evo_core::math::Det;
 use rand::Rng;
-use rand_distr::{Distribution, Normal};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MutationKind {
     /// Décale un paramètre d'un domaine (petit pas le plus souvent).
     Point,
@@ -31,7 +31,7 @@ pub enum MutationKind {
 pub const MUTATION_KIND_COUNT: usize = 7;
 
 /// Taux et poids relatifs des classes de mutations.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MutationParams {
     /// Mutations par gène et par génération en l'absence de réparation.
     pub rate_per_gene: f64,
@@ -123,13 +123,13 @@ fn pick_kind(params: &MutationParams, rng: &mut impl Rng) -> MutationKind {
 fn point_mutation(domain: &mut Domain, params: &MutationParams, rng: &mut impl Rng) {
     let large = rng.random::<f64>() < params.large_step_share;
     let sd = if large { params.large_step } else { params.small_step };
-    let z: f64 = Normal::new(0.0, 1.0).expect("loi normale").sample(rng);
+    let z = evo_core::math::standard_normal(rng);
     let scale = if large { 6.0 } else { 1.0 };
     match rng.random_range(0..5) {
-        0 => domain.efficiency = (domain.efficiency * (sd * z).exp()).max(1e-6),
-        1 => domain.affinity = (domain.affinity * (sd * z).exp()).max(1e-6),
+        0 => domain.efficiency = (domain.efficiency * (sd * z).dexp()).max(1e-6),
+        1 => domain.affinity = (domain.affinity * (sd * z).dexp()).max(1e-6),
         2 => domain.t_opt_k += z * params.t_step_k * scale,
-        3 => domain.t_width_k = (domain.t_width_k * (sd * z).exp()).clamp(0.5, 80.0),
+        3 => domain.t_width_k = (domain.t_width_k * (sd * z).dexp()).clamp(0.5, 80.0),
         _ => domain.absorption_nm = (domain.absorption_nm + z * params.absorption_step_nm * scale).clamp(300.0, 1100.0),
     }
 }

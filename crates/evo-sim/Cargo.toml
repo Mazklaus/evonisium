@@ -10,6 +10,8 @@ name = "evonisium"
 path = "src/bin/evonisium.rs"
 
 [dependencies]
+serde.workspace = true
+libm.workspace = true
 evo-core.workspace = true
 evo-planet.workspace = true
 evo-genetics.workspace = true
@@ -17,3 +19,5 @@ evo-life.workspace = true
 rand.workspace = true
 rayon.workspace = true
 mimalloc.workspace = true
+bincode.workspace = true
+flate2.workspace = true

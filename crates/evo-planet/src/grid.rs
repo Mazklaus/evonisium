@@ -3,6 +3,7 @@
 //! cellules : 40 962 au niveau 6 (environ 110 km sur Terre), 163 842 au
 //! niveau 7 (environ 55 km).
 
+use evo_core::math::Det;
 use std::collections::HashMap;
 
 pub type Vec3 = [f64; 3];
@@ -27,7 +28,7 @@ fn cross(a: Vec3, b: Vec3) -> Vec3 {
 fn spherical_triangle_area(a: Vec3, b: Vec3, c: Vec3) -> f64 {
     let num = dot(a, cross(b, c)).abs();
     let den = 1.0 + dot(a, b) + dot(b, c) + dot(c, a);
-    2.0 * num.atan2(den)
+    2.0 * num.datan2(den)
 }
 
 /// Nombre maximal de voisins d'une cellule.
@@ -154,7 +155,7 @@ impl GeodesicGrid {
 
     /// Latitude du centre, rad.
     pub fn latitude(&self, cell: usize) -> f64 {
-        self.centers[cell][2].clamp(-1.0, 1.0).asin()
+        self.centers[cell][2].clamp(-1.0, 1.0).dasin()
     }
 
     /// Distance angulaire moyenne entre centres voisins, rad.
@@ -162,7 +163,7 @@ impl GeodesicGrid {
         let (mut sum, mut count) = (0.0, 0usize);
         for c in 0..self.len() {
             for nb in self.neighbours_of(c) {
-                sum += dot(self.centers[c], self.centers[nb]).clamp(-1.0, 1.0).acos();
+                sum += dot(self.centers[c], self.centers[nb]).clamp(-1.0, 1.0).dacos();
                 count += 1;
             }
         }

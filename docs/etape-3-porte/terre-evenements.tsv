@@ -1,0 +1,15 @@
+id	annees	cellule	type	origine	cause	interet	detail
+0	0	5	vie déposée	moteur		1.00	LifeSeeded { lineage: 0 }
+52	200000	8196	innovation	moteur		0.85	Innovation { lineage: 0, pathway: "rhodopsine", stage: 1, label: "rhodopsine" }
+53	200000	4754	innovation	moteur	0	0.70	Innovation { lineage: 0, pathway: "photosynthèse", stage: 2, label: "phototrophie simple" }
+104	400000	892	innovation	moteur	53	0.80	Innovation { lineage: 55, pathway: "photosynthèse", stage: 3, label: "photosynthèse anoxygénique" }
+178772	8400000	4154	innovation	moteur	104	0.90	Innovation { lineage: 152848, pathway: "photosynthèse", stage: 4, label: "photosynthèse oxygénique" }
+189663	9000000		glaciation globale	moteur		1.00	Snowball { ice_fraction: 1.0, starts: true }
+278202	17200000		glaciation globale	moteur		0.85	Snowball { ice_fraction: 0.056323555709325436, starts: false }
+1079720	32000000		seuil d'oxygène	moteur	178772	1.00	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+1094980	32200000		seuil d'oxygène	moteur	178772	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+1160425	33000000		seuil d'oxygène	moteur	178772	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1241417	34000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1254391	34200000		seuil d'oxygène	moteur	178772	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1266901	34400000		seuil d'oxygène	moteur	178772	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1433004	36800000		seuil d'oxygène	moteur	178772	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }

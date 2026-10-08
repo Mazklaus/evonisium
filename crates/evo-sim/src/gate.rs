@@ -1,7 +1,10 @@
-//! Porte de l'étape 2 (document Vision, feuille de route) : « l'oxygène
+//! Porte de l'étape 3 (document Vision, périmètre consolidé) : l'oxygène
 //! s'accumule par la photosynthèse, sans script, sur les six mondes de la
-//! vague 1 », et une partie se rejoue à l'identique depuis sa graine et son
-//! registre d'ordres.
+//! vague 1, au moins pour certaines graines (le monde désertique peut échouer
+//! pour certaines) ; carbone, phosphore et électrons sont conservés ; la
+//! vitesse est mesurée à la résolution normale ; une partie se rejoue à
+//! l'identique depuis sa graine et son registre d'ordres, quel que soit le
+//! parcours de la caméra.
 //!
 //! Pour chaque monde, la partie démarre avec la cellule minimale près des
 //! sources hydrothermales et tourne jusqu'à ce que l'oxygène de l'air reste
@@ -12,7 +15,7 @@
 //! monde, si l'accélérateur a dû agir.
 
 use crate::history::Sample;
-use crate::orders::OrderKind;
+use crate::orders::{Intervention, OrderKind};
 use crate::report::{causes, format_years};
 use crate::world::{World, WorldConfig};
 use evo_core::events::{EventKind, Origin};
@@ -25,7 +28,9 @@ use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct GateOptions {
-    pub seed: u64,
+    /// Graines essayées dans l'ordre, jusqu'à la première qui franchit la
+    /// porte.
+    pub seeds: Vec<u64>,
     pub level: u32,
     pub step_years: f64,
     pub max_years: f64,
@@ -37,28 +42,35 @@ pub struct GateOptions {
     pub worlds: Vec<String>,
     /// Dossier où écrire l'historique et les événements de chaque monde.
     pub out_dir: Option<PathBuf>,
+    /// Durée d'un tour d'évolution, si elle diffère de celle par défaut
+    /// (voir `EvolutionParams::round_years` ; 0 : un tour par pas).
+    pub round_years: Option<f64>,
 }
 
 impl Default for GateOptions {
     fn default() -> Self {
         Self {
-            seed: 2026,
-            level: 4,
+            seeds: vec![2026, 7, 42],
+            level: 6,
             step_years: 200_000.0,
-            max_years: 3.0e9,
+            max_years: 5.0e8,
             oxygen_threshold: 1e-4,
             hold_years: 50e6,
             worlds: Vec::new(),
             out_dir: None,
+            round_years: None,
         }
     }
 }
 
-/// Résultat d'un monde.
-#[derive(Clone, Debug)]
+/// Résultat d'un monde pour une graine.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WorldResult {
     pub key: String,
+    pub seed: u64,
     pub name: String,
+    /// Fils de calcul utilisés.
+    pub threads: usize,
     pub cells: usize,
     pub years: f64,
     pub seconds: f64,
@@ -79,9 +91,24 @@ pub struct WorldResult {
     pub plate_reorganisations: usize,
     pub carbon_error: f64,
     pub phosphorus_error: f64,
+    pub electron_error: f64,
+    /// Biomasse des eaux douces en fin de partie, mol de carbone, et cellules
+    /// d'eaux douces colonisées.
+    pub lake_biomass: f64,
+    pub lake_cells: usize,
     /// Correction des électrons sur les flux extrapolés, relative à la
     /// production photosynthétique d'O₂ (voir `close_electrons`).
     pub redox_correction: f64,
+    /// Part des cellules du vivant peuplées qui dépassaient le plafond de
+    /// populations avant éviction : sur toute la partie, et sur ses 100
+    /// derniers pas (monde mûr).
+    pub saturated_share: f64,
+    pub saturated_share_late: f64,
+    /// Part des génotypes candidats au tunnel dont les candidats dépassaient
+    /// la borne d'essais, et essais et réussites du tunnel.
+    pub tunnel_capped_share: f64,
+    pub tunnel_attempts: u64,
+    pub tunnel_successes: u64,
     pub oxygen_budget: evo_planet::geochem::OxygenBudget,
     pub replay_ok: bool,
     pub passed: bool,
@@ -94,9 +121,12 @@ pub fn replay_check(params: &PlanetParams, seed: u64, level: u32, step_years: f6
     let mut a = World::new(cfg.clone());
     a.orders.submit(0.0, OrderKind::SeedLife);
     a.orders.submit(step_years * 3.0, OrderKind::SetStepYears(step_years / 2.0));
-    a.orders.submit(step_years * 5.0, OrderKind::AddPhosphate { moles: 1e14 });
-    a.orders.submit(step_years * 6.0, OrderKind::InjectGas { gas: Gas::Co2, moles: 1e16 });
-    for _ in 0..steps {
+    a.orders.submit(step_years * 5.0, OrderKind::Intervene(Intervention::Fertilize { cell: 0, radius_km: 2000.0, moles_p: 1e13 }));
+    a.orders.submit(step_years * 6.0, OrderKind::Intervene(Intervention::Eruption { cell: 0, gas: Gas::Co2, moles: 1e16 }));
+    let n = a.planet.grid.len() as u32;
+    for i in 0..steps {
+        // Seule la première partie a une caméra qui bouge.
+        a.set_interest(Some(crate::observation::InterestZone { center_cell: (i as u32 * 131) % n, radius_km: 3000.0, zoom_band: 2 }));
         a.step();
     }
     let mut b = World::replay(cfg, &a.orders.log());
@@ -106,18 +136,36 @@ pub fn replay_check(params: &PlanetParams, seed: u64, level: u32, step_years: f6
     a.state_hash() == b.state_hash() && a.years == b.years
 }
 
-pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
+pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     let params = PlanetParams::by_key(key).unwrap_or_else(|| panic!("monde inconnu : {key}"));
     let start = Instant::now();
-    let mut cfg = WorldConfig::with_planet(params.clone(), opts.seed, opts.level);
+    let mut cfg = WorldConfig::with_planet(params.clone(), seed, opts.level);
     cfg.step_years = opts.step_years;
+    if let Some(r) = opts.round_years {
+        cfg.evolution.round_years = (r > 0.0).then_some(r);
+    }
     let mut world = World::new(cfg);
     world.seed_life();
     let mut above_since: Option<f64> = None;
     let (mut trace, mut reached, mut max_o2) = (None, None, 0.0f64);
+    // Cellules peuplées et saturées des derniers pas.
+    let mut late: std::collections::VecDeque<(u64, u64)> = std::collections::VecDeque::new();
     while world.years < opts.max_years {
+        let before = (world.stats.occupied_cell_steps, world.stats.saturated_cell_steps);
         world.step();
+        late.push_back((world.stats.occupied_cell_steps - before.0, world.stats.saturated_cell_steps - before.1));
+        if late.len() > 100 {
+            late.pop_front();
+        }
         let o2 = world.planet.reservoirs.mixing_ratio(Gas::O2);
+        if world.stats.steps.is_multiple_of(500) {
+            eprintln!(
+                "  {key} (graine {seed}) : {}, O₂ {o2:.1e}, étape {}, {:.0} s",
+                format_years(world.years),
+                world.progress.best_stage,
+                start.elapsed().as_secs_f64()
+            );
+        }
         max_o2 = max_o2.max(o2);
         if o2 >= 1e-6 && trace.is_none() {
             trace = Some(world.years);
@@ -137,27 +185,28 @@ pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
     }
     let seconds = start.elapsed().as_secs_f64();
     let events = &world.events.events;
-    let oxygenic_origin = events.iter().find_map(|e| match e.kind {
-        EventKind::Innovation { stage: 4, pathway, .. } if pathway == evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY => Some(e.origin),
+    let oxygenic_origin = events.iter().find_map(|e| match &e.kind {
+        EventKind::Innovation { stage: 4, pathway, .. } if *pathway == evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY => Some(e.origin),
         _ => None,
     });
-    let rhodopsin_years = events.iter().find_map(|e| match e.kind {
-        EventKind::Innovation { pathway, .. } if pathway == evo_life::metabolism::RHODOPSIN_PATHWAY => Some(e.years),
+    let rhodopsin_years = events.iter().find_map(|e| match &e.kind {
+        EventKind::Innovation { pathway, .. } if *pathway == evo_life::metabolism::RHODOPSIN_PATHWAY => Some(e.years),
         _ => None,
     });
     let held = above_since.is_some_and(|since| world.years - since >= opts.hold_years);
     let carbon_error = world.carbon_balance_error();
     let phosphorus_error = world.phosphorus_balance_error();
-    let replay_ok = replay_check(&params, opts.seed, 3, 50_000.0, 12);
+    let electron_error = world.electron_balance_error();
+    let replay_ok = replay_check(&params, seed, 3, 50_000.0, 12);
     let budget = world.planet.reservoirs.oxygen;
     let photosynthetic = budget.photosynthesis > 0.0 && world.progress.best_stage >= 4;
     // Sur des milliards d'années, les arrondis des sous-pas des boîtes
     // s'accumulent : on tolère un millionième.
-    let passed = held && photosynthetic && carbon_error < 1e-6 && phosphorus_error < 1e-6 && replay_ok;
+    let passed = held && photosynthetic && carbon_error < 1e-6 && phosphorus_error < 1e-6 && electron_error < 1e-6 && replay_ok;
 
     if let Some(dir) = &opts.out_dir {
         let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::write(dir.join(format!("{key}-historique.tsv")), world.history.to_tsv());
+        let _ = std::fs::write(dir.join(format!("{key}-{seed}-historique.tsv")), world.history.to_tsv());
         let notable: String = world
             .events
             .to_tsv()
@@ -166,12 +215,15 @@ pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
             .filter(|(i, l)| *i == 0 || !(l.contains("\tnouvelle lignée\t") || l.contains("\textinction de lignée\t")))
             .map(|(_, l)| format!("{l}\n"))
             .collect();
-        let _ = std::fs::write(dir.join(format!("{key}-evenements.tsv")), notable);
+        let _ = std::fs::write(dir.join(format!("{key}-{seed}-evenements.tsv")), notable);
     }
 
+    let summary = world.summary();
     WorldResult {
         key: key.to_string(),
+        seed,
         name: params.name.clone(),
+        threads: rayon::current_num_threads(),
         cells: world.planet.cells.len(),
         years: world.years,
         seconds,
@@ -189,7 +241,15 @@ pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
         plate_reorganisations: world.events.count(|k| matches!(k, EventKind::PlateReorganisation { .. })),
         carbon_error,
         phosphorus_error,
+        electron_error,
+        lake_biomass: summary.lake_biomass,
+        lake_cells: summary.lake_cells,
         redox_correction: world.stats.redox_correction / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
+        saturated_share: world.stats.saturated_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
+        saturated_share_late: late.iter().map(|l| l.1).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
+        tunnel_capped_share: world.stats.tunnel_capped as f64 / world.stats.tunnel_genotypes.max(1) as f64,
+        tunnel_attempts: world.stats.tunnel_attempts,
+        tunnel_successes: world.stats.tunnel_successes,
         oxygen_budget: budget,
         replay_ok,
         passed,
@@ -206,43 +266,71 @@ pub fn run_gate(opts: &GateOptions, mut progress: impl FnMut(&WorldResult)) -> (
         if opts.worlds.is_empty() { PlanetParams::KEYS.iter().map(|k| k.to_string()).collect() } else { opts.worlds.clone() };
     let mut results = Vec::new();
     for k in &keys {
-        let r = run_world(k, opts);
-        progress(&r);
-        results.push(r);
+        for &seed in &opts.seeds {
+            let r = run_world(k, seed, opts);
+            progress(&r);
+            let passed = r.passed;
+            results.push(r);
+            if passed {
+                break;
+            }
+        }
     }
     (format_gate(opts, &results), results)
 }
 
+/// Fraction d'O₂ de l'air actuel (niveau actuel de l'atmosphère, PAL).
+const PRESENT_O2: f64 = 0.21;
+
 pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let mut out = String::new();
-    let all = results.iter().all(|r| r.passed);
-    let _ = writeln!(out, "# Porte de l'étape 2 : l'oxygène s'accumule par la photosynthèse\n");
+    let mut keys: Vec<&str> = Vec::new();
+    for r in results {
+        if !keys.contains(&r.key.as_str()) {
+            keys.push(&r.key);
+        }
+    }
+    let world_passed = |k: &str| results.iter().any(|r| r.key == k && r.passed);
+    let passed_worlds = keys.iter().filter(|k| world_passed(k)).count();
+    let desert_only = keys.iter().all(|k| world_passed(k) || *k == "desert");
+    let _ = writeln!(out, "# Porte de l'étape 3 : l'oxygène s'accumule sur les six mondes à la résolution normale\n");
     let _ = writeln!(
         out,
-        "Rapport produit par `evonisium porte`. Graine {}, grille de niveau {} ({} cellules), pas de {}, au plus {} par monde. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone et phosphore conservés ; la partie se rejoue à l'identique depuis sa graine et ses ordres.\n",
-        opts.seed,
+        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas de {}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
         opts.level,
         results.first().map_or(0, |r| r.cells),
         format_years(opts.step_years),
         format_years(opts.max_years),
+        match opts.round_years.map_or(crate::evolution::EvolutionParams::default().round_years, |r| (r > 0.0).then_some(r)) {
+            Some(r) => format!("un tour d'évolution « apparition puis fixation » par tranche de {} du pas", format_years(r)),
+            None => "un seul tour d'évolution par pas".into(),
+        },
+        opts.seeds,
         opts.oxygen_threshold,
         format_years(opts.hold_years)
     );
-    let _ =
-        writeln!(out, "**Verdict : {}**\n", if all { "porte franchie sur les six mondes" } else { "porte non franchie (voir le détail)" });
+    let verdict = if passed_worlds == keys.len() {
+        format!("porte franchie sur les {} mondes", keys.len())
+    } else if desert_only {
+        format!("porte franchie sur {passed_worlds} mondes sur {} ; le monde désertique échoue pour les graines essayées, ce que la porte tolère", keys.len())
+    } else {
+        format!("porte non franchie : {passed_worlds} mondes sur {} (voir le détail)", keys.len())
+    };
+    let _ = writeln!(out, "**Verdict : {verdict}**\n");
 
     let _ = writeln!(out, "## Chemin vers la photosynthèse\n");
     let _ = writeln!(out, "Dates de première apparition sur la planète, depuis le dépôt de la cellule minimale.\n");
     let _ = writeln!(
         out,
-        "| Monde | {} | {} | {} | {} | Rhodopsine | Origine de l'étape oxygénique |\n|---|---|---|---|---|---|---|",
+        "| Monde | Graine | {} | {} | {} | {} | Rhodopsine | Origine de l'étape oxygénique |\n|---|---|---|---|---|---|---|---|",
         PHOTOSYNTHESIS_STAGES[1], PHOTOSYNTHESIS_STAGES[2], PHOTOSYNTHESIS_STAGES[3], PHOTOSYNTHESIS_STAGES[4]
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {} |",
             r.name,
+            r.seed,
             date(r.stage_years[1]),
             date(r.stage_years[2]),
             date(r.stage_years[3]),
@@ -255,25 +343,31 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Oxygène et planète\n");
     let _ = writeln!(
         out,
-        "| Monde | Durée simulée | O₂ > 10⁻⁶ | O₂ > seuil | O₂ final | O₂ maximal | CO₂ final | Température | Glace | Océan | Boules de neige | Réorganisations des plaques | Verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "« PAL » : niveau actuel de l'atmosphère terrestre (21 %). Pour comparaison, la littérature place l'O₂ du Protérozoïque, après la Grande Oxydation, entre 0,1 % et 10 % du niveau actuel selon les auteurs (Lyons, Reinhard et Planavsky, 2014, *Nature* 506 ; Planavsky et coll., 2014, *Science* 346), et celui de l'Archéen sous 10⁻⁵ PAL. La partie s'arrête dès que la porte est franchie : l'O₂ final est celui de la fin du maintien, pas un plateau à l'équilibre.\n"
+    );
+    let _ = writeln!(
+        out,
+        "| Monde | Graine | Durée simulée | O₂ > 10⁻⁶ | O₂ > seuil | O₂ final | O₂ final (PAL) | O₂ maximal | CO₂ final | Température | Glace | Océan | Eaux douces colonisées | Biomasse des eaux douces | Verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let s = &r.final_sample;
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {:.1e} | {:.1e} | {:.0} Pa | {:.0} K | {:.0} % | {:.0} % | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {:.1e} | {:.2} % | {:.1e} | {:.0} Pa | {:.0} K | {:.0} % | {:.0} % | {} cellules | {:.1e} mol C | {} |",
             r.name,
+            r.seed,
             format_years(r.years),
             date(r.oxygen_trace_years),
             date(r.oxygen_threshold_years),
             s.o2_mixing,
+            100.0 * s.o2_mixing / PRESENT_O2,
             r.max_o2,
             s.co2_pa,
             s.mean_temperature_k,
             (100.0 * s.ice_fraction).max(0.0),
             100.0 * s.ocean_fraction,
-            r.snowballs,
-            r.plate_reorganisations,
+            r.lake_cells,
+            r.lake_biomass,
             if r.passed { "franchie" } else { "non franchie" }
         );
     }
@@ -285,14 +379,15 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     );
     let _ = writeln!(
         out,
-        "| Monde | Photosynthèse (brut) | Libéré vers l'air | Repris en surface | Respiration profonde | Gaz réduits (H₂) | Méthane | Fer et manganèse | Roches exposées | Sulfure |\n|---|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Photosynthèse (brut) | Libéré vers l'air | Repris en surface | Respiration profonde | Gaz réduits (H₂) | Méthane | Fer et manganèse | Plancher océanique | Roches exposées | Sulfure |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let b = &r.oxygen_budget;
         let _ = writeln!(
             out,
-            "| {} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} |",
+            "| {} | {} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} | {:.2e} |",
             r.name,
+            r.seed,
             b.photosynthesis,
             b.surface_release,
             b.surface_uptake,
@@ -300,33 +395,62 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
             b.reduced_gases,
             b.methane,
             b.iron_manganese,
+            b.seafloor_oxidation,
             b.oxidative_weathering,
             b.sulfide
         );
     }
 
-    let _ = writeln!(out, "\n## Aide de l'accélérateur, bilans et rejeu\n");
+    let _ = writeln!(out, "\n## Aide de l'accélérateur, bilans, rejeu et vitesse\n");
     let _ = writeln!(
         out,
-        "« Électrons corrigés » : écart du bilan des électrons des flux de surface prolongés sur chaque pas, corrigé avant leur application, en part de la production photosynthétique d'O₂ de la partie.\n"
+        "« Électrons corrigés » : écart du bilan des électrons des flux de surface prolongés sur chaque pas, corrigé avant leur application et inscrit au registre, en part de la production photosynthétique d'O₂ de la partie. « Bilan électrons » : écart du registre de flux, qui doit rester nul. La vitesse est celle de la partie entière, sur la machine de mesure.\n"
     );
     let _ = writeln!(
         out,
-        "| Monde | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Électrons corrigés | Rejeu identique | Calcul |\n|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Bilan électrons | Électrons corrigés | Rejeu identique | Calcul | Vitesse |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {:.1e} | {:.1e} | {:.1} % | {} | {:.0} s |",
+            "| {} | {} | {} | {} | {} | {:.1e} | {:.1e} | {:.1e} | {:.1} % | {} | {:.0} s sur {} fils | {} par seconde |",
             r.name,
+            r.seed,
             r.accelerator_steps,
             r.accelerator_fixed,
             r.causes,
             r.carbon_error,
             r.phosphorus_error,
+            r.electron_error,
             100.0 * r.redox_correction,
             if r.replay_ok { "oui" } else { "non" },
-            r.seconds
+            r.seconds,
+            r.threads,
+            format_years(r.years / r.seconds.max(1e-9))
+        );
+    }
+
+    let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
+    let _ = writeln!(
+        out,
+        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde. « Cellules saturées » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas (monde mûr ; au-delà de 10 %, le plafond est à revoir). Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
+        crate::evolution::EvolutionParams::default().tunnel_attempts_per_genotype
+    );
+    let _ = writeln!(
+        out,
+        "| Monde | Graine | Cellules saturées (partie) | Cellules saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|"
+    );
+    for r in results {
+        let _ = writeln!(
+            out,
+            "| {} | {} | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
+            r.name,
+            r.seed,
+            100.0 * r.saturated_share,
+            100.0 * r.saturated_share_late,
+            100.0 * r.tunnel_capped_share,
+            r.tunnel_attempts,
+            r.tunnel_successes
         );
     }
     out

@@ -40,6 +40,7 @@ pub fn generate(params: PlanetParams, level: u32, seed: u64) -> Planet {
         deep_volume_m3: water,
         tectonic_clock: 0.0,
         hydrothermal_share: 1.0,
+        display: Vec::new(),
     };
     planet.refresh(0.0);
     // L'état de glace de départ est celui de l'équilibre chaud.
@@ -93,17 +94,17 @@ mod tests {
     fn lifeless_chemistry_is_at_equilibrium_and_conserves_carbon() {
         let p = generate(PlanetParams::earth_archean(), 3, 1);
         let targets = p.exchange_targets(106.0);
-        let start: Vec<_> = (0..p.cells.len()).map(|c| p.equilibrium_chemistry(c, &targets)).collect();
+        let start: Vec<_> = (0..p.cells.len()).map(|c| p.equilibrium_chemistry(&p.cells[c], &targets)).collect();
         let mut chemistry = start.clone();
         let mut flux = FluxRegistry::default();
-        flux.set_initial(Element::Carbon, p.water_carbon(&chemistry));
+        flux.set_initial(Element::Carbon, Planet::water_carbon(&p.cells, &chemistry));
         let mut out = [0.0; crate::pools::WATER_POOL_COUNT];
         for (c, chem) in chemistry.iter_mut().enumerate() {
-            p.exchange(c, chem, 1.0, &targets, &mut out);
+            p.exchange(&p.cells[c], chem, 1.0, &targets, &mut out);
             for (x, y) in chem.iter().zip(&start[c]) {
                 assert!((x - y).abs() <= 1e-9 * y.abs().max(1e-12), "{x} contre {y}");
             }
         }
-        assert!(out[WaterPool::Dic as usize].abs() < 1e-6 * p.water_carbon(&chemistry));
+        assert!(out[WaterPool::Dic as usize].abs() < 1e-6 * Planet::water_carbon(&p.cells, &chemistry));
     }
 }

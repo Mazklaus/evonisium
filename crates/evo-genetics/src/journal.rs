@@ -13,7 +13,7 @@
 use crate::genome::{ChangedElement, GenomeChangeCause, GENOME_CHANGE_CAUSE_COUNT};
 use std::fmt::Write as _;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JournalEntry {
     pub years: f64,
     pub lineage: u32,
@@ -22,7 +22,7 @@ pub struct JournalEntry {
     pub element: ChangedElement,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenomeJournal {
     pub entries: Vec<JournalEntry>,
     /// Modifications fixées par cause, plafond ou non.

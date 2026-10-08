@@ -18,6 +18,7 @@
 
 use crate::grid::GeodesicGrid;
 use crate::params::PlanetParams;
+use evo_core::math::Det;
 
 /// Polynôme de Legendre d'ordre 2.
 #[inline]
@@ -29,15 +30,15 @@ fn p2(x: f64) -> f64 {
 /// latitude (approximation de North, 1975, avec s₂ déduit de l'obliquité ;
 /// au-delà de 54° d'obliquité, les pôles reçoivent plus que l'équateur).
 pub fn annual_insolation(flux: f64, obliquity: f64, latitude: f64) -> f64 {
-    let s2 = -0.625 * p2(obliquity.cos());
-    (flux / 4.0 * (1.0 + s2 * p2(latitude.sin()))).max(0.0)
+    let s2 = -0.625 * p2(obliquity.dcos());
+    (flux / 4.0 * (1.0 + s2 * p2(latitude.dsin()))).max(0.0)
 }
 
 /// Part de l'énergie d'un corps noir de température `t` émise entre `a_nm`
 /// et `b_nm`.
 pub fn planck_fraction(t: f64, a_nm: f64, b_nm: f64) -> f64 {
     const C2: f64 = 1.438_777e7; // nm·K
-    let b = |nm: f64| nm.powi(-5) / (C2 / (nm * t)).exp_m1();
+    let b = |nm: f64| nm.powi(-5) / (C2 / (nm * t)).dexp_m1();
     let integrate = |lo: f64, hi: f64| {
         let n = 2000;
         let h = (hi - lo) / n as f64;
@@ -47,7 +48,7 @@ pub fn planck_fraction(t: f64, a_nm: f64, b_nm: f64) -> f64 {
 }
 
 /// État du climat, gardé d'un pas à l'autre.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClimateState {
     /// Cellules englacées.
     pub ice: Vec<bool>,
@@ -100,7 +101,7 @@ impl ClimateState {
 
     /// Forçage radiatif de l'effet de serre, W·m⁻².
     pub fn greenhouse_forcing(params: &PlanetParams, g: &Greenhouse) -> f64 {
-        let co2 = params.co2_forcing * (g.co2_pa.max(1e-3) / params.co2_reference_pa).ln()
+        let co2 = params.co2_forcing * (g.co2_pa.max(1e-3) / params.co2_reference_pa).dln()
             + params.co2_broadening_w_m2 * (g.co2_pa.max(0.0) / 1e5).sqrt();
         // Au-delà d'un rapport CH₄/CO₂ critique, la brume organique plafonne
         // l'effet du méthane.
@@ -115,7 +116,7 @@ impl ClimateState {
             sqrt_part(ch4_ppb)
         } else {
             let slope = 0.5 * params.ch4_forcing * CH4_SATURATION_PPB.sqrt();
-            sqrt_part(CH4_SATURATION_PPB) + slope * (ch4_ppb / CH4_SATURATION_PPB).ln()
+            sqrt_part(CH4_SATURATION_PPB) + slope * (ch4_ppb / CH4_SATURATION_PPB).dln()
         };
         co2 + ch4
     }

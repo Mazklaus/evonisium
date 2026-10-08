@@ -8,10 +8,11 @@
 //! section « Alertes et chronique »). Le stockage est un fichier texte
 //! tabulé ; SQLite viendra avec le client de l'étape 3.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 /// Qui est à l'origine d'un événement.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Origin {
     /// Les lois du moteur, sans aide.
     Engine,
@@ -35,7 +36,7 @@ impl Origin {
 /// locales sont trop nombreuses pour être journalisées une à une : elles sont
 /// comptées dans les statistiques du monde (et les substitutions fixées vont
 /// au journal des modifications de génome).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EventKind {
     /// Des cellules minimales ont été déposées.
     LifeSeeded {
@@ -55,17 +56,17 @@ pub enum EventKind {
     /// plusieurs pièces (par exemple le chemin vers la photosynthèse).
     Innovation {
         lineage: u32,
-        pathway: &'static str,
+        pathway: Cow<'static, str>,
         stage: u8,
-        label: &'static str,
+        label: Cow<'static, str>,
     },
     /// Le détecteur de stagnation active ou coupe un accélérateur.
     AcceleratorOn {
-        pathway: &'static str,
+        pathway: Cow<'static, str>,
         stage: u8,
     },
     AcceleratorOff {
-        pathway: &'static str,
+        pathway: Cow<'static, str>,
     },
     /// L'oxygène de l'atmosphère franchit un seuil (fraction molaire).
     OxygenThreshold {
@@ -86,6 +87,11 @@ pub enum EventKind {
         order: u64,
         label: String,
     },
+    /// Un ordre d'intervention a été refusé (réserve d'influence).
+    OrderRefused {
+        order: u64,
+        reason: Cow<'static, str>,
+    },
 }
 
 impl EventKind {
@@ -102,6 +108,30 @@ impl EventKind {
             EventKind::Snowball { .. } => "glaciation globale",
             EventKind::PlateReorganisation { .. } => "réorganisation des plaques",
             EventKind::OrderApplied { .. } => "ordre appliqué",
+            EventKind::OrderRefused { .. } => "ordre refusé",
+        }
+    }
+
+    /// Libellé en français, pour la chronique et les alertes.
+    pub fn describe(&self) -> String {
+        match self {
+            EventKind::LifeSeeded { .. } => "Des cellules minimales sont déposées dans les eaux.".into(),
+            EventKind::NewLineage { lineage, parent, .. } => {
+                format!("La lignée {lineage} naît de la lignée {parent} avec un métabolisme nouveau.")
+            }
+            EventKind::LineageExtinct { lineage } => format!("La lignée {lineage} s'éteint."),
+            EventKind::Innovation { lineage, label, .. } => format!("Première apparition : {label} (lignée {lineage})."),
+            EventKind::AcceleratorOn { stage, .. } => {
+                format!("L'évolution stagne à l'étape {stage} du chemin vers la photosynthèse : l'émergence assistée intervient.")
+            }
+            EventKind::AcceleratorOff { .. } => "L'émergence assistée s'arrête : l'étape suivante est franchie.".into(),
+            EventKind::OxygenThreshold { mixing_ratio, rising: true } => format!("L'oxygène de l'air dépasse {mixing_ratio:.0e}."),
+            EventKind::OxygenThreshold { mixing_ratio, rising: false } => format!("L'oxygène de l'air retombe sous {mixing_ratio:.0e}."),
+            EventKind::Snowball { starts: true, .. } => "La planète entre en glaciation globale.".into(),
+            EventKind::Snowball { starts: false, .. } => "La glaciation globale prend fin.".into(),
+            EventKind::PlateReorganisation { plates } => format!("Les plaques se réorganisent ({plates} plaques)."),
+            EventKind::OrderApplied { label, .. } => format!("Ordre appliqué : {label}."),
+            EventKind::OrderRefused { reason, .. } => format!("Ordre refusé : {reason}."),
         }
     }
 
@@ -118,11 +148,12 @@ impl EventKind {
             EventKind::Snowball { .. } => 0.85,
             EventKind::PlateReorganisation { .. } => 0.3,
             EventKind::OrderApplied { .. } => 0.5,
+            EventKind::OrderRefused { .. } => 0.3,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Event {
     pub id: u64,
     pub years: f64,
@@ -137,11 +168,11 @@ pub struct Event {
 }
 
 /// Journal en mémoire, dans l'ordre déterministe d'application.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct EventLog {
     pub events: Vec<Event>,
     /// Types déjà vus, pour le bonus de nouveauté.
-    seen: Vec<&'static str>,
+    seen: Vec<Cow<'static, str>>,
 }
 
 impl EventLog {
@@ -155,10 +186,10 @@ impl EventLog {
     pub fn push_with(&mut self, years: f64, cell: Option<u32>, kind: EventKind, origin: Origin, cause: Option<u64>) -> u64 {
         let id = self.events.len() as u64;
         let name = kind.type_name();
-        let novelty = if self.seen.contains(&name) {
+        let novelty = if self.seen.iter().any(|s| s == name) {
             0.0
         } else {
-            self.seen.push(name);
+            self.seen.push(Cow::Borrowed(name));
             0.25
         };
         let interest = (kind.base_interest() + novelty).min(1.0);

@@ -8,6 +8,7 @@
 pub mod clock;
 pub mod events;
 pub mod flux;
+pub mod math;
 pub mod rng;
 pub mod units;
 
