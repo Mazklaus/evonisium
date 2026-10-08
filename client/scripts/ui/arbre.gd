@@ -4,7 +4,7 @@ extends "res://scripts/ui/fiche.gd"
 ## éteintes en pointillé, lignées sans descendance repliées. Un clic sur une
 ## branche ouvre la fiche de l'espèce.
 
-signal species_requested(lineage: int)
+signal species_requested(species: int)
 
 const MAX_LEAVES := 60
 
@@ -127,4 +127,4 @@ func _input_tree(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var n := _node_at(event.position)
 		if n >= 0:
-			species_requested.emit(int(tree["ids"][n]))
+			species_requested.emit(int(tree["species"][n]))

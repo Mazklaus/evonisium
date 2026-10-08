@@ -93,7 +93,7 @@ func _reload() -> void:
 		if int(e["level"]) >= 2:
 			text.add_theme_color_override("font_color", Atlas.VERMILION)
 		row.add_child(text)
-		if int(e["cell"]) >= 0 or int(e["lineage"]) >= 0:
+		if int(e["cell"]) >= 0 or int(e["species"]) >= 0:
 			row.add_child(Atlas.button(App.t("go_see"), go_to.emit.bind(e)))
 		list.add_child(row)
 

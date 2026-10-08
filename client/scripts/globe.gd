@@ -37,7 +37,6 @@ var prev_textures: Array = [null, null]
 var last_images: Array = []
 var palette_tex: ImageTexture
 var palette_cat_tex: ImageTexture
-var plates_tex: ImageTexture
 var blend := 1.0
 var blend_duration := 0.25
 var last_frame_time := 0.0
@@ -146,8 +145,9 @@ func ensure_mesh() -> void:
 	mesh_cells = cells
 	mesh_tiles = tiles
 	radius_m = float(info["radius_m"])
+	material.set_shader_parameter("radius_m", radius_m)
 	_update_relief()
-	textures = [null, null, null]
+	textures = [null, null, null, null]
 	prev_textures = [null, null]
 	last_images = []
 
@@ -176,7 +176,7 @@ func refresh_frame(force: bool = false) -> void:
 	if not force and not App.session.has_new_frame():
 		return
 	var imgs: Array = App.session.frame_textures(false)
-	if imgs.size() < 3 or imgs[0] == null:
+	if imgs.size() < 4 or imgs[0] == null:
 		return
 	# Le pas précédent devient la source de l'interpolation.
 	if not last_images.is_empty():
@@ -185,21 +185,15 @@ func refresh_frame(force: bool = false) -> void:
 	else:
 		_set_texture(prev_textures, 0, imgs[0])
 		_set_texture(prev_textures, 1, imgs[2])
-	for i in 3:
+	for i in 4:
 		_set_texture(textures, i, imgs[i])
 	last_images = imgs
 	material.set_shader_parameter("data0", textures[0])
 	material.set_shader_parameter("data1", textures[1])
 	material.set_shader_parameter("data2", textures[2])
+	material.set_shader_parameter("data3", textures[3])
 	material.set_shader_parameter("prev0", prev_textures[0])
 	material.set_shader_parameter("prev2", prev_textures[1])
-	var plates_img: Image = App.session.plates_image()
-	if plates_img:
-		if plates_tex == null:
-			plates_tex = ImageTexture.create_from_image(plates_img)
-		else:
-			plates_tex.update(plates_img)
-		material.set_shader_parameter("plates", plates_tex)
 	var info: Dictionary = App.session.frame_info()
 	material.set_shader_parameter("step_myr", float(info.get("step_years", 0.0)) / 1.0e6)
 	var star: Color = info.get("star_colour", Color.WHITE)

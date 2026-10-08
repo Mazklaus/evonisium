@@ -299,8 +299,8 @@ impl Game {
     }
 
     fn ask_events(&mut self) {
-        let since_id = self.next_event.saturating_sub(1);
-        self.events_rx.ask(&self.engine, Query::Events { since_id, min_interest: 0.0, limit: EVENTS_PER_POLL }, ());
+        // Identifiants à partir de `since_id` inclus.
+        self.events_rx.ask(&self.engine, Query::Events { since_id: self.next_event, min_interest: 0.0, limit: EVENTS_PER_POLL }, ());
     }
 
     /// Règles d'arrêt : le client met le temps en pause par un ordre quand

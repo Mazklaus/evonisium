@@ -14,14 +14,16 @@ render_mode unshaded, cull_back, depth_draw_opaque;
 uniform sampler2D data0 : filter_nearest;
 uniform sampler2D data1 : filter_nearest;
 uniform sampler2D data2 : filter_nearest;
+uniform sampler2D data3 : filter_nearest;
 uniform sampler2D prev0 : filter_nearest;
 uniform sampler2D prev2 : filter_nearest;
-uniform sampler2D plates : filter_nearest;
 uniform sampler2D palette : filter_linear, repeat_disable;
 uniform sampler2D palette_cat : filter_nearest, repeat_disable;
 
 uniform float blend = 1.0;
 uniform float step_myr = 0.0;
+// Rayon de la planète, m (glissement des plaques).
+uniform float radius_m = 6.371e6;
 uniform float relief_scale = 0.0;
 
 uniform bool layer_on = false;
@@ -48,7 +50,6 @@ uniform float hover_radius = 0.0;
 uniform float ink_strength = 1.0;
 uniform bool show_focus = true;
 // Sources hydrothermales cerclées de vermillon (écran d'ensemencement).
-uniform bool show_vents = false;
 
 const vec3 PAPER = vec3(0.925, 0.886, 0.788);
 const vec3 WATER = vec3(0.725, 0.776, 0.749);
@@ -68,7 +69,6 @@ varying vec3 v_pig;
 varying float v_pig_w;
 varying float v_ocean;
 varying float v_focus;
-varying float v_vent;
 varying flat float v_cat;
 varying vec3 v_world_n;
 
@@ -79,12 +79,6 @@ vec3 to_linear(vec3 c) {
 vec4 fetch(sampler2D t, vec2 uv) {
 	ivec2 s = textureSize(t, 0);
 	return texelFetch(t, ivec2(uv * vec2(s)), 0);
-}
-
-vec3 rotate(vec3 v, vec3 k, float a) {
-	float c = cos(a);
-	float s = sin(a);
-	return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c);
 }
 
 float hash(vec3 p) {
@@ -133,12 +127,16 @@ void vertex() {
 	vec4 d2 = fetch(data2, uv);
 	vec4 p0 = fetch(prev0, uv);
 	vec4 p2 = fetch(prev2, uv);
+	vec4 d3 = fetch(data3, uv);
 	vec3 dir = normalize(VERTEX);
 	// Glissement des plaques : la position courante, reculée de la part du
-	// pas qui n'est pas encore jouée.
-	vec4 plate = texelFetch(plates, ivec2(int(d2.r), 0), 0);
-	if (step_myr > 0.0 && length(plate.xyz) > 0.5) {
-		dir = rotate(dir, normalize(plate.xyz), -plate.w * step_myr * (1.0 - blend));
+	// pas qui n'est pas encore jouée, le long de la vitesse de la plaque
+	// (cm/an vers l'est et vers le nord ; le haut de Godot est le nord).
+	if (step_myr > 0.0 && abs(dir.y) < 0.999) {
+		vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), dir));
+		vec3 north = cross(dir, east);
+		float k = 0.01 * step_myr * 1.0e6 * (1.0 - blend) / radius_m;
+		dir = normalize(dir - (east * d3.r + north * d3.g) * k);
 	}
 	v_height = d0.r;
 	v_temp = mix(p0.g, d0.g, blend);
@@ -150,8 +148,7 @@ void vertex() {
 	v_ocean = float((flags & 1) != 0);
 	v_pig_w = float((flags & 4) != 0);
 	v_focus = float((flags & 16) != 0);
-	v_vent = float((flags & 8) != 0);
-	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : mix(p2, d2, blend));
+	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : d3));
 	float raw = channel(lt, layer_channel);
 	if (layer_transform == 1) {
 		raw = log(max(raw, 1e-30)) / log(10.0);
@@ -243,10 +240,6 @@ void fragment() {
 		float d = acos(clamp(dot(n, normalize(hover_pos)), -1.0, 1.0));
 		float ring = 1.0 - smoothstep(0.0, fwidth(d) * 1.5, abs(d - hover_radius));
 		col = mix(col, VERMILION, 0.6 * ring);
-	}
-	if (show_vents) {
-		float ring = 1.0 - smoothstep(0.0, fwidth(v_vent) * 1.5, abs(v_vent - 0.35));
-		col = mix(col, VERMILION, 0.85 * ring * step(0.05, v_vent));
 	}
 	if (selected_radius > 0.0) {
 		float d = acos(clamp(dot(n, normalize(selected_pos)), -1.0, 1.0));

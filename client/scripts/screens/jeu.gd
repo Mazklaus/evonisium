@@ -152,7 +152,10 @@ func _handle_events() -> void:
 			frise.add_mark(e)
 		if e["family"] == "speciation":
 			narrateur.trigger("espece")
-		if action == 2 or action == 3:
+		if bool(e.get("refused", false)):
+			alertes.push(e, true)
+			_flash(App.t("refused"))
+		elif action == 2 or action == 3:
 			alertes.push(e)
 		if action == 3:
 			slow = true
@@ -202,9 +205,9 @@ func go_to_event(e: Dictionary) -> void:
 	if cell >= 0:
 		App.globe.go_to_cell(cell)
 		inspecteur.show_cell(cell)
-	var lineage := int(e.get("lineage", -1))
-	if lineage >= 0:
-		open_species(lineage)
+	var species := int(e.get("species", -1))
+	if species >= 0:
+		open_species(species)
 
 func _on_cell_selected(cell: int) -> void:
 	inspecteur.show_cell(cell)
@@ -219,10 +222,10 @@ func _open(f: Control) -> Control:
 	overlay.add_child(f)
 	return f
 
-func open_species(lineage: int) -> void:
+func open_species(species: int) -> void:
 	var f = FicheEspece.new()
 	_open(f)
-	f.open(lineage)
+	f.open(species)
 	f.species_requested.connect(open_species)
 
 func open_tree() -> void:

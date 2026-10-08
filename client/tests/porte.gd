@@ -131,7 +131,11 @@ func _play_scenario() -> void:
 			bridge.append(App.session.bridge_ms())
 	sampler.call()
 
-	# Intervention du joueur : phosphate dans les mers, dès que la vie est là.
+	# Intervention du joueur : phosphate autour de la cellule où vit
+	# l'espèce la plus répandue, dès que la vie est là.
+	var target := _populated_cell()
+	report["cellule_intervention"] = target
+	App.globe.select_cell(target)
 	jeu.open_interventions()
 	await _wait(0.5)
 	await _shot("05-interventions")
@@ -228,20 +232,12 @@ func _player_event_seen() -> bool:
 	return false
 
 func _populated_cell() -> int:
-	var cells := int(App.session.frame_info().get("cells", 0))
-	var best := -1
-	var best_n := 0
-	for c in range(0, cells, 7):
-		var d: Dictionary = App.session.cell_info(c)
-		if d.is_empty():
-			continue
-		var n: int = d["populations"].size()
-		if n > best_n:
-			best_n = n
-			best = c
-			if n >= 4:
-				break
-	return best
+	# Cellule d'apogée de l'espèce la plus répandue (cellule du vivant, qui
+	# est aussi une cellule physique : les grilles sont emboîtées).
+	var ids: PackedInt64Array = App.session.guild_ids()
+	if ids.is_empty():
+		return -1
+	return int(App.session.species_info(ids[0]).get("peak_cell", -1))
 
 func _top_lineage() -> int:
 	var t: Dictionary = App.session.tree(20)
@@ -290,13 +286,20 @@ func _replay_scenario() -> void:
 		_log("chemin %d : pas %s, empreinte %s" % [path, str(h[0]) if h.size() > 0 else "—", str(h[1]) if h.size() > 1 else "—"])
 		if path == 0:
 			App.session.save(App.save_path("porte-rejeu"), "porte-rejeu")
-			await _until(func(): return FileAccess.file_exists(App.save_path("porte-rejeu")), 10.0)
-			await _wait(0.3)
+			var notice := [""]
+			var saved := func():
+				App.session.poll_events()
+				var n: String = App.session.take_notice()
+				if n != "":
+					notice[0] = n
+				return notice[0] != ""
+			await _until(saved, 60.0)
+			_log("sauvegarde : %s" % notice[0])
 	# Le point de sauvegarde, rechargé, retrouve l'état.
 	var err: String = App.session.load_save(App.save_path("porte-rejeu"))
 	var loaded: Array = []
 	if err == "":
-		await _until(func(): return App.session.state_hash().size() == 2 and App.session.loading_progress().y < 0.0 and int(App.session.state_hash()[0]) >= steps, 600.0)
+		await _until(func(): return App.session.loading_progress().y < 0.0 and App.session.state_hash().size() == 2 and int(App.session.state_hash()[0]) >= steps, 600.0)
 		loaded = App.session.state_hash()
 	_log("rechargée : %s" % str(loaded))
 	report["empreintes"] = {"chemin_1": hashes[0], "chemin_2": hashes[1], "sauvegarde_rechargee": loaded}
@@ -310,9 +313,10 @@ func _run_path(path: int, steps: int) -> Array:
 	App.session.set_rules_profile("aucun")
 	App.session.set_seeding("sources")
 	App.session.seed_life()
+	# Pas de 100 ka : la pause tombe à la fin du pas visé.
 	App.session.set_speed(1.0e6)
-	App.session.intervene("phosphate", 1.0e14)
-	App.session.pause_at_step(steps)
+	App.session.intervene("phosphate", 1.0e14, 0, 1500.0)
+	App.session.pause_at(steps * 1.0e5)
 	App.session.resume()
 	# Deux caméras : l'une tourne autour de l'équateur de loin, l'autre
 	# plonge sur un pôle de près. Le canal d'observation ne doit rien changer.

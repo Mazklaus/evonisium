@@ -3,7 +3,7 @@ extends PanelContainer
 ## milieu en clair, les populations présentes avec leur part de biomasse, et
 ## la loupe sur la vie microscopique de la cellule.
 
-signal species_requested(lineage: int)
+signal species_requested(species: int)
 
 var cell := -1
 var body: VBoxContainer
@@ -62,7 +62,11 @@ func _fill(with_loupe: bool = true) -> void:
 	var d: Dictionary = App.session.cell_info(cell)
 	if d.is_empty():
 		return
-	var keep_loupe := loupe if (not with_loupe and not d["populations"].is_empty()) else null
+	# Le détail du moteur arrive un peu après le reste : on repasse vite.
+	var pending := bool(d.get("pending", false))
+	if pending:
+		refresh_timer = 0.2
+	var keep_loupe := loupe if (not with_loupe and (pending or not d["populations"].is_empty())) else null
 	for c in body.get_children():
 		if keep_loupe and (c == keep_loupe or c == loupe_caption):
 			body.remove_child(c)
@@ -77,19 +81,22 @@ func _fill(with_loupe: bool = true) -> void:
 	_field(App.t("temperature"), d["temperature"])
 	_field("Lumière" if App.settings["lang"] == "fr" else "Light", d["light"])
 	_field(App.t("oxygen"), d["oxygen"])
-	_field("pH", d["ph"])
+	_field("pH", d.get("ph", "…"))
 	if bool(d["is_ocean"]):
-		_field("Salinité" if App.settings["lang"] == "fr" else "Salinity", d["salinity"])
+		_field("Salinité" if App.settings["lang"] == "fr" else "Salinity", d.get("salinity", "…"))
+	else:
+		_field("Pluie" if App.settings["lang"] == "fr" else "Rain", d["rain"])
 	_field(App.t("biomass"), d["biomass"])
-	if bool(d["vent"]):
-		var vl := Atlas.text("Source hydrothermale" if App.settings["lang"] == "fr" else "Hydrothermal vent", 16, true)
+	if bool(d.get("vent", false)):
+		var vl := Atlas.text(("Source hydrothermale : " if App.settings["lang"] == "fr" else "Hydrothermal vent: ") + str(d.get("vent_text", "")), 16, true)
+		vl.custom_minimum_size.x = 320
 		vl.add_theme_color_override("font_color", Atlas.VERMILION)
 		body.add_child(vl)
 	body.add_child(Atlas.hsep())
 	body.add_child(Atlas.title(App.t("populations"), 20))
 	var pops: Array = d["populations"]
 	if pops.is_empty():
-		body.add_child(Atlas.text(App.t("none"), 16, true))
+		body.add_child(Atlas.text("…" if pending else App.t("none"), 16, true))
 	for p in pops:
 		var row := HBoxContainer.new()
 		var sw := ColorRect.new()
@@ -97,7 +104,7 @@ func _fill(with_loupe: bool = true) -> void:
 		sw.custom_minimum_size = Vector2(12, 12)
 		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(sw)
-		var b := Atlas.button(str(p["name"]), species_requested.emit.bind(int(p["lineage"])), str(p["guild"]))
+		var b := Atlas.button(str(p["name"]), species_requested.emit.bind(int(p["species"])), str(p["guild"]))
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.clip_text = true

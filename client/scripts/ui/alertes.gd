@@ -35,7 +35,7 @@ func push(e: Dictionary, sticky: bool = false) -> void:
 	v.add_child(t)
 	var actions := HBoxContainer.new()
 	v.add_child(actions)
-	if int(e["cell"]) >= 0 or int(e["lineage"]) >= 0:
+	if int(e["cell"]) >= 0 or int(e["species"]) >= 0:
 		actions.add_child(Atlas.button(App.t("go_see"), func():
 			go_to.emit(e)
 			card.queue_free()))

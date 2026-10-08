@@ -3,9 +3,9 @@ extends "res://scripts/ui/fiche.gd"
 ## Atlas) : la planche de l'organisme posée devant le décor de son milieu de
 ## vie, tiré de l'environnement simulé, puis les traits en clair.
 
-signal species_requested(lineage: int)
+signal species_requested(species: int)
 
-var lineage := -1
+var species := -1
 var decor: TextureRect
 var figure: TextureRect
 var decor_key := ""
@@ -16,7 +16,7 @@ var follow_button: Button
 var range_button: Button
 
 func open(l: int) -> void:
-	lineage = l
+	species = l
 	custom_minimum_size = Vector2(800, 0)
 	info = App.session.species_info(l)
 	if info.is_empty():
@@ -70,6 +70,7 @@ func open(l: int) -> void:
 	field(b, App.t("biomass"), info["biomass"])
 	field(b, App.t("age"), info["age"])
 	field(b, App.t("origin"), info["origin_region"])
+	field(b, App.t("lineages"), "%d · %d %s" % [int(info["lineages"]), int(info["ecotypes"]), App.t("ecotypes")])
 	if int(info["parent"]) >= 0:
 		var h := HBoxContainer.new()
 		var lab := Atlas.text(App.t("ancestor"), 17, true)
@@ -85,7 +86,7 @@ func open(l: int) -> void:
 	var actions := HBoxContainer.new()
 	content.add_child(actions)
 	follow_button = Atlas.button(App.t("followed") if bool(info["marked"]) else App.t("follow"), _follow)
-	follow_button.disabled = bool(info["marked"])
+	follow_button.disabled = bool(info["marked"]) or int(info["founder"]) < 0
 	actions.add_child(follow_button)
 	range_button = Atlas.button(App.t("show_range"), _show_range)
 	range_button.toggle_mode = true
@@ -97,12 +98,12 @@ func open(l: int) -> void:
 		actions.add_child(m)
 
 func _follow() -> void:
-	App.session.mark_lineage(lineage)
+	App.session.mark_lineage(int(info["founder"]))
 	follow_button.text = App.t("followed")
 	follow_button.disabled = true
 
 func _show_range() -> void:
-	App.session.set_focus(lineage if range_button.button_pressed else -1)
+	App.session.set_focus(species if range_button.button_pressed else -1)
 	App.globe.refresh_frame(true)
 	if range_button.button_pressed:
 		App.globe.target_distance = max(App.globe.target_distance, 4.0)

@@ -17,6 +17,7 @@ var o2_label: Label
 var temp_label: Label
 var bio_label: Label
 var lin_label: Label
+var inf_label: Label
 var paused := true
 
 func _ready() -> void:
@@ -55,6 +56,7 @@ func _ready() -> void:
 	temp_label = _indicator(h, App.t("temperature"))
 	bio_label = _indicator(h, App.t("biomass"))
 	lin_label = _indicator(h, App.t("lineages"))
+	inf_label = _indicator(h, App.t("influence_short"))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(spacer)
@@ -111,4 +113,5 @@ func update_info(info: Dictionary, seeking: bool) -> void:
 	temp_label.text = info["temperature_text"]
 	bio_label.text = info["biomass_text"]
 	lin_label.text = str(info["lineages"])
+	inf_label.text = "∞" if bool(info.get("sandbox", false)) else "%d / %d" % [int(info.get("influence", 0.0)), int(info.get("influence_max", 0.0))]
 	_sync_speed()

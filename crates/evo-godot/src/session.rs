@@ -892,6 +892,11 @@ impl EvoSession {
         d.set("parent_name", parent_species.map_or(String::new(), |p| self.species_name(&f, p)));
         d.set("status", status.label(self.lang));
         d.set("extinct", false);
+        // Lignée suivie quand le joueur suit l'espèce : sa plus ancienne
+        // lignée vivante.
+        let founder = lineages.iter().filter(|l| l.signature == s.species && l.extinct_years.is_none()).min_by(|a, b| a.born_years.total_cmp(&b.born_years).then(a.id.cmp(&b.id)));
+        d.set("founder", founder.map_or(-1, |l| l.id as i64));
+        d.set("marked", founder.is_some_and(|l| self.focus.marked.contains(&l.id)));
         d.set("peak_cell", s.peak_cell as i64);
         d.set("origin_region", evo_view::naming::place_name(f.planet.seed, evo_view::naming::region_of(&grid, s.origin_cell as usize)));
         d

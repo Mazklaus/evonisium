@@ -1,9 +1,11 @@
 extends Control
-## Chargement d'un point de sauvegarde : la partie est rejouée depuis sa
-## graine et sa file d'ordres jusqu'au pas sauvegardé.
+## Chargement d'un point de sauvegarde : le moteur relit l'état complet
+## (sans rejeu), sur un fil à part.
 
 var bar: ProgressBar
 var label: Label
+var box: VBoxContainer
+var spin := 0.0
 
 func setup(params: Dictionary) -> void:
 	App.globe.interactive = false
@@ -12,6 +14,7 @@ func setup(params: Dictionary) -> void:
 	p.custom_minimum_size = Vector2(470, 0)
 	add_child(p)
 	var v := VBoxContainer.new()
+	box = v
 	p.add_child(v)
 	v.add_child(Atlas.title(App.t("loading"), 32))
 	bar = ProgressBar.new()
@@ -26,11 +29,16 @@ func setup(params: Dictionary) -> void:
 		v.add_child(Atlas.button(App.t("back"), func(): App.goto("accueil")))
 		set_process(false)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var p: Vector2 = App.session.loading_progress()
 	if p.y > 0.0:
-		bar.value = 100.0 * p.x / p.y
-		label.text = "%d / %d" % [int(p.x), int(p.y)]
+		# Lecture d'un seul tenant : la barre ne fait que dire que ça vit.
+		spin = fmod(spin + delta * 40.0, 100.0)
+		bar.value = spin
+	elif App.session.loading_error() != "":
+		label.text = App.session.loading_error()
+		box.add_child(Atlas.button(App.t("back"), func(): App.goto("accueil")))
+		set_process(false)
 	elif App.session.has_frame():
 		App.session.set_rules_profile(App.settings["stop_profile"])
 		App.goto("jeu", {"new": false})
