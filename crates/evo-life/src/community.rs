@@ -189,7 +189,11 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
         }
         let births = potential * scale;
         for r in REACTIONS.iter().filter(|r| !r.is_light() && !r.fixation.is_empty()) {
-            let fixed = births * p.rates.fixation_share(r.id as usize);
+            // La part du carbone qui demande ce réducteur ne dépasse pas ce
+            // que le réducteur disponible permet ; le reste de la croissance
+            // vient des autres voies.
+            let share = p.rates.fixation_share(r.id as usize);
+            let fixed = (births * share).min(potential * share * fix_phi(r).max(0.0));
             if fixed <= 0.0 {
                 continue;
             }

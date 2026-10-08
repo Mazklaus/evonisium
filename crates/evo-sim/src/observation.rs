@@ -26,6 +26,9 @@ pub struct PopulationView {
     pub growth_per_year: f32,
     pub genes: u16,
     pub pigment_rgb: Option<[u8; 3]>,
+    /// Longueur d'onde d'absorption du pigment, nm.
+    pub pigment_nm: Option<f32>,
+    pub phototroph: bool,
     pub photosynthesis_stage: u8,
 }
 

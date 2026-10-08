@@ -284,6 +284,10 @@ pub struct World {
     pub timings: PhaseTimings,
     /// Premier événement non encore publié.
     published_events: usize,
+    /// Cellule d'origine de chaque signature (première lignée qui la porte),
+    /// et lignées déjà parcourues ; recalculé après une reprise.
+    species_origin: BTreeMap<u32, u32>,
+    origin_scanned: usize,
 }
 
 impl World {
@@ -328,6 +332,8 @@ impl World {
             deme_index,
             interest: None,
             published_events: 0,
+            species_origin: BTreeMap::new(),
+            origin_scanned: 0,
             chemistry,
             communities,
             lineages: LineageRegistry::default(),
@@ -1259,6 +1265,8 @@ impl World {
         let new_events =
             self.events.events[self.published_events.min(self.events.events.len())..].iter().map(EventView::from_event).collect();
         self.published_events = self.events.events.len();
+        self.scan_species_origins();
+        let species = self.species();
         let p = &self.config.influence;
         self.publication.publish(PublishedState {
             step: self.stats.steps,
@@ -1269,7 +1277,7 @@ impl World {
             cells,
             bio_level: self.config.bio_level,
             bio_cells: self.bio.len() as u32,
-            species: self.species(),
+            species,
             new_events,
             influence: InfluenceView {
                 points: self.influence.points as f32,
@@ -1283,6 +1291,15 @@ impl World {
     }
 
     /// Espèces vivantes (guildes), par biomasse décroissante.
+    /// Met à jour la cellule d'origine de chaque signature avec les
+    /// lignées fondées depuis le dernier appel.
+    fn scan_species_origins(&mut self) {
+        for r in &self.lineages.records[self.origin_scanned..] {
+            self.species_origin.entry(r.signature).or_insert(r.origin_cell);
+        }
+        self.origin_scanned = self.lineages.records.len();
+    }
+
     pub fn species(&self) -> Vec<SpeciesView> {
         let mut map: BTreeMap<u32, (SpeciesView, f64, Vec<usize>)> = BTreeMap::new();
         for (b, pops) in self.communities.iter().enumerate() {
@@ -1290,7 +1307,14 @@ impl World {
                 let sig = p.signature();
                 let e = map.entry(sig).or_insert_with(|| {
                     (
-                        SpeciesView { id: sig, name: guild_label(sig), phototroph: p.phenotype.phototroph, ..Default::default() },
+                        SpeciesView {
+                            id: sig,
+                            signature: sig,
+                            name: guild_label(sig),
+                            phototroph: p.phenotype.phototroph,
+                            origin_bio_cell: self.species_origin.get(&sig).copied().unwrap_or(b as u32),
+                            ..Default::default()
+                        },
                         0.0,
                         Vec::new(),
                     )
@@ -1344,18 +1368,7 @@ impl World {
             .into_iter()
             .map(|(_, b)| FocusCell {
                 bio_cell: b as u32,
-                populations: self.communities[b]
-                    .iter()
-                    .map(|p| PopulationView {
-                        lineage: p.lineage,
-                        species: p.signature(),
-                        biomass: p.biomass as f32,
-                        growth_per_year: p.rates.r as f32,
-                        genes: p.genome.genes.len() as u16,
-                        pigment_rgb: p.phenotype.pigment_nm.map(pigment_colour),
-                        photosynthesis_stage: photosynthesis_stage(&p.phenotype),
-                    })
-                    .collect(),
+                populations: self.communities[b].iter().map(population_view).collect(),
                 chemistry: self.chemistry[b].iter().map(|&x| x as f32).collect(),
             })
             .collect();
@@ -1498,6 +1511,21 @@ impl World {
 /// Température optimale moyenne des enzymes réellement utilisées (voie
 /// active dans la cellule) : les gènes d'une voie sans substrat dérivent
 /// librement et ne disent rien de l'adaptation.
+/// Vue d'une population pour l'affichage.
+pub fn population_view(p: &Population) -> PopulationView {
+    PopulationView {
+        lineage: p.lineage,
+        species: p.signature(),
+        biomass: p.biomass as f32,
+        growth_per_year: p.rates.r as f32,
+        genes: p.genome.genes.len() as u16,
+        pigment_rgb: p.phenotype.pigment_nm.map(pigment_colour),
+        pigment_nm: p.phenotype.pigment_nm.map(|x| x as f32),
+        phototroph: p.phenotype.phototroph,
+        photosynthesis_stage: photosynthesis_stage(&p.phenotype),
+    }
+}
+
 fn used_t_opt(p: &Population) -> Option<f64> {
     let (mut w, mut t) = (0.0, 0.0);
     for e in &p.phenotype.enzymes {

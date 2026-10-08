@@ -54,6 +54,12 @@ fn a_player_creates_seeds_intervenes_queries_and_saves() {
     let Answer::RegionalHistory(reg) = engine.query(Query::RegionalHistory { cell: 7 }).recv().unwrap() else { panic!() };
     assert!(!reg.is_empty());
 
+    let Answer::Cell(Some(cell)) = engine.query(Query::Cell { cell: 7 }).recv().unwrap() else { panic!() };
+    assert_eq!(cell.cell, 7);
+    let Answer::Lineages(lineages) = engine.query(Query::Lineages { since_years: 0.0 }).recv().unwrap() else { panic!() };
+    assert!(!lineages.is_empty());
+    assert_eq!(frame.current.species[0].signature, species);
+
     engine.submit(When::Now, OrderKind::Pause);
     wait_for(&engine, "pause", |e| e.frame().current.paused);
     let dir = std::env::temp_dir().join(format!("evonisium-test-{}", std::process::id()));
@@ -61,10 +67,14 @@ fn a_player_creates_seeds_intervenes_queries_and_saves() {
     let path = dir.join("partie.evo");
     engine.save(path.clone()).recv().unwrap().unwrap();
     let years = engine.frame().current.years;
+    wait_for(&engine, "empreinte", |e| e.status().state_hash.is_some());
+    let hash = engine.status().state_hash;
     drop(engine);
 
     let resumed = Engine::load(&path, 2).unwrap();
     assert_eq!(resumed.frame().current.years, years);
+    let Answer::StateHash(h) = resumed.query(Query::StateHash).recv().unwrap() else { panic!() };
+    assert_eq!(Some(h), hash);
     let Answer::SpeciesHistory(again) = resumed.query(Query::SpeciesHistory { species }).recv().unwrap() else { panic!() };
     assert_eq!(again, hist[..again.len()].to_vec());
     let _ = std::fs::remove_dir_all(dir);

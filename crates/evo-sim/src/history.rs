@@ -174,6 +174,11 @@ pub struct SpeciesView {
     pub pigment_rgb: Option<[u8; 3]>,
     /// Cellule du vivant où l'espèce est la plus abondante.
     pub peak_bio_cell: u32,
+    /// Cellule du vivant où la première lignée de cette signature est née.
+    pub origin_bio_cell: u32,
+    /// Signature métabolique (bits des réactions catalysées) ; c'est aussi
+    /// `id` pendant l'ère microbienne.
+    pub signature: u32,
 }
 
 /// Un événement, tel que la chronique et les alertes le montrent.

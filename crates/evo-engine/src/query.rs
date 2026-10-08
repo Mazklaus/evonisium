@@ -34,6 +34,52 @@ pub enum Query {
     SpeciesHabitat { species: u32 },
     /// Fiche d'une espèce vivante.
     Species { species: u32 },
+    /// Détail d'une cellule physique (inspecteur, loupe).
+    Cell { cell: u32 },
+    /// Lignées vivantes ou éteintes depuis une date (arbre du vivant).
+    Lineages { since_years: f64 },
+    /// Empreinte de l'état complet (vérification du rejeu).
+    StateHash,
+}
+
+/// Détail d'une cellule physique et de sa cellule du vivant.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CellDetail {
+    pub cell: u32,
+    pub bio_cell: u32,
+    pub latitude_rad: f64,
+    pub elevation_m: f64,
+    pub is_ocean: bool,
+    /// Part de la cellule couverte d'eaux douces.
+    pub lake_fraction: f64,
+    pub temperature_k: f64,
+    pub light_w_m2: f64,
+    pub uv_w_m2: f64,
+    pub ph: f64,
+    pub salinity: f64,
+    pub ice_cover: f64,
+    /// Source hydrothermale : apports d'H₂, d'H₂S et de fer, mol·an⁻¹.
+    pub vent_h2: f64,
+    pub vent_h2s: f64,
+    pub vent_fe: f64,
+    /// Volume d'eau de la cellule du vivant, m³.
+    pub water_volume_m3: f64,
+    /// Concentrations, mol·m⁻³, dans l'ordre de `WATER_POOLS`, avec leurs noms.
+    pub chemistry: Vec<(&'static str, f64)>,
+    pub populations: Vec<evo_sim::observation::PopulationView>,
+}
+
+/// Une lignée de l'arbre du vivant.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LineageView {
+    pub id: u32,
+    /// Lignée mère (elle-même pour les cellules déposées).
+    pub parent: u32,
+    pub born_years: f64,
+    pub extinct_years: Option<f64>,
+    pub origin_bio_cell: u32,
+    pub signature: u32,
+    pub children: u32,
 }
 
 /// Un échantillon de l'historique d'une région.
@@ -112,6 +158,9 @@ pub enum Answer {
     SpeciesHistory(Vec<SpeciesSample>),
     Habitat(Option<Habitat>),
     Species(Option<evo_sim::SpeciesView>),
+    Cell(Option<CellDetail>),
+    Lineages(Vec<LineageView>),
+    StateHash(u64),
     /// La requête n'a pas pu aboutir (base illisible, …).
     Failed(String),
 }
@@ -246,6 +295,25 @@ impl Store {
             Query::SpeciesHistory { species } => Answer::SpeciesHistory(self.species_history(species)?),
             Query::SpeciesHabitat { species } => Answer::Habitat(self.habitat(world, species)?),
             Query::Species { species } => Answer::Species(world.species().into_iter().find(|s| s.id == species)),
+            Query::Cell { cell } => Answer::Cell(cell_detail(world, cell)),
+            Query::Lineages { since_years } => Answer::Lineages(
+                world
+                    .lineages
+                    .records
+                    .iter()
+                    .filter(|r| r.extinct_years.is_none_or(|y| y >= since_years))
+                    .map(|r| LineageView {
+                        id: r.id,
+                        parent: r.parent,
+                        born_years: r.born_years,
+                        extinct_years: r.extinct_years,
+                        origin_bio_cell: r.origin_cell,
+                        signature: r.signature,
+                        children: r.children,
+                    })
+                    .collect(),
+            ),
+            Query::StateHash => Answer::StateHash(world.state_hash()),
         })
     }
 
@@ -430,4 +498,31 @@ pub fn living_habitat(world: &World, species: u32) -> Option<Habitat> {
     h.planet_temperature_k = p.climate.mean_temperature_k;
     h.pressure_pa = p.reservoirs.pressure_pa(p.params.gravity(), p.params.surface_area());
     Some(h)
+}
+
+/// Détail d'une cellule physique.
+pub fn cell_detail(world: &World, cell: u32) -> Option<CellDetail> {
+    let b = *world.bio.parent.get(cell as usize)? as usize;
+    let env = &world.bio.env[b];
+    let phys = &world.planet.cells[cell as usize];
+    Some(CellDetail {
+        cell,
+        bio_cell: b as u32,
+        latitude_rad: phys.latitude_rad,
+        elevation_m: phys.elevation_m,
+        is_ocean: phys.is_ocean,
+        lake_fraction: world.planet.display.get(cell as usize).map_or(0.0, |d| d.lake_fraction as f64),
+        temperature_k: phys.temperature_k,
+        light_w_m2: env.light_par_w_m2,
+        uv_w_m2: env.uv_w_m2,
+        ph: env.ph,
+        salinity: env.salinity,
+        ice_cover: phys.ice_cover,
+        vent_h2: env.vent_h2_supply,
+        vent_h2s: env.vent_h2s_supply,
+        vent_fe: env.vent_fe_supply,
+        water_volume_m3: env.water_volume_m3,
+        chemistry: evo_planet::WATER_POOLS.iter().map(|&p| (p.label(), world.chemistry[b][p as usize])).collect(),
+        populations: world.communities[b].iter().map(evo_sim::world::population_view).collect(),
+    })
 }

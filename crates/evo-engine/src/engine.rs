@@ -78,6 +78,9 @@ pub struct EngineStatus {
     /// Vitesse lissée, années de jeu par seconde.
     pub years_per_second: f64,
     pub paused: bool,
+    /// Empreinte de l'état complet, tenue à jour quand la partie est en
+    /// pause (vérification du rejeu ; voir aussi `Query::StateHash`).
+    pub state_hash: Option<u64>,
     /// Dernière erreur du fil (base, sauvegarde).
     pub error: Option<String>,
     /// Faux une fois le fil arrêté.
@@ -294,6 +297,7 @@ fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver
             st.years = world.years();
             st.steps = world.stats.steps;
             st.paused = world.paused;
+            st.state_hash = world.paused.then(|| world.state_hash());
             if advanced > 0.0 {
                 st.last_step_seconds = elapsed;
                 st.years_per_second = speed;
