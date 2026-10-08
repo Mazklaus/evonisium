@@ -59,6 +59,9 @@ pub struct EvolutionParams {
     /// très délétère disparaît avant de porter quoi que ce soit).
     pub tunnel: bool,
     pub tunnel_min_selection: f64,
+    /// Tentatives de tunnel au plus par génotype et par pas (les premiers
+    /// mutants qui ne se fixent pas).
+    pub tunnel_attempts_per_genotype: usize,
     /// Transferts horizontaux reçus par génome et par génération, et
     /// candidats évalués par population et par pas.
     pub hgt_rate: f64,
@@ -72,6 +75,7 @@ impl Default for EvolutionParams {
             candidates_per_kind: [4, 1, 1, 1, 1, 1, 2],
             tunnel: true,
             tunnel_min_selection: -0.05,
+            tunnel_attempts_per_genotype: 2,
             hgt_rate: 1e-7,
             hgt_candidates: 1,
             accelerator: AcceleratorParams::default(),
@@ -287,11 +291,15 @@ pub fn evolve_genotype(
     let u = cfg.mutation.genomic_rate(&resident.genome);
 
     // Évalue un génome candidat contre la population qu'il affronterait.
-    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
-        let phenotype = Phenotype::from_genome(genome, physio);
-        stats.genetic_evaluations += 1;
+    // Coefficient de sélection d'un phénotype candidat.
+    let judge = |phenotype: Phenotype| -> Option<(f64, Phenotype, GrowthRates)> {
         if phenotype.signature == 0 {
             return None;
+        }
+        // Mutation sans effet sur le phénotype (marqueur, gène inactif) :
+        // neutre, sans réévaluer la croissance.
+        if phenotype == *resident.phenotype {
+            return Some((0.0, phenotype, resident.rates));
         }
         let rates = growth_rates(&phenotype, &cond, chem, physio);
         // Un mutant de guilde nouvelle est jugé contre la population de
@@ -318,6 +326,11 @@ pub fn evolve_genotype(
         }
         Some((s / weight, phenotype, rates))
     };
+    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
+        let phenotype = Phenotype::from_genome(genome, physio);
+        stats.genetic_evaluations += 1;
+        judge(phenotype)
+    };
 
     let mut best: Option<Best> = None;
     let consider = |best: &mut Option<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
@@ -326,6 +339,7 @@ pub fn evolve_genotype(
         }
     };
 
+    let mut tunnels_left = evo.tunnel_attempts_per_genotype;
     for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
         let count = evo.candidates_per_kind[k] * group.candidate_factor();
         if count == 0 {
@@ -347,19 +361,33 @@ pub fn evolve_genotype(
                     }
                     consider(&mut best, s, change, phenotype, rates);
                 }
-                None if evo.tunnel && s > evo.tunnel_min_selection => {
+                None if evo.tunnel && tunnels_left > 0 && s > evo.tunnel_min_selection => {
                     // Tunnel stochastique : la lignée du premier mutant,
                     // tant qu'elle survit, produit des doubles mutants.
+                    tunnels_left -= 1;
                     let second = mutate(&change.genome, &cfg.mutation, rng);
                     let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
                     stats.tunnel_attempts += 1;
-                    let Some((s2, phenotype2, rates2)) = evaluate(&second.genome, stats) else { continue };
+                    // Perdre ou supprimer un gène, ou changer un marqueur, ne
+                    // fait gagner aucune fonction : inutile de construire le
+                    // phénotype.
+                    if matches!(kind2, MutationKind::LossOfFunction | MutationKind::Deletion | MutationKind::NeutralMarker) {
+                        continue;
+                    }
                     // Le tunnel sert à franchir une innovation à deux
                     // pièces : le double mutant doit gagner une fonction
                     // que le résident n'a pas. Sinon, la seconde mutation
                     // seule, bien plus fréquente, l'emporte sur ce double
-                    // qui traîne la première comme un poids mort.
-                    if s2 <= 0.0 || !gains_function(&phenotype2, &resident.phenotype) || best.as_ref().is_some_and(|b| b.s >= s2) {
+                    // qui traîne la première comme un poids mort. Ce critère
+                    // se lit sur le phénotype, avant tout calcul de
+                    // croissance.
+                    let phenotype2 = Phenotype::from_genome(&second.genome, physio);
+                    stats.genetic_evaluations += 1;
+                    if !gains_function(&phenotype2, &resident.phenotype) {
+                        continue;
+                    }
+                    let Some((s2, phenotype2, rates2)) = judge(phenotype2) else { continue };
+                    if s2 <= 0.0 || best.as_ref().is_some_and(|b| b.s >= s2) {
                         continue;
                     }
                     let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);

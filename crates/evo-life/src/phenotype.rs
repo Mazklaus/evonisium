@@ -65,12 +65,27 @@ pub struct Phenotype {
 pub fn thermal_factor(t: f64, t_opt: f64, width: f64, physio: &Physiology) -> f64 {
     let peak = 2.0 * physio.thermal_reference_width_k / (physio.thermal_reference_width_k + width);
     let x = (t - t_opt) / width;
+    // Au-delà de 6 largeurs, le facteur est sous 10⁻¹⁵ : zéro, sans calcul.
+    if x * x > 36.0 {
+        return 0.0;
+    }
     peak * (-x * x).dexp()
+}
+
+/// Capacités des voies d'un phénotype à une température : elles ne
+/// dépendent que de la température, constante pendant l'écologie d'un pas,
+/// et se calculent donc une fois par population et par pas.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Capacities {
+    pub cap: [f64; REACTION_COUNT],
+    pub affinity: [f64; REACTION_COUNT],
+    /// Meilleur centre réactionnel anoxygénique (second photosystème).
+    pub partner: f64,
 }
 
 impl Phenotype {
     pub fn from_genome(genome: &Genome, physio: &Physiology) -> Self {
-        let mut enzymes = Vec::new();
+        let mut enzymes = Vec::with_capacity(genome.genes.len());
         // Totaux par voie et par famille : le coût est convexe sur le total,
         // pour qu'une duplication ne rende pas une protéine moins chère.
         let mut reaction_eff = [0.0; REACTION_COUNT];
@@ -164,6 +179,29 @@ impl Phenotype {
             cyclic_phototrophy,
             phototroph: light_signature || cyclic_phototrophy || rhodopsin_q > 0.0,
         }
+    }
+
+    /// Capacités et affinités de toutes les voies à la température `t`, en
+    /// un passage sur les enzymes (mêmes sommes, dans le même ordre, que
+    /// [`Phenotype::capacity`]).
+    pub fn capacities(&self, t: f64, physio: &Physiology) -> Capacities {
+        let mut cap = [0.0; REACTION_COUNT];
+        let mut aff = [0.0; REACTION_COUNT];
+        for e in &self.enzymes {
+            let c = e.efficiency * thermal_factor(t, e.t_opt_k, e.t_width_k, physio);
+            cap[e.reaction as usize] += c;
+            aff[e.reaction as usize] += c * e.affinity;
+        }
+        let mut affinity = [1.0; REACTION_COUNT];
+        for r in 0..REACTION_COUNT {
+            if cap[r] > 0.0 {
+                affinity[r] = aff[r] / cap[r];
+            } else {
+                cap[r] = 0.0;
+            }
+        }
+        let partner = ANOXYGENIC_CENTRES.iter().map(|&r| cap[r as usize].min(1.0)).fold(0.0, f64::max);
+        Capacities { cap, affinity, partner }
     }
 
     /// Capacité et affinité moyenne d'une voie à la température `t`.

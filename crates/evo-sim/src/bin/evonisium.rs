@@ -114,6 +114,7 @@ fn main() {
             write_or_print(opt(&args, "--out"), &report);
         }
         Some("empreinte") => fingerprint(&args),
+        Some("chrono") => chrono(&args),
         Some("bench") => {
             let levels: String = arg(&args, "--levels", "6,7".to_string());
             let opts = BenchOptions {
@@ -187,4 +188,48 @@ fn fingerprint(args: &[String]) {
     }
     let s = world.summary();
     eprintln!("Bilans : carbone {:.1e}, phosphore {:.1e}, électrons {:.1e}", s.carbon_error, s.phosphorus_error, s.electron_error);
+}
+
+/// Chronométrage par poste depuis un point de sauvegarde (un monde mûr se
+/// prépare une fois avec `--prepare`, puis chaque essai repart du même état).
+///   evonisium chrono --save FICHIER [--prepare PAS] [--level L] [--steps S]
+fn chrono(args: &[String]) {
+    let path = std::path::PathBuf::from(opt(args, "--save").unwrap_or_else(|| usage()));
+    if let Some(warmup) = opt(args, "--prepare") {
+        let mut cfg = WorldConfig::new(arg(args, "--seed", 2026), arg(args, "--level", 6));
+        cfg.seeding = evo_sim::Seeding::AllOcean;
+        let mut world = World::new(cfg);
+        world.seed_life();
+        let n: u64 = warmup.parse().expect("nombre de pas");
+        for i in 0..n {
+            world.step();
+            if (i + 1) % 50 == 0 {
+                eprintln!("préparation : pas {} / {n}", i + 1);
+            }
+        }
+        world.save_file(&path).expect("écriture de la sauvegarde");
+        return;
+    }
+    let mut world = World::load_file(&path).expect("lecture de la sauvegarde");
+    let steps: u32 = arg(args, "--steps", 5);
+    let mut total = evo_sim::world::PhaseTimings::default();
+    let evals = world.stats.genetic_evaluations;
+    for _ in 0..steps {
+        total.add(&world.step());
+    }
+    let t = total.divided(steps);
+    let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
+    let s = world.summary();
+    println!(
+        "{} populations ; pas {:.0} ms : planète {:.0}, écologie {:.0}, évolution {:.0}, migration {:.0}, registres {:.0} ; {:.0} évaluations par pas ; empreinte {:016x}",
+        s.populations,
+        ms(t.total()),
+        ms(t.planet),
+        ms(t.ecology),
+        ms(t.evolution),
+        ms(t.migration),
+        ms(t.bookkeeping),
+        (world.stats.genetic_evaluations - evals) as f64 / steps as f64,
+        world.state_hash()
+    );
 }

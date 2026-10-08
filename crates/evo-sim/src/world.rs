@@ -41,7 +41,7 @@ use evo_genetics::{
     Domain, DomainFamily, Gene, Genome, GenomeChangeCause, GenomeJournal, JournalEntry, LineageRegistry, MutationParams, OriginFixation,
     GENOME_CHANGE_CAUSE_COUNT,
 };
-use evo_life::community::{evaluate, substep, CellContext, Population};
+use evo_life::community::{capacities, evaluate, substep_with, CellContext, Population};
 use evo_life::metabolism::{
     domain_relations, guild_label, photosynthesis_stage, FERMENTATION, METHANOGENESIS, PHOTOSYNTHESIS_PATHWAY, PHOTOSYNTHESIS_STAGES,
     REACTION_COUNT, RHODOPSIN_PATHWAY,
@@ -136,7 +136,7 @@ impl WorldConfig {
             extinction_biomass: 1.0,
             founder_biomass: 100.0,
             light_biomass_per_m2: 0.1,
-            max_populations_per_cell: 12,
+            max_populations_per_cell: 8,
             seeding: Seeding::Vents,
             seed_biomass: 1e4,
             history_every_years: 1e6,
@@ -742,9 +742,12 @@ impl World {
                 }
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
                 let start = *chem;
+                // La température ne change pas pendant l'écologie du pas : les
+                // capacités des enzymes se calculent une fois.
+                let caps = capacities(pops, &ctx, &cfg.physiology);
                 for _ in 0..cfg.eco_substeps {
                     if !pops.is_empty() {
-                        let o = substep(pops, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
+                        let o = substep_with(pops, &caps, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
                         r.oxygen += o.oxygen;
                         r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
                         r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
