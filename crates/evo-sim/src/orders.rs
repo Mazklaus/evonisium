@@ -29,6 +29,17 @@ pub enum Intervention {
     /// réchauffer, H₂ ou CH₄ pour réduire, O₂ n'est pas permis). La cellule
     /// situe l'événement dans la chronique.
     Eruption { cell: u32, gas: Gas, moles: f64 },
+    /// Impact météoritique d'un bolide de `diameter_km` (étape 4) : même
+    /// module que les impacts naturels (voir `disturbance`).
+    Impact { cell: u32, diameter_km: f64 },
+    /// Isoler un groupe : bras de mer (`sea`) ou chaîne de montagnes
+    /// locale, arc de `length_km` centré sur la cellule et orienté selon
+    /// `azimuth_deg` (0 : nord-sud), que les migrations ne franchissent pas
+    /// pendant `duration_years`.
+    Isolate { cell: u32, azimuth_deg: f64, length_km: f64, duration_years: f64, sea: bool },
+    /// Poussée climatique régionale : écart de température (K) et facteur
+    /// de pluie pendant `duration_years`, dans un rayon autour de la cellule.
+    ClimatePulse { cell: u32, radius_km: f64, delta_k: f64, rain_factor: f64, duration_years: f64 },
 }
 
 impl Intervention {
@@ -41,6 +52,17 @@ impl Intervention {
         match self {
             Intervention::Fertilize { moles_p, .. } => (10.0 * (moles_p.max(0.0) / 1e12).sqrt()).clamp(2.0, 60.0),
             Intervention::Eruption { moles, .. } => (20.0 * (moles.abs() / 1e16).sqrt()).clamp(2.0, 60.0),
+            // Un bolide de 10 km (Chicxulub) coûte 50 points, un de 1 km 16.
+            Intervention::Impact { diameter_km, .. } => (50.0 * (diameter_km.max(0.0) / 10.0).sqrt()).clamp(5.0, 90.0),
+            // Une barrière de 1 000 km pendant 1 Ma coûte 20 points.
+            Intervention::Isolate { length_km, duration_years, .. } => {
+                (10.0 + 10.0 * length_km.max(0.0) / 1000.0 * (duration_years.max(0.0) / 1e6).sqrt()).clamp(5.0, 60.0)
+            }
+            // ±5 K sur 1 000 km pendant 100 ka : 20 points.
+            Intervention::ClimatePulse { radius_km, delta_k, rain_factor, duration_years, .. } => {
+                let strength = delta_k.abs() + 10.0 * (rain_factor.max(0.01) - 1.0).abs();
+                (4.0 * strength * (duration_years.max(0.0) / 1e5).sqrt() * (radius_km.max(0.0) / 1000.0).sqrt()).clamp(2.0, 60.0)
+            }
         }
     }
 
@@ -50,12 +72,26 @@ impl Intervention {
                 format!("apport de {moles_p:.2e} mol de phosphate dans un rayon de {radius_km:.0} km autour de la cellule {cell}")
             }
             Intervention::Eruption { cell, gas, moles } => format!("éruption de {moles:.2e} mol de {} à la cellule {cell}", gas.label()),
+            Intervention::Impact { cell, diameter_km } => format!("impact d'un bolide de {diameter_km:.1} km à la cellule {cell}"),
+            Intervention::Isolate { cell, length_km, duration_years, sea, .. } => format!(
+                "{} de {length_km:.0} km pendant {:.2} Ma à la cellule {cell}",
+                if *sea { "bras de mer" } else { "chaîne de montagnes" },
+                duration_years / 1e6
+            ),
+            Intervention::ClimatePulse { cell, radius_km, delta_k, rain_factor, duration_years } => format!(
+                "poussée climatique de {delta_k:+.1} K, pluie ×{rain_factor:.2}, sur {radius_km:.0} km pendant {:.0} ka à la cellule {cell}",
+                duration_years / 1e3
+            ),
         }
     }
 
     pub fn cell(&self) -> u32 {
         match self {
-            Intervention::Fertilize { cell, .. } | Intervention::Eruption { cell, .. } => *cell,
+            Intervention::Fertilize { cell, .. }
+            | Intervention::Eruption { cell, .. }
+            | Intervention::Impact { cell, .. }
+            | Intervention::Isolate { cell, .. }
+            | Intervention::ClimatePulse { cell, .. } => *cell,
         }
     }
 }
