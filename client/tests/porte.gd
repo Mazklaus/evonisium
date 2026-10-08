@@ -213,16 +213,25 @@ func _play_scenario() -> void:
 	jeu.fiche.close()
 
 	# Point de sauvegarde.
+	# Le moteur écrit l'état complet en tâche de fond : on attend son avis
+	# (« ok » ou « erreur »), pas seulement l'apparition du fichier.
 	var save := App.save_path("porte")
+	var t_save := Time.get_ticks_msec()
 	App.session.save(save, "porte")
-	var saved := await _until(func(): return FileAccess.file_exists(save), 10.0)
+	# L'écran de jeu relève lui-même les réponses du moteur à chaque image.
+	await get_tree().process_frame
+	await _until(func(): return App.session.saves_pending() == 0, 180.0)
+	var saved: bool = App.session.saves_pending() == 0 and FileAccess.file_exists(save) and FileAccess.get_file_as_bytes(save).size() > 0
 	report["sauvegarde"] = saved
+	report["sauvegarde_s"] = (Time.get_ticks_msec() - t_save) / 1000.0
+	_log("sauvegarde : %s en %.1f s" % [saved, report["sauvegarde_s"]])
 
 	report["images_par_seconde"] = _stats(fps_samples)
 	report["duree_image_ms"] = _stats(frame_ms)
 	report["pont_ms"] = _stats(bridge)
 	report["captures"] = shots
 	var passed: bool = created and seeded and applied and reached > 0.0 and saved
+	_log("créée %s, ensemencée %s, intervention %s, oxygène à %s ans, sauvegarde %s" % [created, seeded, applied, reached, saved])
 	_finish(passed)
 
 func _player_event_seen() -> bool:

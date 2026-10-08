@@ -355,6 +355,12 @@ impl EvoSession {
         }
     }
 
+    /// Sauvegardes en cours d'écriture (relevées par `poll_events`).
+    #[func]
+    fn saves_pending(&self) -> i64 {
+        self.game.as_ref().map_or(0, |g| g.saves_pending() as i64)
+    }
+
     /// Message du moteur (sauvegarde écrite…), ou chaîne vide.
     #[func]
     fn take_notice(&mut self) -> GString {

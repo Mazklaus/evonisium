@@ -223,6 +223,11 @@ impl Game {
         self.saves.push((path.into(), self.engine.save(PathBuf::from(path))));
     }
 
+    /// Sauvegardes que le moteur n'a pas fini d'écrire.
+    pub fn saves_pending(&self) -> usize {
+        self.saves.len()
+    }
+
     /// Demande le détail d'une cellule (inspecteur) ; la réponse arrive par
     /// `pump`.
     pub fn request_cell(&mut self, cell: u32, step: u64) {
