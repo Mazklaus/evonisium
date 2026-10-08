@@ -156,6 +156,27 @@ pub fn tunnel_probability(delta: f64, mu2: f64, p2: f64) -> f64 {
     p.min(p2)
 }
 
+/// Tirage d'un nombre d'événements selon une loi de Poisson de moyenne
+/// `lambda`, avec les fonctions déterministes du moteur (même tirage sur
+/// toutes les plateformes) : inversion jusqu'à 30, approximation normale
+/// au-delà (écart relatif sous 2 % sur les probabilités).
+pub fn poisson(lambda: f64, rng: &mut impl Rng) -> u64 {
+    if lambda <= 0.0 || lambda.is_nan() {
+        return 0;
+    }
+    if lambda > 30.0 {
+        let z = evo_core::math::standard_normal(rng);
+        return (lambda + lambda.sqrt() * z + 0.5).floor().max(0.0) as u64;
+    }
+    let limit = (-lambda).dexp();
+    let (mut k, mut p) = (0u64, rng.random::<f64>());
+    while p > limit {
+        k += 1;
+        p *= rng.random::<f64>();
+    }
+    k
+}
+
 /// Simulation explicite de Wright-Fisher qui sert de référence au tunnel : une
 /// population de `n` individus sauvages, dont un mutant intermédiaire de
 /// valeur sélective 1 − `delta` ; chaque descendant intermédiaire devient
@@ -256,6 +277,26 @@ mod tests {
         let p = tunnel_probability(0.1, 1e-6, 0.1);
         assert!((p - 9e-7).abs() / 9e-7 < 1e-3, "{p}");
         assert_eq!(tunnel_probability(0.0, 0.0, 0.1), 0.0);
+    }
+
+    #[test]
+    fn poisson_has_the_right_mean_and_zeros() {
+        let mut rng = evo_core::rng::rng_for(5, evo_core::rng::Stream::Validation, &[]);
+        for lambda in [0.01, 0.7, 4.0, 80.0] {
+            let n = 200_000;
+            let (mut sum, mut zeros) = (0u64, 0u64);
+            for _ in 0..n {
+                let k = poisson(lambda, &mut rng);
+                sum += k;
+                zeros += u64::from(k == 0);
+            }
+            let mean = sum as f64 / n as f64;
+            assert!((mean - lambda).abs() < 4.0 * (lambda / n as f64).sqrt() + 0.01 * lambda, "λ = {lambda} : moyenne {mean}");
+            if lambda <= 30.0 {
+                let p0 = zeros as f64 / n as f64;
+                assert!((p0 - (-lambda).dexp()).abs() < 0.005, "λ = {lambda} : P(0) = {p0}");
+            }
+        }
     }
 
     #[test]

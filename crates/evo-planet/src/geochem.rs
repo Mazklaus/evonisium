@@ -309,7 +309,7 @@ impl GlobalReservoirs {
         }
         let buried = export * params.burial_efficiency(deep_oxic);
         self.organic_c += buried;
-        let p = (buried / params.burial_carbon_to_phosphorus).min(self.deep_po4);
+        let p = (buried / params.burial_carbon_to_phosphorus(deep_oxic)).min(self.deep_po4);
         self.deep_po4 -= p;
         self.sediment_p += p;
         let rest = export - buried;
@@ -360,9 +360,17 @@ impl GlobalReservoirs {
         got
     }
 
-    /// Applique exactement les échanges mesurés pendant l'écologie rapide.
-    pub fn apply_exact(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT], flux: &mut FluxRegistry) {
-        let deep_oxic = self.deep_oxic(params);
+    /// Applique exactement les échanges mesurés pendant l'écologie rapide
+    /// (`years` années).
+    pub fn apply_exact(
+        &mut self,
+        params: &PlanetParams,
+        ctx: &BoxContext,
+        moles: &[f64; WATER_POOL_COUNT],
+        years: f64,
+        flux: &mut FluxRegistry,
+    ) {
+        let deep_oxic = self.deep_oxic(params, ctx, moles[WaterPool::Doc as usize] / years.max(1e-12));
         let (_, h2s) = self.apply_surface(params, moles, deep_oxic);
         // Le sulfure dégazé quitte le système suivi ; il y reprend de l'O₂
         // en s'oxydant (puits « sulfure »).
@@ -373,14 +381,35 @@ impl GlobalReservoirs {
         flux.exchange(Element::Electrons, -s);
     }
 
-    fn deep_oxic(&self, params: &PlanetParams) -> f64 {
-        let f = self.mixing_ratio(Gas::O2);
-        f / (f + params.deep_oxic_half_mixing)
+    /// Part oxygénée de l'océan profond, quand la surface exporte
+    /// `export_rate` mol de carbone organique par an. La ventilation lui
+    /// apporte de l'eau de surface saturée en O₂ (loi de Henry) ; la matière
+    /// organique exportée y consomme une mole d'O₂ par mole de carbone.
+    /// L'océan profond est oxygéné quand l'apport l'emporte sur la demande,
+    /// anoxique sinon (loi de Hill de raideur `anoxia_steepness`). Le seuil
+    /// suit donc la productivité, comme dans les modèles de type COPSE
+    /// (Lenton et Watson, 2000), au lieu d'un niveau d'O₂ fixé.
+    pub fn deep_oxic(&self, params: &PlanetParams, ctx: &BoxContext, export_rate: f64) -> f64 {
+        let p_o2 = self.partial_pressure(Gas::O2, ctx.gravity, ctx.area_m2).max(0.0);
+        let saturated = WaterPool::O2.henry().unwrap_or(0.0) * p_o2;
+        let supply = ctx.deep_volume_m3 / params.deep_ventilation_years * saturated;
+        let demand = export_rate.max(0.0);
+        if supply <= 0.0 {
+            return 0.0;
+        }
+        if demand <= 0.0 {
+            return 1.0;
+        }
+        let x = (supply / demand).dpowf(params.anoxia_steepness);
+        x / (1.0 + x)
     }
 
     /// Fait avancer les boîtes de `dt` années. `surface_rates` : flux
     /// annuels nets des cellules vers l'extérieur (équilibrés en carbone et
-    /// en phosphore cellule par cellule), à appliquer pendant `dt`.
+    /// en phosphore cellule par cellule), à appliquer pendant `dt`. Renvoie
+    /// le pouvoir oxydant déplacé quand une boîte vide freine un prélèvement,
+    /// et celui qui n'a pu être repris (voir [`pair_throttled`]), mol
+    /// d'équivalent O₂.
     pub fn integrate(
         &mut self,
         params: &PlanetParams,
@@ -388,7 +417,7 @@ impl GlobalReservoirs {
         surface_rates: &[f64; WATER_POOL_COUNT],
         dt: f64,
         flux: &mut FluxRegistry,
-    ) {
+    ) -> (f64, f64) {
         // Sous-pas de 10 000 ans au plus, raccourcis pour qu'un sous-pas ne
         // prélève pas plus de 2 % d'une boîte (la photosynthèse renouvelle le
         // CO₂ de l'air en quelques siècles à quelques millénaires).
@@ -410,6 +439,7 @@ impl GlobalReservoirs {
         let initial: [f64; WATER_POOL_COUNT] =
             std::array::from_fn(|i| self.counterpart_ref(crate::pools::WATER_POOLS[i]).copied().unwrap_or(0.0).max(0.0));
         let mut acc = GlobalFluxes::default();
+        let mut throttled = (0.0, 0.0);
         let _ = ctx.deep_volume_m3;
         let sinks_before = self.oxygen.total_sinks();
         let release_before = self.oxygen.surface_release;
@@ -436,12 +466,17 @@ impl GlobalReservoirs {
                     }
                 }
             }
+            let planned = moles;
             for (i, m) in moles.iter_mut().enumerate() {
                 let pool = crate::pools::WATER_POOLS[i];
                 let carbon_linked = pool.carbon_atoms() > 0.0 || (pool == WaterPool::O2 && *m > 0.0);
                 *m *= if carbon_linked { phi_carbon.min(phi[i]) } else { phi[i] };
             }
-            let deep_oxic = self.deep_oxic(params);
+            let (moved, unpaired) = pair_throttled(&planned, &mut moles);
+            throttled.0 += moved;
+            throttled.1 += unpaired;
+            let export_rate = moles[WaterPool::Doc as usize] / h;
+            let deep_oxic = self.deep_oxic(params, ctx, export_rate);
             // Les couches de surface sont à l'équilibre : ce qu'elles exportent
             // de pouvoir oxydant (ou réducteur) vient de leurs sources
             // hydrothermales, hors du système suivi. On inscrit exactement ce
@@ -531,14 +566,15 @@ impl GlobalReservoirs {
             // Oxydation de la croûte océanique jeune (fer et soufre du
             // basalte) par une eau de mer oxygénée : proportionnelle à la
             // production de croûte et à l'oxygénation de l'océan profond.
-            let so = (params.seafloor_oxidation_o2 * ctx.activity * ctx.hydrothermal_share * self.deep_oxic(params) * h)
+            let deep_oxic = self.deep_oxic(params, ctx, export_rate);
+            let so = (params.seafloor_oxidation_o2 * ctx.activity * ctx.hydrothermal_share * deep_oxic * h)
                 .min(self.atmosphere[Gas::O2 as usize]);
             self.atmosphere[Gas::O2 as usize] -= so;
             self.oxygen.seafloor_oxidation += so;
             flux.exchange(Element::Electrons, -so);
             // Fer et manganèse de l'océan profond : oxydés par l'O₂ (ventilation
             // millénaire), ou déposés lentement en milieu anoxique.
-            let deep_oxic = self.deep_oxic(params);
+            let deep_oxic = self.deep_oxic(params, ctx, export_rate);
             let k_res = 1.0 / params.deep_metal_residence_years;
             let k_fe = deep_oxic / 1_000.0;
             let k_mn = self.mixing_ratio(Gas::O2) / (self.mixing_ratio(Gas::O2) + 10.0 * params.deep_oxic_half_mixing) / 1_000.0;
@@ -583,12 +619,120 @@ impl GlobalReservoirs {
             hydrogen_escape: acc.hydrogen_escape / dt,
             surface_redox: acc.surface_redox / dt,
         };
+        throttled
     }
+}
+
+/// Retire `need` équivalents d'O₂ de pouvoir réducteur exporté, en puisant
+/// dans les pools `order` dans cet ordre (le carbone retiré revient en CO₂).
+/// Renvoie ce qui n'a pu être retiré.
+fn withdraw_reductant(moles: &mut [f64; WATER_POOL_COUNT], mut need: f64, order: &[WaterPool]) -> f64 {
+    for &pool in order {
+        if need <= 0.0 {
+            break;
+        }
+        let i = pool as usize;
+        let eq = -pool.oxidant_equivalents();
+        let x = (need / eq).min(moles[i].max(0.0));
+        moles[i] -= x;
+        if pool.carbon_atoms() > 0.0 {
+            moles[WaterPool::Dic as usize] += x;
+        }
+        need -= eq * x;
+    }
+    need.max(0.0)
+}
+
+/// Un prélèvement des couches de surface freiné par une boîte vide freine
+/// aussi ce qu'il alimentait, pour que le pouvoir oxydant appliqué reste
+/// exactement celui prévu (`planned`, dont le bilan d'électrons est celui des
+/// sources hydrothermales) :
+/// - le fer et le manganèse importés qui manquent ne sont pas oxydés
+///   (l'oxyde exporté baisse d'autant) et ne fixent pas de carbone (moins
+///   de matière organique exportée) ;
+/// - l'hydrogène importé qui manque ne fait pas de méthane ;
+/// - l'O₂ importé qui manque ne respire pas de matière organique, qui sort
+///   non respirée.
+///
+/// Un reste éventuel (pools carbonés freinés ensemble) est retiré de la
+/// matière organique, du méthane, du sulfure et de l'hydrogène exportés,
+/// puis de l'O₂ importé. Renvoie le pouvoir oxydant ainsi déplacé, et celui
+/// qu'aucun de ces flux ne suffit à reprendre (non appliqué, il sort du
+/// système suivi), mol d'équivalent O₂.
+pub fn pair_throttled(planned: &[f64; WATER_POOL_COUNT], moles: &mut [f64; WATER_POOL_COUNT]) -> (f64, f64) {
+    use crate::pools::WATER_POOLS;
+    use WaterPool::*;
+    let ox = |m: &[f64; WATER_POOL_COUNT]| WATER_POOLS.iter().map(|&p| m[p as usize] * p.oxidant_equivalents()).sum::<f64>();
+    let moved = (ox(planned) - ox(moles)).abs();
+    let short = |m: &[f64; WATER_POOL_COUNT], p: WaterPool| (m[p as usize] - planned[p as usize]).max(0.0);
+    let mut rest = 0.0;
+    for (metal, oxide) in [(Fe2, FeOx), (Mn2, MnOx)] {
+        let x = short(moles, metal);
+        if x > 0.0 {
+            let o = &mut moles[oxide as usize];
+            *o -= x.min(o.max(0.0));
+            rest += withdraw_reductant(moles, -metal.oxidant_equivalents() * x, &[Doc, Ch4, H2s, H2]);
+        }
+    }
+    let x = short(moles, H2);
+    if x > 0.0 {
+        rest += withdraw_reductant(moles, 0.5 * x, &[Ch4, Doc, H2s]);
+    }
+    let x = short(moles, O2);
+    if x > 0.0 && planned[O2 as usize] < 0.0 {
+        moles[Doc as usize] += x;
+        moles[Dic as usize] -= x;
+    }
+    // Reste : pools carbonés freinés ensemble, reliquats des étapes
+    // précédentes.
+    let mut delta = ox(planned) - ox(moles);
+    if delta > 0.0 {
+        delta = withdraw_reductant(moles, delta, &[Doc, Ch4, H2s, H2]);
+        let o2 = O2 as usize;
+        let y = delta.min((-moles[o2]).max(0.0));
+        moles[o2] += y;
+        delta -= y;
+    } else if delta < 0.0 {
+        moles[Doc as usize] -= delta;
+        moles[Dic as usize] += delta;
+        delta = 0.0;
+    }
+    let _ = rest;
+    (moved, delta.max(0.0))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn throttled_imports_are_paired_with_what_they_fed() {
+        use crate::pools::WATER_POOLS;
+        let sum = |m: &[f64; WATER_POOL_COUNT], f: fn(WaterPool) -> f64| WATER_POOLS.iter().map(|&p| m[p as usize] * f(p)).sum::<f64>();
+        // Photoferrotrophes et méthanogènes : 4 Fe²⁺ importés par carbone
+        // exporté, 4 H₂ importés par CH₄ exporté, et des respirateurs.
+        let mut planned = [0.0; WATER_POOL_COUNT];
+        planned[WaterPool::Fe2 as usize] = -400.0;
+        planned[WaterPool::FeOx as usize] = 400.0;
+        planned[WaterPool::Doc as usize] = 100.0 - 30.0;
+        planned[WaterPool::H2 as usize] = -80.0;
+        planned[WaterPool::Ch4 as usize] = 20.0;
+        planned[WaterPool::O2 as usize] = -30.0;
+        planned[WaterPool::Dic as usize] = -100.0 - 20.0 + 30.0;
+        // Les boîtes ne fournissent qu'une part du fer, de l'H₂ et de l'O₂.
+        let mut moles = planned;
+        moles[WaterPool::Fe2 as usize] *= 0.3;
+        moles[WaterPool::H2 as usize] *= 0.5;
+        moles[WaterPool::O2 as usize] *= 0.1;
+        let (moved, unpaired) = pair_throttled(&planned, &mut moles);
+        assert!(moved > 0.0);
+        assert_eq!(unpaired, 0.0);
+        let e = |m: &[f64; WATER_POOL_COUNT]| sum(m, WaterPool::oxidant_equivalents);
+        assert!((e(&moles) - e(&planned)).abs() < 1e-9, "électrons {moles:?}");
+        assert!((sum(&moles, WaterPool::carbon_atoms) - sum(&planned, WaterPool::carbon_atoms)).abs() < 1e-9);
+        assert!((moles[WaterPool::FeOx as usize] - 120.0).abs() < 1e-9, "le fer non importé n'est pas oxydé");
+        assert!((moles[WaterPool::Ch4 as usize] - 10.0).abs() < 1e-9, "l'H₂ qui manque ne fait pas de méthane");
+    }
 
     fn ctx(params: &PlanetParams, t: f64) -> BoxContext {
         BoxContext {

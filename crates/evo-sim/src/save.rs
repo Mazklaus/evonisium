@@ -12,7 +12,7 @@
 use crate::history::{History, Publication};
 use crate::influence::InfluenceReserve;
 use crate::orders::OrderQueue;
-use crate::world::{Progress, World, WorldConfig, WorldStats};
+use crate::world::{Progress, SurfaceRates, World, WorldConfig, WorldStats};
 use evo_core::events::EventLog;
 use evo_core::flux::FluxRegistry;
 use evo_genetics::{Genome, GenomeJournal, LineageRegistry};
@@ -21,7 +21,7 @@ use evo_life::{GrowthRates, Phenotype};
 use evo_planet::climate::ClimateState;
 use evo_planet::hydrology::CellDisplay;
 use evo_planet::tectonics::Tectonics;
-use evo_planet::{BioGrid, CellEnvironment, GeodesicGrid, GlobalReservoirs, Planet, PlanetParams, WaterChemistry, WATER_POOL_COUNT};
+use evo_planet::{BioGrid, CellEnvironment, GeodesicGrid, GlobalReservoirs, Planet, PlanetParams, WaterChemistry};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -31,7 +31,7 @@ use std::sync::Arc;
 /// Signature des fichiers de sauvegarde.
 pub const MAGIC: &[u8; 9] = b"EVONISIUM";
 /// Version du format ; une sauvegarde d'une autre version est refusée.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 struct SavedPopulation {
@@ -80,7 +80,7 @@ struct SaveState<'a> {
     paused: bool,
     marked: Cow<'a, [u32]>,
     oxygen_production: f64,
-    previous_rates: Option<[f64; WATER_POOL_COUNT]>,
+    previous_rates: Option<SurfaceRates>,
     stats: WorldStats,
     influence: InfluenceReserve,
     published_events: usize,

@@ -27,4 +27,4 @@ pub use lineage::{LineageRecord, LineageRegistry};
 pub use mutation::{
     mutate, mutate_again, mutate_with_kind, transfer_gene, MutationKind, MutationParams, MUTATION_KINDS, MUTATION_KIND_COUNT,
 };
-pub use popgen::{fixation_probability, tunnel_probability, OriginFixation};
+pub use popgen::{fixation_probability, poisson, tunnel_probability, OriginFixation};

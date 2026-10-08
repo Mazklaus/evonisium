@@ -174,9 +174,20 @@ pub struct PlanetParams {
     /// d'oxydes de fer déposés.
     pub burial_carbon_to_phosphorus: f64,
     pub iron_oxide_phosphorus: f64,
-    /// Fraction molaire d'O₂ qui rend aérobie la moitié de la
-    /// reminéralisation profonde, et l'oxydation du fer profond.
+    /// Fraction molaire d'O₂ qui rend aérobie la moitié de l'oxydation du
+    /// manganèse profond (divisée par dix).
     pub deep_oxic_half_mixing: f64,
+    /// Temps de renouvellement de l'océan profond par les eaux de surface,
+    /// ans : il fixe l'O₂ qu'elles lui apportent (Terre : environ 1 000 ans).
+    pub deep_ventilation_years: f64,
+    /// Raideur du passage de l'océan profond oxygéné à l'océan anoxique,
+    /// quand la demande en O₂ de la matière organique exportée franchit
+    /// l'apport de la ventilation (exposant d'une loi de Hill).
+    pub anoxia_steepness: f64,
+    /// Rapport C/P du carbone organique enfoui sous un océan anoxique : le
+    /// phosphore y est rendu à l'eau au lieu d'être enfoui (Van Cappellen et
+    /// Ingall, 1994 ; environ 4 000 contre 250 sous un océan oxygéné).
+    pub anoxic_burial_carbon_to_phosphorus: f64,
     /// Oxydation des roches réduites exposées (sulfures, fer, kérogène),
     /// mol d'O₂·m⁻²·an⁻¹ à la fraction d'O₂ de référence, et exposant de la
     /// loi en puissance (0,5 dans les modèles de type COPSE).
@@ -306,6 +317,9 @@ impl PlanetParams {
             burial_carbon_to_phosphorus: 250.0,
             iron_oxide_phosphorus: 0.02,
             deep_oxic_half_mixing: 1e-3,
+            deep_ventilation_years: 1000.0,
+            anoxia_steepness: 4.0,
+            anoxic_burial_carbon_to_phosphorus: 4000.0,
             // Environ 7·10¹² mol d'O₂ par an sur les terres actuelles.
             oxidative_weathering_per_m2: 0.05,
             oxidative_weathering_reference: 0.21,
@@ -418,6 +432,15 @@ impl PlanetParams {
     /// de l'océan profond (0 : anoxique, 1 : oxygéné).
     pub fn burial_efficiency(&self, deep_oxic: f64) -> f64 {
         self.organic_burial_efficiency * (1.0 - self.organic_burial_oxic_reduction * deep_oxic.clamp(0.0, 1.0))
+    }
+
+    /// Rapport C/P du carbone organique enfoui selon l'oxygénation de
+    /// l'océan profond (Van Cappellen et Ingall, 1994) : moyenne harmonique
+    /// des rapports oxique et anoxique.
+    pub fn burial_carbon_to_phosphorus(&self, deep_oxic: f64) -> f64 {
+        let (ox, an) = (self.burial_carbon_to_phosphorus, self.anoxic_burial_carbon_to_phosphorus);
+        let a = 1.0 - deep_oxic.clamp(0.0, 1.0);
+        ox * an / ((1.0 - a) * an + a * ox)
     }
 
     /// Rapport H₂/CO₂ des gaz volcaniques de ce monde. Trois effets

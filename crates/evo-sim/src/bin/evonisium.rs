@@ -70,6 +70,7 @@ fn main() {
                 worlds: opt(&args, "--worlds").map(|w| w.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default(),
                 out_dir: opt(&args, "--data").map(Into::into),
                 round_years: opt(&args, "--round-years").map(|v| v.parse().expect("durée invalide")),
+                innovation_probability: opt(&args, "--innovation").map(|v| v.parse().expect("probabilité invalide")),
             };
             // Rapport assemblé à partir des résultats déjà enregistrés, monde
             // par monde (les parties longues tournent séparément).
@@ -159,6 +160,16 @@ fn run(args: &[String]) {
         }
     }
     let elapsed = start.elapsed().as_secs_f64();
+    let st = &world.stats;
+    println!(
+        "Innovations : {} apparues ({} par l'accélérateur), {} évaluées ; tunnel : {} essais, {} réussites ; {} évaluations génétiques",
+        st.innovations_drawn,
+        st.innovations_accelerated,
+        st.innovations_evaluated,
+        st.tunnel_attempts,
+        st.tunnel_successes,
+        st.genetic_evaluations
+    );
     println!("{} simulés en {:.1} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
     if let Some(dir) = opt(args, "--out") {
         let dir = std::path::PathBuf::from(dir);

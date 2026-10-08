@@ -155,9 +155,18 @@ pub struct WorldStats {
     pub local_extinctions: u64,
     /// Lignées éteintes sans lignée fille (comptées, sans événement).
     pub leaf_extinctions: u64,
-    /// Écart des électrons corrigé sur les flux extrapolés, mol d'équivalent
-    /// O₂ cumulées (voir `ecology_phase`).
+    /// Écart des électrons des flux prolongés des couches à leurs sources,
+    /// mol d'équivalent O₂ cumulées : des arrondis seulement, rien n'est
+    /// corrigé (voir `steady_rates`).
     pub redox_correction: f64,
+    /// Pouvoir oxydant déplacé quand une boîte vide freine un prélèvement des
+    /// couches de surface (voir `evo_planet::geochem::pair_throttled`), mol
+    /// d'équivalent O₂.
+    pub redox_throttled: f64,
+    /// Part de ce pouvoir oxydant qu'aucun flux de la couche n'a pu reprendre
+    /// (non appliquée, elle sort du système suivi et est inscrite au
+    /// registre).
+    pub redox_unpaired: f64,
     /// Génomes mutants construits et évalués (mutation, phénotype, r, s).
     pub genetic_evaluations: u64,
     pub tunnel_attempts: u64,
@@ -165,10 +174,11 @@ pub struct WorldStats {
     /// Substitutions avantageuses (coefficient de sélection positif) ; les
     /// autres sont neutres.
     pub adaptive_substitutions: u64,
-    /// Génotypes (par pas) qui avaient au moins un candidat au tunnel, et
-    /// ceux dont les candidats dépassaient la borne d'essais.
-    pub tunnel_genotypes: u64,
-    pub tunnel_capped: u64,
+    /// Mutants innovants apparus (tirage de Poisson), dont ceux ajoutés par
+    /// l'accélérateur, et ceux qui ont été évalués.
+    pub innovations_drawn: u64,
+    pub innovations_accelerated: u64,
+    pub innovations_evaluated: u64,
     /// Cellules du vivant peuplées, et cellules qui dépassaient le plafond
     /// de populations avant éviction, cumulées sur les pas.
     pub occupied_cell_steps: u64,
@@ -191,8 +201,9 @@ impl WorldStats {
         self.genetic_evaluations += o.genetic_evaluations;
         self.tunnel_attempts += o.tunnel_attempts;
         self.tunnel_successes += o.tunnel_successes;
-        self.tunnel_genotypes += o.tunnel_genotypes;
-        self.tunnel_capped += o.tunnel_capped;
+        self.innovations_drawn += o.innovations_drawn;
+        self.innovations_accelerated += o.innovations_accelerated;
+        self.innovations_evaluated += o.innovations_evaluated;
         for (a, b) in self.fixed_changes_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -293,9 +304,10 @@ pub struct World {
     pub marked: Vec<u32>,
     /// Production brute d'O₂ par photosynthèse au dernier pas, mol·an⁻¹.
     pub oxygen_production: f64,
-    /// Flux équilibrés de la surface vers les réservoirs au pas précédent,
-    /// mol·an⁻¹ (amortissement du couplage, voir `ecology_phase`).
-    previous_rates: Option<[f64; WATER_POOL_COUNT]>,
+    /// Flux de la surface vers les réservoirs au pas précédent, et apport
+    /// des sources hydrothermales de surface qu'ils contiennent, mol·an⁻¹
+    /// (amortissement du couplage, voir `ecology_phase`).
+    previous_rates: Option<SurfaceRates>,
     pub stats: WorldStats,
     pub timings: PhaseTimings,
     /// Premier événement non encore publié.
@@ -369,11 +381,11 @@ impl World {
         }
     }
 
-    pub(crate) fn previous_rates(&self) -> Option<[f64; WATER_POOL_COUNT]> {
+    pub(crate) fn previous_rates(&self) -> Option<SurfaceRates> {
         self.previous_rates
     }
 
-    pub(crate) fn set_previous_rates(&mut self, r: Option<[f64; WATER_POOL_COUNT]>) {
+    pub(crate) fn set_previous_rates(&mut self, r: Option<SurfaceRates>) {
         self.previous_rates = r;
     }
 
@@ -766,6 +778,7 @@ impl World {
                 }
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
                 let start = *chem;
+                let biomass_start: f64 = pops.iter().map(|p| p.biomass).sum();
                 // La température ne change pas pendant l'écologie du pas : les
                 // capacités des enzymes se calculent une fois.
                 let caps = capacities(pops, &ctx, &cfg.physiology);
@@ -778,19 +791,9 @@ impl World {
                     }
                     planet.exchange(env, chem, cfg.eco_dt_years, &targets, &mut r.exact);
                 }
-                // Flux à prolonger : ceux d'une couche à l'équilibre, où ce qui
-                // s'accumule pendant l'écologie rapide serait sorti. Le simple
-                // rattrapage d'une cellule vers ses cibles (après un changement
-                // de l'atmosphère) ne doit pas être prolongé sur tout le pas.
                 let v = env.water_volume_m3;
-                let mut steady = r.exact;
-                for i in 0..WATER_POOL_COUNT {
-                    steady[i] += (chem[i] - start[i]) * v;
-                }
-                // Aucune boîte ne fournit de matière organique dissoute à la
-                // couche : une cellule qui en a consommé son stock ne peut pas
-                // en importer.
-                steady[WaterPool::Doc as usize] = steady[WaterPool::Doc as usize].max(0.0);
+                let biomass_change = pops.iter().map(|p| p.biomass).sum::<f64>() - biomass_start;
+                r.rates = steady_rates(&r.exact, &start, chem, v, biomass_change, cp, t_eco, cfg.physiology.oxygen_stress_half);
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
                 pops.retain(|p| {
@@ -804,17 +807,13 @@ impl World {
                     }
                 });
                 evaluate(pops, &ctx, chem, &cfg.physiology);
-                r.rates = balanced_rates(&steady, t_eco);
                 // Bilan des électrons d'une couche à l'équilibre : ce qu'elle
-                // exporte de pouvoir réducteur vers les réservoirs est ce que
-                // ses sources hydrothermales lui apportent, la vie ne faisant
-                // que le déplacer. L'extrapolation et la fermeture du carbone
-                // ne le garantissent pas ; l'écart est corrigé (voir
-                // `close_electrons`) et compté.
+                // exporte de pouvoir réducteur est exactement ce que ses
+                // sources hydrothermales lui apportent. On le vérifie ; l'écart
+                // n'est fait que d'arrondis.
                 let expected: f64 = WATER_POOLS.iter().map(|&p| planet.vent_supply(env, p) * p.oxidant_equivalents()).sum();
                 let actual: f64 = WATER_POOLS.iter().map(|&p| r.rates[p as usize] * p.oxidant_equivalents()).sum();
                 r.redox_correction = (expected - actual).abs();
-                close_electrons(&mut r.rates, expected - actual);
                 r
             })
             .collect::<Vec<CellEco>>()
@@ -835,40 +834,48 @@ impl World {
         self.stats.redox_correction += total.redox_correction * (dt - t_eco).max(0.0);
         self.oxygen_production = total.oxygen / t_eco;
         self.planet.reservoirs.oxygen.photosynthesis += self.oxygen_production * dt;
-        // Les sources hydrothermales des couches de surface apportent leur
-        // pouvoir réducteur de l'extérieur du système suivi, sur tout le pas.
-        let vents: f64 = self
-            .bio
-            .env
-            .iter()
-            .map(|e| WATER_POOLS.iter().map(|&p| self.planet.vent_supply(e, p) * p.oxidant_equivalents()).sum::<f64>())
-            .sum();
+        // Les sources hydrothermales des couches de surface, pool par pool,
+        // apportent leur pouvoir réducteur de l'extérieur du système suivi,
+        // sur tout le pas. C'est la seule partie des flux prolongés qui
+        // apporte des électrons.
+        let vent_pools: [f64; WATER_POOL_COUNT] = std::array::from_fn(|i| {
+            let pool = WATER_POOLS[i];
+            self.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0).map(|e| self.planet.vent_supply(e, pool)).sum()
+        });
+        let vents: f64 = WATER_POOLS.iter().map(|&p| vent_pools[p as usize] * p.oxidant_equivalents()).sum();
         // Pendant l'écologie rapide, elles sont mesurées ; le reste du pas,
         // les boîtes inscrivent ce qu'elles reçoivent des couches prolongées.
         self.flux.exchange(Element::Electrons, vents * t_eco.min(dt));
-        self.planet.reservoirs.apply_exact(&self.planet.params, &total.exact, &mut self.flux);
         let ctx = self.planet.box_context(years);
+        self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
         let rest = (dt - t_eco).max(0.0);
-        // Les flux d'équilibré de la surface sont tenus constants sur tout le
+        // Les flux d'équilibre de la surface sont tenus constants sur tout le
         // pas, alors que l'atmosphère qu'ils modifient change la vie qui les
         // produit : avec des pas de 200 000 ans, ce couplage explicite oscille
-        // d'un pas à l'autre (méthane abondant, puis nul, puis abondant). On
-        // applique la moyenne des flux de ce pas et du précédent, schéma
-        // amorti qui supprime l'oscillation de période 2 sans changer
-        // l'équilibre. Les deux jeux de flux étant équilibrés en carbone et en
-        // phosphore, leur moyenne l'est aussi.
-        let mut rates = match self.previous_rates {
-            Some(prev) => std::array::from_fn(|i| 0.5 * (total.rates[i] + prev[i])),
+        // d'un pas à l'autre (méthane abondant, puis nul, puis abondant). La
+        // réponse de la vie appliquée est donc la moyenne de ce pas et du
+        // précédent (schéma amorti qui supprime l'oscillation de période 2
+        // sans changer l'équilibre), mais l'apport des sources est celui de ce
+        // pas. Chaque jeu de flux a pour bilan d'électrons exactement ses
+        // sources, et un carbone et un phosphore nuls : la moyenne aussi.
+        let rates = match self.previous_rates {
+            Some((prev, prev_vents)) => {
+                std::array::from_fn(|i| 0.5 * (total.rates[i] - vent_pools[i]) + 0.5 * (prev[i] - prev_vents[i]) + vent_pools[i])
+            }
             None => total.rates,
         };
-        // La moyenne garde le carbone et le phosphore, pas forcément les
-        // électrons quand les sources ont changé d'un pas à l'autre : on la
-        // ramène exactement aux sources de ce pas.
-        let ox = |r: &[f64; WATER_POOL_COUNT]| WATER_POOLS.iter().map(|&p| r[p as usize] * p.oxidant_equivalents()).sum::<f64>();
-        let delta = vents - ox(&rates);
-        close_electrons(&mut rates, delta);
-        self.previous_rates = Some(total.rates);
-        self.planet.reservoirs.integrate(&self.planet.params, &ctx, &rates, rest, &mut self.flux);
+        self.previous_rates = Some((total.rates, vent_pools));
+        // Une boîte vide freine un prélèvement des couches ; ce qu'il
+        // alimentait est freiné avec lui, à bilan d'électrons exact. Le
+        // pouvoir oxydant ainsi déplacé est compté.
+        let (moved, unpaired) = self.planet.reservoirs.integrate(&self.planet.params, &ctx, &rates, rest, &mut self.flux);
+        self.stats.redox_throttled += moved;
+        self.stats.redox_unpaired += unpaired;
+        if debug_rates() {
+            let names = ["DIC", "DOC", "H2", "CH4", "O2", "SO4", "H2S", "Fe2", "Mn2", "FeOx", "MnOx", "PO4"];
+            let r: Vec<String> = rates.iter().zip(names).map(|(x, n)| format!("{n} {x:.2e}")).collect();
+            eprintln!("{:.1} Ma : sources {:.3e} ; {}", years / 1e6, vents * rest, r.join(", "));
+        }
     }
 
     /// Évolution par dème ; renvoie les populations modifiées (cellule,
@@ -1608,66 +1615,67 @@ fn origin_of(cause: GenomeChangeCause) -> Origin {
     }
 }
 
-/// Flux annuels d'une cellule à prolonger sur le reste du pas : la couche
-/// d'eau est supposée à l'équilibre, donc ce qui entre en carbone en ressort
-/// (même chose pour le phosphore). Le côté le plus fort est ramené au plus
-/// faible ; l'O₂ libéré suit le carbone fixé quand les entrées dominent.
-pub fn balanced_rates(moles: &[f64; WATER_POOL_COUNT], t_eco: f64) -> [f64; WATER_POOL_COUNT] {
-    let mut r = moles.map(|m| m / t_eco);
-    for atoms in [WaterPool::carbon_atoms as fn(WaterPool) -> f64, WaterPool::phosphorus_atoms] {
-        let (mut out, mut inn) = (0.0, 0.0);
-        for p in WATER_POOLS {
-            let x = r[p as usize] * atoms(p);
-            if x > 0.0 {
-                out += x;
-            } else {
-                inn -= x;
-            }
-        }
-        if out <= 0.0 && inn <= 0.0 {
-            continue;
-        }
-        let carbon = atoms(WaterPool::Dic) > 0.0;
-        if out > inn {
-            let k = inn / out;
-            for p in WATER_POOLS {
-                if atoms(p) > 0.0 && r[p as usize] > 0.0 {
-                    r[p as usize] *= k;
-                }
-            }
-        } else {
-            let k = out / inn;
-            for p in WATER_POOLS {
-                if atoms(p) > 0.0 && r[p as usize] < 0.0 {
-                    r[p as usize] *= k;
-                }
-            }
-            if carbon && r[WaterPool::O2 as usize] > 0.0 {
-                r[WaterPool::O2 as usize] *= k;
-            }
-        }
-    }
-    r
+fn debug_rates() -> bool {
+    std::env::var_os("EVO_DEBUG_RATES").is_some()
 }
 
-/// Corrige de `delta` équivalents d'O₂ par an des flux équilibrés en carbone
-/// et en phosphore, sans toucher à ces bilans. Trop de pouvoir réducteur
-/// exporté (`delta` < 0) : une part du méthane sort oxydée en CO₂, puis l'H₂
-/// exporté baisse, puis l'O₂ exporté. Trop d'oxydant : l'O₂ exporté baisse
-/// (ou l'O₂ importé augmente).
-pub fn close_electrons(rates: &mut [f64; WATER_POOL_COUNT], mut delta: f64) {
-    if delta < 0.0 {
-        let ch4 = WaterPool::Ch4 as usize;
-        let x = rates[ch4].max(0.0).min(-delta / 2.0);
-        rates[ch4] -= x;
-        rates[WaterPool::Dic as usize] += x;
-        delta += 2.0 * x;
-        let h2 = WaterPool::H2 as usize;
-        let y = rates[h2].max(0.0).min(-delta / 0.5);
-        rates[h2] -= y;
-        delta += 0.5 * y;
+/// Flux annuels de la surface vers les réservoirs, et apport des sources
+/// hydrothermales de surface qu'ils contiennent, pool par pool, mol·an⁻¹.
+pub type SurfaceRates = ([f64; WATER_POOL_COUNT], [f64; WATER_POOL_COUNT]);
+
+/// Flux annuels d'une couche d'eau à prolonger sur le reste du pas, quand
+/// elle est supposée à l'équilibre.
+///
+/// Pendant l'écologie rapide (`t_eco` années), la couche a échangé `exact`
+/// moles avec l'extérieur (sorties positives, apports des sources compris),
+/// sa chimie est passée de `start` à `end` (volume `volume`) et sa biomasse a
+/// varié de `biomass_change` moles de carbone. À l'équilibre, ni la chimie ni
+/// la biomasse ne varient : ce qui s'y est accumulé serait sorti. La chimie
+/// accumulée sort telle quelle ; la biomasse accumulée sort comme matière
+/// organique avec son phosphore (une couche à l'équilibre exporte sa
+/// production nette). Chaque terme garde le carbone, le phosphore et les
+/// électrons : le carbone et le phosphore exportés sont nuls et le pouvoir
+/// oxydant exporté est exactement celui des sources, sans correction.
+///
+/// Une biomasse qui a fondu peut laisser un export de matière organique
+/// négatif, qu'aucune boîte ne fournit. La fonte retranchée l'est alors
+/// selon la décomposition qui l'a produite, en sens inverse : respiration
+/// (CH₂O + O₂ → CO₂) dans la part oxique de la couche, fermentation
+/// méthanogène (2 CH₂O → CH₄ + CO₂) dans la part anoxique. Ces deux
+/// réactions gardent aussi les trois bilans.
+#[allow(clippy::too_many_arguments)]
+pub fn steady_rates(
+    exact: &[f64; WATER_POOL_COUNT],
+    start: &WaterChemistry,
+    end: &WaterChemistry,
+    volume: f64,
+    biomass_change: f64,
+    carbon_to_phosphorus: f64,
+    t_eco: f64,
+    oxygen_half: f64,
+) -> [f64; WATER_POOL_COUNT] {
+    let mut m: [f64; WATER_POOL_COUNT] = std::array::from_fn(|i| exact[i] + (end[i] - start[i]) * volume);
+    m[WaterPool::Doc as usize] += biomass_change;
+    m[WaterPool::Po4 as usize] += biomass_change / carbon_to_phosphorus;
+    let deficit = -m[WaterPool::Doc as usize];
+    if deficit > 0.0 {
+        let o2 = end[WaterPool::O2 as usize].max(0.0);
+        let oxic = o2 / (o2 + oxygen_half);
+        let (a, b) = (deficit * oxic, deficit * (1.0 - oxic));
+        m[WaterPool::Doc as usize] = 0.0;
+        m[WaterPool::Dic as usize] -= a + 0.5 * b;
+        m[WaterPool::O2 as usize] += a;
+        m[WaterPool::Ch4 as usize] -= 0.5 * b;
     }
-    rates[WaterPool::O2 as usize] += delta;
+    // Le carbone et le phosphore exportés sont nuls aux arrondis près ; ces
+    // arrondis (différences de grands stocks, prolongées sur tout le pas)
+    // vont au carbone inorganique et au phosphate, sans effet sur les
+    // électrons.
+    let carbon: f64 = WATER_POOLS.iter().map(|&p| m[p as usize] * p.carbon_atoms()).sum();
+    m[WaterPool::Dic as usize] -= carbon;
+    let phosphorus: f64 = WATER_POOLS.iter().map(|&p| m[p as usize] * p.phosphorus_atoms()).sum();
+    m[WaterPool::Po4 as usize] -= phosphorus;
+    m.map(|x| x / t_eco)
 }
 
 #[derive(Default)]
@@ -1887,6 +1895,8 @@ mod tests {
         let mut cfg = WorldConfig::new(5, 3);
         cfg.step_years = 100_000.0;
         cfg.max_populations_per_cell = 2;
+        // Innovations fréquentes : il faut plusieurs guildes par cellule.
+        cfg.evolution.innovation_probability = 1e-9;
         let mut w = World::new(cfg);
         w.seed_life();
         for _ in 0..60 {
@@ -1899,7 +1909,7 @@ mod tests {
         }
         assert!(w.stats.saturated_cell_steps > 0, "le plafond n'a jamais servi");
         assert!(w.stats.saturated_cell_steps <= w.stats.occupied_cell_steps);
-        assert!(w.stats.tunnel_capped <= w.stats.tunnel_genotypes);
+        assert!(w.stats.innovations_evaluated <= w.stats.innovations_drawn);
     }
 
     #[test]
@@ -1956,36 +1966,29 @@ mod tests {
     }
 
     #[test]
-    fn electron_closure_keeps_carbon_and_reaches_target() {
-        let ox = |r: &[f64; WATER_POOL_COUNT]| WATER_POOLS.iter().map(|&p| r[p as usize] * p.oxidant_equivalents()).sum::<f64>();
-        let carbon = |r: &[f64; WATER_POOL_COUNT]| WATER_POOLS.iter().map(|&p| r[p as usize] * p.carbon_atoms()).sum::<f64>();
-        let mut r = [0.0; WATER_POOL_COUNT];
-        r[WaterPool::Ch4 as usize] = 3.0;
-        r[WaterPool::Dic as usize] = -3.0;
-        r[WaterPool::H2 as usize] = 1.0;
-        for target in [-4.0, -6.5, 1.0] {
-            let mut x = r;
-            let delta = target - ox(&x);
-            close_electrons(&mut x, delta);
-            assert!((ox(&x) - target).abs() < 1e-12, "{target}");
-            assert!(carbon(&x).abs() < 1e-12);
-            assert!(x[WaterPool::Ch4 as usize] >= 0.0 && x[WaterPool::H2 as usize] >= 0.0);
+    fn steady_rates_keep_carbon_phosphorus_and_electrons() {
+        let ox = |m: &[f64; WATER_POOL_COUNT], f: fn(WaterPool) -> f64| WATER_POOLS.iter().map(|&p| m[p as usize] * f(p)).sum::<f64>();
+        let cp = 106.0;
+        // Couche qui reçoit 3 mol d'H₂ de ses sources, dont la biomasse
+        // croît (cas 1) ou fond (cas 2, export organique négatif).
+        for (biomass_change, doc_out) in [(5.0, 1.0), (-40.0, 2.0)] {
+            let mut exact = [0.0; WATER_POOL_COUNT];
+            let (mut start, mut end) = ([0.0; WATER_POOL_COUNT], [0.0; WATER_POOL_COUNT]);
+            start[WaterPool::O2 as usize] = 1e-4;
+            end[WaterPool::O2 as usize] = 1e-4;
+            // Bilan de la couche : sources = sorties + accumulation + biomasse.
+            exact[WaterPool::Doc as usize] = doc_out;
+            exact[WaterPool::Po4 as usize] = doc_out / cp;
+            end[WaterPool::H2 as usize] = 0.5;
+            // Carbone, phosphore et électrons de la biomasse pris à l'eau.
+            exact[WaterPool::Dic as usize] = -(biomass_change + doc_out);
+            exact[WaterPool::Po4 as usize] -= biomass_change / cp + doc_out / cp;
+            exact[WaterPool::H2 as usize] = 3.0 - 0.5 - 2.0 * (biomass_change + doc_out);
+            let r = steady_rates(&exact, &start, &end, 1.0, biomass_change, cp, 2.0, 1e-3);
+            assert!(ox(&r, WaterPool::carbon_atoms).abs() < 1e-12, "carbone {r:?}");
+            assert!(ox(&r, WaterPool::phosphorus_atoms).abs() < 1e-12, "phosphore {r:?}");
+            assert!((ox(&r, WaterPool::oxidant_equivalents) - 3.0 * -0.5 / 2.0).abs() < 1e-12, "électrons {r:?}");
+            assert!(r[WaterPool::Doc as usize] >= 0.0);
         }
-    }
-
-    #[test]
-    fn balanced_rates_close_carbon_and_phosphorus() {
-        let mut m = [0.0; WATER_POOL_COUNT];
-        m[WaterPool::Dic as usize] = -10.0;
-        m[WaterPool::Doc as usize] = 4.0;
-        m[WaterPool::Ch4 as usize] = 2.0;
-        m[WaterPool::O2 as usize] = 9.0;
-        m[WaterPool::Po4 as usize] = 0.5;
-        let r = balanced_rates(&m, 2.0);
-        let c: f64 = WATER_POOLS.iter().map(|&p| r[p as usize] * p.carbon_atoms()).sum();
-        assert!(c.abs() < 1e-12);
-        assert!((r[WaterPool::Dic as usize] + 3.0).abs() < 1e-12);
-        assert!((r[WaterPool::O2 as usize] - 2.7).abs() < 1e-12);
-        assert_eq!(r[WaterPool::Po4 as usize], 0.0);
     }
 }
