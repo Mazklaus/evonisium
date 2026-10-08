@@ -106,15 +106,9 @@ pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
         }
     }
     let threshold = lo;
+    type Ctx<'a> = (&'a BTreeMap<u32, &'a LineageFrame>, &'a BTreeMap<u32, Vec<u32>>, &'a BTreeMap<u32, usize>, &'a BTreeMap<u32, f64>);
     let mut tree = Tree { from_years: f64::INFINITY, to_years: now, ..Default::default() };
-    fn place(
-        id: u32,
-        parent: Option<usize>,
-        threshold: usize,
-        ctx: (&BTreeMap<u32, &LineageFrame>, &BTreeMap<u32, Vec<u32>>, &BTreeMap<u32, usize>, &BTreeMap<u32, f64>),
-        now: f64,
-        tree: &mut Tree,
-    ) -> f32 {
+    fn place(id: u32, parent: Option<usize>, threshold: usize, ctx: Ctx, now: f64, tree: &mut Tree) -> f32 {
         let (by_id, children, leaf_count, last_end) = ctx;
         let l = by_id[&id];
         let index = tree.nodes.len();

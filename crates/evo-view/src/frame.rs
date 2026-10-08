@@ -132,17 +132,26 @@ impl Frame {
                 ph: env.ph as f32,
                 salinity: env.salinity as f32,
             });
-            let mut ps: Vec<PopulationFrame> = pops
-                .iter()
-                .map(|p| PopulationFrame {
-                    lineage: p.lineage,
-                    signature: p.signature(),
-                    biomass: p.biomass as f32,
-                    pigment_nm: p.phenotype.pigment_nm.map(|x| x as f32),
-                    gene_count: p.phenotype.gene_count,
-                    phototroph: p.phenotype.phototroph,
-                })
-                .collect();
+            // Une lignée peut compter plusieurs génotypes dans la cellule : le
+            // client montre la lignée, avec la biomasse de tous ses génotypes
+            // et les traits du plus abondant.
+            let mut order: Vec<usize> = (0..pops.len()).collect();
+            order.sort_by(|&a, &b| pops[b].biomass.total_cmp(&pops[a].biomass).then(a.cmp(&b)));
+            let mut ps: Vec<PopulationFrame> = Vec::new();
+            for i in order {
+                let p = &pops[i];
+                match ps.iter_mut().find(|q| q.lineage == p.lineage) {
+                    Some(q) => q.biomass += p.biomass as f32,
+                    None => ps.push(PopulationFrame {
+                        lineage: p.lineage,
+                        signature: p.signature(),
+                        biomass: p.biomass as f32,
+                        pigment_nm: p.phenotype.pigment_nm.map(|x| x as f32),
+                        gene_count: p.phenotype.gene_count,
+                        phototroph: p.phenotype.phototroph,
+                    }),
+                }
+            }
             ps.sort_by(|a, b| b.biomass.total_cmp(&a.biomass).then(a.lineage.cmp(&b.lineage)));
             ps.truncate(POPULATIONS_PER_CELL);
             populations.extend(ps);

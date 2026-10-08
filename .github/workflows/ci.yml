@@ -55,3 +55,72 @@ jobs:
           diff empreinte-ubuntu-latest.txt empreinte-windows-latest.txt
           diff empreinte-ubuntu-latest.txt empreinte-macos-latest.txt
           wc -l empreinte-ubuntu-latest.txt
+
+  client-linux:
+    name: Client Godot (Linux) — porte de l'étape 3
+    runs-on: ubuntu-latest
+    env:
+      GODOT: Godot_v4.6.1-stable_linux.x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Pilote Vulkan logiciel et écran virtuel
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers xvfb
+      - name: Godot 4.6.1
+        run: |
+          curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.6.1-stable/$GODOT.zip
+          unzip -q godot.zip && chmod +x $GODOT
+      - run: cargo build --release -p evo-godot
+      - name: Import du projet
+        run: ./$GODOT --headless --path client --import || true
+      - name: Rejeu — deux chemins de caméra, un point de sauvegarde
+        run: ./$GODOT --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$PWD/porte/rejeu-linux
+      - name: Partie jouée — créer, ensemencer, intervenir, voir l'oxygène monter
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte --niveau=4 --duree-max=2400 --sortie=$PWD/porte/partie
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: porte-client-linux
+          path: porte
+
+  client-windows:
+    name: Client Godot (Windows) — rejeu
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p evo-godot
+      - name: Godot 4.6.1
+        shell: bash
+        run: |
+          curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.6.1-stable/Godot_v4.6.1-stable_win64.exe.zip
+          unzip -q godot.zip
+      - name: Import du projet
+        shell: bash
+        run: ./Godot_v4.6.1-stable_win64_console.exe --headless --path client --import || true
+      - name: Rejeu — deux chemins de caméra, un point de sauvegarde
+        shell: bash
+        run: ./Godot_v4.6.1-stable_win64_console.exe --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$(cygpath -m "$PWD")/porte/rejeu-windows
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: porte-client-windows
+          path: porte
+
+  client-rejeu-identique:
+    name: Rejeu identique sous Linux et Windows
+    needs: [client-linux, client-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: porte
+      - name: Comparer les empreintes
+        run: |
+          L=$(jq -c '.empreintes' porte/porte-client-linux/rejeu-linux/rapport.json)
+          W=$(jq -c '.empreintes' porte/porte-client-windows/rejeu-windows/rapport.json)
+          echo "Linux   : $L"
+          echo "Windows : $W"
+          test "$L" = "$W"

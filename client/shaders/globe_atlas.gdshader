@@ -47,6 +47,8 @@ uniform vec3 hover_pos = vec3(0.0);
 uniform float hover_radius = 0.0;
 uniform float ink_strength = 1.0;
 uniform bool show_focus = true;
+// Sources hydrothermales cerclées de vermillon (écran d'ensemencement).
+uniform bool show_vents = false;
 
 const vec3 PAPER = vec3(0.925, 0.886, 0.788);
 const vec3 WATER = vec3(0.725, 0.776, 0.749);
@@ -66,7 +68,8 @@ varying vec3 v_pig;
 varying float v_pig_w;
 varying float v_ocean;
 varying float v_focus;
-flat varying float v_cat;
+varying float v_vent;
+varying flat float v_cat;
 varying vec3 v_world_n;
 
 vec3 to_linear(vec3 c) {
@@ -147,6 +150,7 @@ void vertex() {
 	v_ocean = float((flags & 1) != 0);
 	v_pig_w = float((flags & 4) != 0);
 	v_focus = float((flags & 16) != 0);
+	v_vent = float((flags & 8) != 0);
 	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : mix(p2, d2, blend));
 	float raw = channel(lt, layer_channel);
 	if (layer_transform == 1) {
@@ -161,18 +165,23 @@ void vertex() {
 
 void fragment() {
 	vec3 n = normalize(v_dir);
-	float grain = fbm(n * 180.0);
+	// Grain du papier (une octave suffit) et taches du lavis.
+	float grain = noise3(n * 180.0);
 	float bloom = fbm(n * 22.0 + 3.1);
+	// Le trait de côte suit la hauteur, troublée d'un bruit de quelques
+	// centaines de mètres : des rivages dessinés à main levée plutôt que les
+	// arêtes de la grille. Ce n'est qu'un dessin : l'inspecteur dit le vrai.
+	float height = v_height + (fbm(n * 64.0 + 7.3) - 0.5) * 700.0;
 	vec3 col = PAPER * (0.96 + 0.06 * grain);
 	// La mer est là où la surface est sous le niveau de la mer : le même
 	// critère que le trait de côte.
-	float ocean = 1.0 - step(0.0, v_height);
+	float ocean = 1.0 - step(0.0, height);
 	// Mer : lavis superposé, une passe de plus par 1 500 m de profondeur.
-	float depth = max(-v_height, 0.0);
+	float depth = max(-height, 0.0);
 	float passes = 1.0 + floor(clamp(depth / 1500.0, 0.0, 4.0)) + 0.25 * bloom;
 	vec3 sea = PAPER * mix(vec3(1.0), WATER, clamp(0.32 * passes, 0.0, 1.0));
 	// Terres : aquarelle ocre plus pâle en altitude, bords de lavis irréguliers.
-	float h = max(v_height, 0.0);
+	float h = max(height, 0.0);
 	vec3 land = mix(PAPER * mix(vec3(1.0), OCHRE, 0.55 + 0.15 * bloom), PAPER * mix(vec3(1.0), OCHRE, 0.25), clamp(h / 4000.0, 0.0, 1.0));
 	col = mix(land, sea, ocean);
 	// Le vivant colore la planète : tapis et efflorescences du pigment réel.
@@ -212,7 +221,7 @@ void fragment() {
 		ink = max(ink, 0.25 * isoline(h / 1000.0, 0.8) * (1.0 - ocean) * step(200.0, h));
 	}
 	// Littoral à l'encre : là où la hauteur change de signe.
-	float coast = 1.0 - smoothstep(0.0, fwidth(v_height) * 1.6, abs(v_height));
+	float coast = 1.0 - smoothstep(0.0, fwidth(height) * 1.6, abs(height));
 	ink = max(ink, coast);
 	// Graticule tous les 30°.
 	if (show_graticule) {
@@ -234,6 +243,10 @@ void fragment() {
 		float d = acos(clamp(dot(n, normalize(hover_pos)), -1.0, 1.0));
 		float ring = 1.0 - smoothstep(0.0, fwidth(d) * 1.5, abs(d - hover_radius));
 		col = mix(col, VERMILION, 0.6 * ring);
+	}
+	if (show_vents) {
+		float ring = 1.0 - smoothstep(0.0, fwidth(v_vent) * 1.5, abs(v_vent - 0.35));
+		col = mix(col, VERMILION, 0.85 * ring * step(0.05, v_vent));
 	}
 	if (selected_radius > 0.0) {
 		float d = acos(clamp(dot(n, normalize(selected_pos)), -1.0, 1.0));

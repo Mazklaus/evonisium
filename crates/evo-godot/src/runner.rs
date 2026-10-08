@@ -45,6 +45,9 @@ pub enum Command {
         path: String,
         name: String,
     },
+    /// Pause au pas donné, par un ordre (scénario de la porte : deux
+    /// parties s'arrêtent au même pas, quelle que soit la caméra).
+    PauseAtStep(u64),
     Shutdown,
 }
 
@@ -68,6 +71,8 @@ pub struct Shared {
     pub observation: Mutex<Observation>,
     /// Événement qui a provoqué la dernière pause automatique.
     pub auto_paused_by: Mutex<Option<u64>>,
+    /// Empreinte de l'état (pas, empreinte), calculée à chaque pause.
+    pub hash: Mutex<Option<(u64, u64)>>,
 }
 
 impl Shared {
@@ -177,6 +182,7 @@ struct State {
     events_seen: usize,
     lineages_refreshed_at: u64,
     speed_window: VecDeque<(Instant, f64)>,
+    pause_at: Option<u64>,
 }
 
 fn publish(world: &World, shared: &Shared, st: &mut State) {
@@ -198,6 +204,9 @@ fn publish(world: &World, shared: &Shared, st: &mut State) {
     if world.stats.steps >= st.lineages_refreshed_at + every || world.paused {
         *shared.lineages.lock().unwrap() = Arc::new(lineages_of(world));
         st.lineages_refreshed_at = world.stats.steps;
+    }
+    if world.paused {
+        *shared.hash.lock().unwrap() = Some((world.stats.steps, world.state_hash()));
     }
     let mut h = shared.history.lock().unwrap();
     let have = h.len();
@@ -246,6 +255,7 @@ fn handle(c: Command, world: &mut World, shared: &Shared, st: &mut State, spec: 
                 st.seeding_label = if s == Seeding::AllOcean { "mers" } else { "sources" };
             }
         }
+        Command::PauseAtStep(step) => st.pause_at = Some(step),
         Command::Save { path, name } => {
             let text = save_text(world, spec, &name, st.seeding_label);
             let msg = match std::fs::write(&path, text) {
@@ -266,6 +276,7 @@ fn run(make: impl FnOnce() -> World, replay_to: Option<u64>, spec: PlanetSpec, r
         events_seen: 0,
         lineages_refreshed_at: 0,
         speed_window: VecDeque::new(),
+        pause_at: None,
     };
     // Rejeu d'un point de sauvegarde : au plus vite, sans cadence.
     if let Some(target) = replay_to {
@@ -278,9 +289,14 @@ fn run(make: impl FnOnce() -> World, replay_to: Option<u64>, spec: PlanetSpec, r
             }
         }
         *shared.loading.lock().unwrap() = None;
-        // On reprend en pause : le joueur relance quand il veut.
-        if !world.paused {
+        // On reprend en pause : le joueur relance quand il veut. Si la partie
+        // sauvegardée était en pause, son ordre de pause attend dans la file,
+        // dû maintenant : l'appliquer suffit, sans en ajouter un second.
+        let pause_due = world.orders.pending().iter().any(|o| o.due_years <= world.years && o.kind == OrderKind::Pause);
+        if !world.paused && !pause_due {
             world.orders.submit(world.years, OrderKind::Pause);
+        }
+        if !world.paused {
             world.step();
         }
     }
@@ -326,6 +342,11 @@ fn run(make: impl FnOnce() -> World, replay_to: Option<u64>, spec: PlanetSpec, r
                     world.step();
                 }
             }
+        }
+        if st.pause_at.is_some_and(|n| world.stats.steps >= n) && !world.paused {
+            st.pause_at = None;
+            world.orders.submit(world.years, OrderKind::Pause);
+            world.step();
         }
         publish(&world, &shared, &mut st);
         // 4. Cadence : un pas de `step_years` doit durer step_years / pace.

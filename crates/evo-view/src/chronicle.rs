@@ -161,6 +161,8 @@ impl StopRules {
         use Action::*;
         use Family::*;
         let actions = match name {
+            // Rien n'arrête le temps (scénarios automatiques, mesures).
+            "aucun" => Family::ALL.into_iter().map(|f| (f, Note)).collect(),
             "contemplatif" => vec![
                 (Milestone, Pause),
                 (Innovation, Alert),
@@ -226,6 +228,12 @@ impl StopRules {
 /// lignée.
 pub fn sentence(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
     let when = duration(e.years, lang);
+    let sep = if lang == Lang::Fr { " : " } else { ": " };
+    format!("{when}{sep}{}", body(e, lang, name))
+}
+
+/// La phrase sans sa date, quand la date est affichée à part.
+pub fn body(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
     let s = match (&e.kind, lang) {
         (EventKind::LifeSeeded { lineage }, Lang::Fr) => {
             format!("Des cellules minimales sont déposées près des sources chaudes : la lignée {} commence.", name(*lineage))
@@ -295,8 +303,7 @@ pub fn sentence(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
         (Origin::Accelerator, Lang::En) => " (an accelerator acted)",
         _ => "",
     };
-    let sep = if lang == Lang::Fr { " : " } else { ": " };
-    format!("{when}{sep}{s}{accel}")
+    format!("{s}{accel}")
 }
 
 /// Groupe d'événements semblables, pour ne pas noyer le joueur

@@ -25,7 +25,7 @@ void vertex() {
 void fragment() {
 	// Rayon de vue en coordonnées de l'objet (globe de rayon 1).
 	vec3 cam = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
-	vec3 dir = normalize(v_obj * shell_radius - cam);
+	vec3 dir = normalize(v_obj - cam);
 	float t = -dot(cam, dir);
 	float d = length(cam + dir * t);
 	float w = fwidth(d);

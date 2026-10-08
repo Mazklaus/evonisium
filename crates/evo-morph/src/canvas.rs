@@ -110,9 +110,9 @@ impl Canvas {
         }
         let i = (y * self.width + x) * 4;
         let a = alpha.min(1.0);
-        for k in 0..3 {
+        for (k, &ck) in c.iter().enumerate() {
             let old = self.pixels[i + k] as f32 / 255.0;
-            self.pixels[i + k] = ((old + (c[k] - old) * a).clamp(0.0, 1.0) * 255.0).round() as u8;
+            self.pixels[i + k] = ((old + (ck - old) * a).clamp(0.0, 1.0) * 255.0).round() as u8;
         }
         self.pixels[i + 3] = 255;
     }
@@ -131,6 +131,7 @@ impl Canvas {
     }
 
     /// Trait d'encre antialiasé d'épaisseur `w` pixels.
+    #[allow(clippy::too_many_arguments)]
     pub fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: [f32; 3], alpha: f32) {
         let (minx, maxx) = (x0.min(x1) - w - 1.0, x0.max(x1) + w + 1.0);
         let (miny, maxy) = (y0.min(y1) - w - 1.0, y0.max(y1) + w + 1.0);

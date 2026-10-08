@@ -44,6 +44,17 @@ pub fn image_rgba8(w: usize, h: usize, data: &[u8]) -> Option<Gd<Image>> {
     Image::create_from_data(w as i32, h as i32, false, ImageFormat::RGBA8, &PackedByteArray::from(data))
 }
 
+/// Le moteur place le pôle nord sur z ; Godot met le haut sur y. La
+/// conversion (une rotation d'un quart de tour autour de x) se fait ici, à
+/// la frontière, et nulle part ailleurs.
+fn to_godot(p: [f64; 3]) -> Vector3 {
+    Vector3::new(p[0] as f32, p[2] as f32, -p[1] as f32)
+}
+
+fn from_godot(v: Vector3) -> [f64; 3] {
+    [v.x as f64, -v.z as f64, v.y as f64]
+}
+
 fn colour(c: [f32; 3]) -> Color {
     Color::from_rgb(c[0], c[1], c[2])
 }
@@ -137,7 +148,7 @@ impl EvoSession {
         d.set("id", e.id as i64);
         d.set("years", e.years);
         d.set("date", format::duration(e.years, self.lang));
-        d.set("text", chronicle::sentence(e, self.lang, &name));
+        d.set("text", chronicle::body(e, self.lang, &name));
         d.set("family", Family::of(e).key());
         d.set("family_label", Family::of(e).label(self.lang));
         d.set("level", level as i64);
@@ -272,7 +283,7 @@ impl EvoSession {
     #[func]
     fn set_seeding(&self, kind: GString) {
         if let Some(r) = &self.runner {
-            r.send(Command::SetSeeding(if kind.to_string() == "mers" { Seeding::AllOcean } else { Seeding::Vents }));
+            r.send(Command::SetSeeding(if kind == "mers" { Seeding::AllOcean } else { Seeding::Vents }));
         }
     }
 
@@ -285,12 +296,14 @@ impl EvoSession {
     /// du pas par un ordre (elle change l'histoire, donc le rejeu la garde).
     #[func]
     fn set_speed(&mut self, years_per_second: f64) {
-        let old = step_years_for(self.pace);
+        // La durée du pas en vigueur est celle du monde, pas celle de la
+        // dernière demande (nouvelle partie, partie rechargée).
+        let old = self.frame().map(|f| f.step_years);
         self.pace = years_per_second.max(1.0);
         if let Some(r) = &self.runner {
             r.send(Command::Pace(self.pace));
             let new = step_years_for(self.pace);
-            if (new - old).abs() > 1e-9 {
+            if old.is_none_or(|o| (new - o).abs() > 1e-9) {
                 r.send(Command::Order(OrderKind::SetStepYears(new)));
             }
         }
@@ -349,11 +362,7 @@ impl EvoSession {
     #[func]
     fn observe(&self, centre: Vector3, radius_rad: f64, band: i64) {
         if let Some(r) = &self.runner {
-            r.send(Command::Observe(Observation {
-                centre: [centre.x as f64, centre.y as f64, centre.z as f64],
-                radius_rad,
-                band: band.clamp(1, 6) as u8,
-            }));
+            r.send(Command::Observe(Observation { centre: from_godot(centre), radius_rad, band: band.clamp(1, 6) as u8 }));
         }
     }
 
@@ -512,7 +521,8 @@ impl EvoSession {
         let f = self.frame()?;
         let mut data = vec![0.0f32; 64 * 4];
         for (i, p) in f.plates.iter().take(64).enumerate() {
-            data[i * 4..i * 4 + 4].copy_from_slice(&[p.pole[0], p.pole[1], p.pole[2], p.omega_rad_per_myr]);
+            // Pôle dans le repère de Godot, comme les sommets du globe.
+            data[i * 4..i * 4 + 4].copy_from_slice(&[p.pole[0], p.pole[2], -p.pole[1], p.omega_rad_per_myr]);
         }
         image_rgbaf(64, 1, &data)
     }
@@ -542,7 +552,7 @@ impl EvoSession {
         let mut d = VarDictionary::new();
         let Some(grid) = &self.grid else { return d };
         let m = if tiles { GlobeMesh::tiles(grid) } else { GlobeMesh::smooth(grid) };
-        let verts: Vec<Vector3> = m.positions.iter().map(|p| Vector3::new(p[0], p[1], p[2])).collect();
+        let verts: Vec<Vector3> = m.positions.iter().map(|p| to_godot([p[0] as f64, p[1] as f64, p[2] as f64])).collect();
         let uvs: Vec<Vector2> = m
             .cells
             .iter()
@@ -568,7 +578,7 @@ impl EvoSession {
     #[func]
     fn cell_at(&self, direction: Vector3) -> i64 {
         match (&self.grid, &self.locator) {
-            (Some(g), Some(l)) => l.locate(g, [direction.x as f64, direction.y as f64, direction.z as f64]) as i64,
+            (Some(g), Some(l)) => l.locate(g, from_godot(direction)) as i64,
             _ => -1,
         }
     }
@@ -576,10 +586,7 @@ impl EvoSession {
     #[func]
     fn cell_centre(&self, cell: i64) -> Vector3 {
         match &self.grid {
-            Some(g) if (cell as usize) < g.len() => {
-                let c = g.centers[cell as usize];
-                Vector3::new(c[0] as f32, c[1] as f32, c[2] as f32)
-            }
+            Some(g) if (cell as usize) < g.len() => to_godot(g.centers[cell as usize]),
             _ => Vector3::ZERO,
         }
     }
@@ -596,9 +603,9 @@ impl EvoSession {
         for c in 0..n {
             let p = g.centers[c];
             let v = f.plate_velocity(g, c);
-            pos.push(Vector3::new(p[0] as f32, p[1] as f32, p[2] as f32));
+            pos.push(to_godot(p));
             // m/an → cm/an
-            vel.push(Vector3::new((v[0] * 100.0) as f32, (v[1] * 100.0) as f32, (v[2] * 100.0) as f32));
+            vel.push(to_godot([v[0] * 100.0, v[1] * 100.0, v[2] * 100.0]));
         }
         d.set("positions", &PackedVector3Array::from(&pos[..]));
         d.set("velocities", &PackedVector3Array::from(&vel[..]));
@@ -617,7 +624,7 @@ impl EvoSession {
         let e = &f.cells[c];
         let lat = grid.latitude(c).to_degrees();
         let p = grid.centers[c];
-        let lon = p[2].atan2(p[0]).to_degrees();
+        let lon = p[1].atan2(p[0]).to_degrees();
         let fr = self.lang == Lang::Fr;
         d.set("cell", cell);
         d.set(
@@ -807,7 +814,7 @@ impl EvoSession {
         if let Some(f) = self.frame() {
             if (cell as usize) < f.cells.len() {
                 let members = species::microscope_members(&f, cell as usize);
-                let seed = f.planet.seed ^ (cell as u64) << 24 ^ f.step / 50;
+                let seed = f.planet.seed ^ ((cell as u64) << 24) ^ (f.step / 50);
                 let (w, h) = (width.clamp(64, 2048) as usize, height.clamp(64, 2048) as usize);
                 self.jobs.spawn(key.clone(), seed, move || {
                     let (c, _) = evo_morph::microscope_field(&members, seed, w, h);
@@ -1021,6 +1028,26 @@ impl EvoSession {
     #[func]
     fn format_power(&self, x: f64) -> GString {
         GString::from(&format::power_of_ten_in(self.lang, x))
+    }
+
+    /// Pause au pas donné (scénario de la porte).
+    #[func]
+    fn pause_at_step(&self, step: i64) {
+        if let Some(r) = &self.runner {
+            r.send(Command::PauseAtStep(step.max(0) as u64));
+        }
+    }
+
+    /// Empreinte de l'état à la dernière pause : [pas, empreinte en
+    /// hexadécimal], ou tableau vide.
+    #[func]
+    fn state_hash(&self) -> VarArray {
+        let mut out = VarArray::new();
+        if let Some((step, h)) = self.runner.as_ref().and_then(|r| *r.shared.hash.lock().unwrap()) {
+            out.push(&(step as i64).to_variant());
+            out.push(&GString::from(&format!("{h:016x}")).to_variant());
+        }
+        out
     }
 
     /// Temps passé dans le pont lors du dernier envoi de textures, ms.

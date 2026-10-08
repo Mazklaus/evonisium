@@ -22,7 +22,8 @@ impl CellLocator {
     /// Cellule la plus proche d'une direction (pas forcément unitaire).
     pub fn locate(&self, grid: &GeodesicGrid, dir: [f64; 3]) -> usize {
         let n = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
-        if !(n > 0.0) {
+        // Vecteur nul ou NaN : aucune direction.
+        if n.is_nan() || n <= 0.0 {
             return 0;
         }
         let p = [dir[0] / n, dir[1] / n, dir[2] / n];
