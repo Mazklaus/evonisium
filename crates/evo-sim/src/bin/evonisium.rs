@@ -1,7 +1,7 @@
 //! Outil en ligne de commande.
 //!
 //!   evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]
-//!   evonisium porte [--worlds terre,ocean,...] [--seed N] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]
+//!   evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]
 //!   evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]
 //!   evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]
 //!
@@ -9,7 +9,7 @@
 
 use evo_planet::PlanetParams;
 use evo_sim::bench::{run_benchmarks, BenchOptions};
-use evo_sim::gate::{run_gate, GateOptions};
+use evo_sim::gate::{format_gate, run_gate, GateOptions, WorldResult};
 use evo_sim::orders::{Intervention, OrderKind};
 use evo_sim::report::{format_summary, format_years};
 use evo_sim::{World, WorldConfig};
@@ -34,7 +34,7 @@ fn opt(args: &[String], name: &str) -> Option<String> {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seed N] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
+        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
         PlanetParams::KEYS.join(", ")
     );
     std::process::exit(2)
@@ -57,7 +57,9 @@ fn main() {
         Some("porte") => {
             let defaults = GateOptions::default();
             let opts = GateOptions {
-                seed: arg(&args, "--seed", defaults.seed),
+                seeds: opt(&args, "--seeds")
+                    .map(|v| v.split(',').map(|x| x.trim().parse().expect("graine invalide")).collect())
+                    .unwrap_or(defaults.seeds),
                 level: arg(&args, "--level", defaults.level),
                 step_years: arg(&args, "--step-years", defaults.step_years),
                 max_years: arg(&args, "--max-years", defaults.max_years),
@@ -66,16 +68,48 @@ fn main() {
                 worlds: opt(&args, "--worlds").map(|w| w.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default(),
                 out_dir: opt(&args, "--data").map(Into::into),
             };
+            // Rapport assemblé à partir des résultats déjà enregistrés, monde
+            // par monde (les parties longues tournent séparément).
+            if let Some(dir) = opt(&args, "--assemble") {
+                let mut results: Vec<WorldResult> = Vec::new();
+                for key in PlanetParams::KEYS {
+                    let mut files: Vec<_> = std::fs::read_dir(&dir)
+                        .expect("dossier des résultats")
+                        .filter_map(|e| e.ok().map(|e| e.path()))
+                        .filter(|p| {
+                            p.file_name()
+                                .and_then(|n| n.to_str())
+                                .is_some_and(|n| n.starts_with(&format!("{key}-")) && n.ends_with(".resultat"))
+                        })
+                        .collect();
+                    files.sort();
+                    for f in files {
+                        let bytes = std::fs::read(&f).expect("lecture du résultat");
+                        results.push(bincode::deserialize(&bytes).expect("résultat illisible"));
+                    }
+                }
+                results
+                    .sort_by_key(|r| (PlanetParams::KEYS.iter().position(|k| *k == r.key), opts.seeds.iter().position(|s| *s == r.seed)));
+                write_or_print(opt(&args, "--out"), &format_gate(&opts, &results));
+                return;
+            }
+            let save = opt(&args, "--save-results");
             let (report, _) = run_gate(&opts, |r| {
                 eprintln!(
-                    "{} : {} en {:.0} s, O₂ final {:.1e}, étape {} — {}",
+                    "{} (graine {}) : {} en {:.0} s, O₂ final {:.1e}, étape {} — {}",
                     r.name,
+                    r.seed,
                     format_years(r.years),
                     r.seconds,
                     r.final_sample.o2_mixing,
                     r.final_sample.photosynthesis_stage,
                     if r.passed { "franchie" } else { "non franchie" }
-                )
+                );
+                if let Some(dir) = &save {
+                    let _ = std::fs::create_dir_all(dir);
+                    let path = std::path::Path::new(dir).join(format!("{}-{}.resultat", r.key, r.seed));
+                    std::fs::write(path, bincode::serialize(r).expect("résultat sérialisable")).expect("écriture du résultat");
+                }
             });
             write_or_print(opt(&args, "--out"), &report);
         }
