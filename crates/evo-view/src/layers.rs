@@ -1,31 +1,31 @@
 //! Textures de données et calques de lecture.
 //!
 //! Chaque cellule occupe un texel de textures de 256 × ⌈n/256⌉ (256 × 161 à
-//! 40 962 cellules). Trois textures RGBA en flottants suffisent aux calques
+//! 40 962 cellules). Quatre textures RGBA en flottants suffisent aux calques
 //! de l'étape 3 ; un calque n'est qu'un choix de texture, de canal, de
 //! transformation, de bornes et de palette, sans reconstruire de géométrie.
 //!
 //! | Texture | R | G | B | A |
 //! |---|---|---|---|---|
-//! | 0 | hauteur / mer (m) | température (K) | log₁₀(biomasse + 1) | O₂ dissous (mol·m⁻³) |
+//! | 0 | altitude / profondeur (m) | température (K) | log₁₀(biomasse + 1) | O₂ dissous (mol·m⁻³) |
 //! | 1 | pigment R | pigment G | pigment B | drapeaux |
-//! | 2 | plaque | guilde (rang) | glace (0-1) | part de l'espèce choisie |
+//! | 2 | plaque | guilde (rang) | glace (0-1) | aire de l'espèce choisie (0 ou 1) |
+//! | 3 | vitesse de la plaque vers l'est (cm·an⁻¹) | vers le nord | nuages (0-1) | pluie (mm·an⁻¹) |
 //!
-//! Drapeaux : 1 océan, 2 glace, 4 pigment, 8 source hydrothermale,
-//! 16 aire de l'espèce choisie, 32 lignée suivie présente.
+//! Drapeaux : 1 océan, 2 glace, 4 pigment, 16 aire de l'espèce choisie,
+//! 64 eaux douces.
 
 use crate::frame::Frame;
 use crate::palette::PaletteKind;
 
 pub const TEX_WIDTH: usize = 256;
-pub const TEXTURE_COUNT: usize = 3;
+pub const TEXTURE_COUNT: usize = 4;
 
 pub const FLAG_OCEAN: u32 = 1;
 pub const FLAG_ICE: u32 = 2;
 pub const FLAG_PIGMENT: u32 = 4;
-pub const FLAG_VENT: u32 = 8;
 pub const FLAG_FOCUS: u32 = 16;
-pub const FLAG_MARKED: u32 = 32;
+pub const FLAG_LAKE: u32 = 64;
 
 /// Guildes distinguées par couleur ; les autres partagent la dernière.
 pub const GUILD_CATEGORIES: usize = 7;
@@ -43,21 +43,21 @@ pub fn texel_uv(cell: usize, cells: usize) -> [f32; 2] {
 /// Ce que le client met en avant sur le globe.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Focus {
-    /// Espèce dont l'aire est surlignée.
-    pub lineage: Option<u32>,
-    /// Lignées suivies.
+    /// Espèce (guilde) dont l'aire de domination est surlignée.
+    pub species: Option<u32>,
+    /// Lignées suivies (ordre `MarkLineage` envoyé).
     pub marked: Vec<u32>,
 }
 
-/// Les trois textures d'un pas, RGBA en flottants, ligne par ligne.
+/// Les textures d'un pas, RGBA en flottants, ligne par ligne.
 pub fn pack(frame: &Frame, focus: &Focus) -> [Vec<f32>; TEXTURE_COUNT] {
-    let n = frame.cells.len();
-    let (w, h) = texture_size(n);
+    let cells = frame.cells();
+    let (w, h) = texture_size(cells.len());
     let mut t: [Vec<f32>; TEXTURE_COUNT] = std::array::from_fn(|_| vec![0.0; w * h * 4]);
     let guilds = frame.top_guilds(GUILD_CATEGORIES);
-    for (c, cell) in frame.cells.iter().enumerate() {
+    for (c, cell) in cells.iter().enumerate() {
         let i = c * 4;
-        t[0][i] = cell.height_m;
+        t[0][i] = cell.elevation_m;
         t[0][i + 1] = cell.temperature_k;
         t[0][i + 2] = (cell.biomass.max(0.0) + 1.0).log10();
         t[0][i + 3] = cell.oxygen;
@@ -68,8 +68,8 @@ pub fn pack(frame: &Frame, focus: &Focus) -> [Vec<f32>; TEXTURE_COUNT] {
         if cell.ice_cover > 0.5 {
             flags |= FLAG_ICE;
         }
-        if cell.vent {
-            flags |= FLAG_VENT;
+        if cell.lake_fraction > 0.3 {
+            flags |= FLAG_LAKE;
         }
         if let Some(rgb) = cell.pigment_rgb {
             flags |= FLAG_PIGMENT;
@@ -77,16 +77,9 @@ pub fn pack(frame: &Frame, focus: &Focus) -> [Vec<f32>; TEXTURE_COUNT] {
             t[1][i + 1] = rgb[1] as f32 / 255.0;
             t[1][i + 2] = rgb[2] as f32 / 255.0;
         }
-        let pops = frame.populations_of(c);
-        let mut share = 0.0;
-        if let Some(l) = focus.lineage {
-            if let Some(p) = pops.iter().find(|p| p.lineage == l) {
-                flags |= FLAG_FOCUS;
-                share = if cell.biomass > 0.0 { p.biomass / cell.biomass } else { 0.0 };
-            }
-        }
-        if pops.iter().any(|p| focus.marked.contains(&p.lineage)) {
-            flags |= FLAG_MARKED;
+        let focused = focus.species.is_some_and(|s| s != 0 && cell.dominant_guild == s);
+        if focused {
+            flags |= FLAG_FOCUS;
         }
         t[1][i + 3] = flags as f32;
         t[2][i] = cell.plate as f32;
@@ -96,7 +89,11 @@ pub fn pack(frame: &Frame, focus: &Focus) -> [Vec<f32>; TEXTURE_COUNT] {
             (guilds.iter().position(|g| g.0 == cell.dominant_guild).unwrap_or(GUILD_CATEGORIES) + 1) as f32
         };
         t[2][i + 2] = cell.ice_cover;
-        t[2][i + 3] = share;
+        t[2][i + 3] = if focused { 1.0 } else { 0.0 };
+        t[3][i] = cell.plate_velocity_cm_yr[0];
+        t[3][i + 1] = cell.plate_velocity_cm_yr[1];
+        t[3][i + 2] = cell.cloud_cover;
+        t[3][i + 3] = cell.rain_mm_yr;
     }
     t
 }
@@ -163,8 +160,8 @@ impl Layer {
 }
 
 /// Calques de l'étape 3 : physique, chimie et vie (document Fonctionnalités,
-/// tableau des étapes). Les vents, courants, nuages et précipitations
-/// attendent les sorties d'affichage de la planète (volet moteur).
+/// tableau des étapes). Vents et courants sont dessinés en flèches par le
+/// client, pas en lavis.
 pub fn catalogue() -> Vec<Layer> {
     use PaletteKind::*;
     use Transform::*;
@@ -226,6 +223,34 @@ pub fn catalogue() -> Vec<Layer> {
             display_offset: 0.0,
         },
         Layer {
+            key: "nuages",
+            name_fr: "Nuages",
+            name_en: "Clouds",
+            family_fr: "Physique",
+            unit: "fraction",
+            texture: 3,
+            channel: 2,
+            transform: Linear,
+            min: 0.0,
+            max: 1.0,
+            palette: Sequential,
+            display_offset: 0.0,
+        },
+        Layer {
+            key: "pluie",
+            name_fr: "Précipitations",
+            name_en: "Precipitation",
+            family_fr: "Physique",
+            unit: "mm·an⁻¹",
+            texture: 3,
+            channel: 3,
+            transform: Linear,
+            min: 0.0,
+            max: 3000.0,
+            palette: Sequential,
+            display_offset: 0.0,
+        },
+        Layer {
             key: "oxygene",
             name_fr: "Oxygène dissous",
             name_en: "Dissolved oxygen",
@@ -269,10 +294,10 @@ pub fn catalogue() -> Vec<Layer> {
         },
         Layer {
             key: "espece",
-            name_fr: "Aire de l'espèce choisie",
-            name_en: "Range of the chosen species",
+            name_fr: "Où domine l'espèce choisie",
+            name_en: "Where the chosen species dominates",
             family_fr: "Vie",
-            unit: "part de la biomasse",
+            unit: "",
             texture: 2,
             channel: 3,
             transform: Linear,
@@ -287,7 +312,6 @@ pub fn catalogue() -> Vec<Layer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evo_sim::{World, WorldConfig};
 
     #[test]
     fn texture_layout() {
@@ -299,19 +323,17 @@ mod tests {
 
     #[test]
     fn packing_sets_flags_and_focus() {
-        let mut w = World::new(WorldConfig::new(3, 3));
-        w.seed_life();
-        w.step();
-        let f = Frame::from_world(&w);
-        let lineage = f.populations[0].lineage;
-        let t = pack(&f, &Focus { lineage: Some(lineage), marked: vec![lineage] });
+        let f = crate::frame::tests::sample_frame(3);
+        let species = f.top_guilds(1)[0].0;
+        let t = pack(&f, &Focus { species: Some(species), marked: vec![] });
+        let n = f.cells().len();
         let flags = |c: usize| t[1][c * 4 + 3] as u32;
-        let ocean = (0..f.cells.len()).filter(|&c| flags(c) & FLAG_OCEAN != 0).count();
-        assert_eq!(ocean, f.cells.iter().filter(|c| c.is_ocean).count());
-        let focus = (0..f.cells.len()).filter(|&c| flags(c) & FLAG_FOCUS != 0).count();
-        assert_eq!(focus, f.range_of(lineage).len());
+        let ocean = (0..n).filter(|&c| flags(c) & FLAG_OCEAN != 0).count();
+        assert_eq!(ocean, f.cells().iter().filter(|c| c.is_ocean).count());
+        let focus = (0..n).filter(|&c| flags(c) & FLAG_FOCUS != 0).count();
+        assert_eq!(focus, f.dominated_by(species).len());
         assert!(focus > 0);
-        assert!((0..f.cells.len()).all(|c| (0.0..=1.0).contains(&t[2][c * 4 + 3])));
+        assert!((0..n).all(|c| (0.0..=1.0).contains(&t[2][c * 4 + 3])));
     }
 
     #[test]

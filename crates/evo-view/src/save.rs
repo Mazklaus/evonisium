@@ -1,18 +1,18 @@
-//! Description d'une partie à créer et points de sauvegarde provisoires.
+//! Description d'une partie à créer et fiche d'un point de sauvegarde.
 //!
-//! [Simplification] Les points de sauvegarde complets (état sur disque et
-//! reprise directe) sont un service du volet moteur de l'étape 3. En
-//! attendant, le client sauvegarde un rejeu : la description de la planète,
-//! la graine et le registre des ordres. Le moteur étant déterministe, le
-//! recharger rejoue la partie jusqu'au même pas et redonne exactement le même
-//! état ; c'est aussi le format de partage « rejeu » du document
-//! Fonctionnalités. Le chargement prend le temps de rejouer.
+//! Le moteur écrit l'état complet (`Engine::save`) et le recharge tel quel.
+//! Le client range à côté une petite fiche lisible (`<sauvegarde>.fiche`) :
+//! nom, planète, date atteinte, mode. Elle sert à la liste des sauvegardes
+//! sans ouvrir l'état, et à retrouver le code de planète.
 
-use evo_planet::{Gas, PlanetParams, GASES};
-use evo_sim::{Order, OrderKind, WorldConfig};
+use evo_planet::{Gas, PlanetParams};
+use evo_sim::Seeding;
 
 pub const FORMAT: &str = "evonisium-point-de-sauvegarde";
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
+
+/// Extension de la fiche rangée à côté de l'état sauvegardé.
+pub const META_SUFFIX: &str = ".fiche";
 
 /// Planète demandée sur l'écran de création.
 #[derive(Clone, Debug, PartialEq)]
@@ -98,12 +98,12 @@ pub struct SaveFile {
     pub years: f64,
     /// Mode de partie (« observateur », « bac-a-sable »).
     pub mode: String,
-    pub orders: Vec<Order>,
 }
 
 impl SaveFile {
-    pub fn config(&self) -> WorldConfig {
-        WorldConfig::with_planet(self.spec.to_params(), self.seed, self.level)
+    /// Ensemencement du moteur correspondant au choix du joueur.
+    pub fn seeding_mode(&self) -> Seeding {
+        seeding_of(&self.seeding)
     }
 
     pub fn to_text(&self) -> String {
@@ -115,10 +115,6 @@ impl SaveFile {
         s += &format!("ensemencement\t{}\n", self.seeding);
         s += &format!("pas\t{}\n", self.steps);
         s += &format!("annees\t{:e}\n", self.years);
-        s += "ordres\n";
-        for o in &self.orders {
-            s += &format!("{}\t{:e}\t{}\n", o.id, o.due_years, encode(&o.kind));
-        }
         s
     }
 
@@ -142,23 +138,9 @@ impl SaveFile {
             steps: 0,
             years: 0.0,
             mode: "observateur".into(),
-            orders: Vec::new(),
         };
-        let mut in_orders = false;
         for line in lines {
             if line.trim().is_empty() {
-                continue;
-            }
-            if in_orders {
-                let mut f = line.splitn(3, '\t');
-                let id = f.next().and_then(|x| x.parse().ok()).ok_or("ordre illisible")?;
-                let due = f.next().and_then(|x| x.parse().ok()).ok_or("date d'ordre illisible")?;
-                let kind = decode(f.next().unwrap_or("")).ok_or_else(|| format!("ordre inconnu : {line}"))?;
-                save.orders.push(Order { id, due_years: due, kind });
-                continue;
-            }
-            if line == "ordres" {
-                in_orders = true;
                 continue;
             }
             let (k, v) = line.split_once('\t').ok_or("ligne illisible")?;
@@ -182,31 +164,14 @@ impl SaveFile {
     }
 }
 
-fn encode(k: &OrderKind) -> String {
-    match k {
-        OrderKind::SetStepYears(y) => format!("vitesse\t{y:e}"),
-        OrderKind::Pause => "pause".into(),
-        OrderKind::Resume => "reprise".into(),
-        OrderKind::SeedLife => "ensemencer".into(),
-        OrderKind::AddPhosphate { moles } => format!("phosphate\t{moles:e}"),
-        OrderKind::InjectGas { gas, moles } => format!("gaz\t{}\t{moles:e}", *gas as usize),
-        OrderKind::MarkLineage { lineage } => format!("suivi\t{lineage}"),
+/// « sources » : près des sources hydrothermales ; « mers » : dans toutes
+/// les mers.
+pub fn seeding_of(key: &str) -> Seeding {
+    if key == "mers" {
+        Seeding::AllOcean
+    } else {
+        Seeding::Vents
     }
-}
-
-fn decode(s: &str) -> Option<OrderKind> {
-    let f: Vec<&str> = s.split('\t').collect();
-    let num = |i: usize| f.get(i).and_then(|x| x.parse::<f64>().ok());
-    Some(match f[0] {
-        "vitesse" => OrderKind::SetStepYears(num(1)?),
-        "pause" => OrderKind::Pause,
-        "reprise" => OrderKind::Resume,
-        "ensemencer" => OrderKind::SeedLife,
-        "phosphate" => OrderKind::AddPhosphate { moles: num(1)? },
-        "gaz" => OrderKind::InjectGas { gas: *GASES.get(f.get(1)?.parse::<usize>().ok()?)?, moles: num(2)? },
-        "suivi" => OrderKind::MarkLineage { lineage: f.get(1)?.parse().ok()? },
-        _ => return None,
-    })
 }
 
 /// Gaz par clé courte (palette de commandes et interface).
@@ -246,45 +211,10 @@ mod tests {
             steps: 12,
             years: 1.2e6,
             mode: "observateur".into(),
-            orders: vec![
-                Order { id: 0, due_years: 0.0, kind: OrderKind::SeedLife },
-                Order { id: 1, due_years: 1e5, kind: OrderKind::SetStepYears(5e4) },
-                Order { id: 2, due_years: 2e5, kind: OrderKind::InjectGas { gas: Gas::Co2, moles: 1e15 } },
-                Order { id: 3, due_years: 3e5, kind: OrderKind::MarkLineage { lineage: 4 } },
-                Order { id: 4, due_years: 3e5, kind: OrderKind::AddPhosphate { moles: 2.5e12 } },
-            ],
         };
         let back = SaveFile::from_text(&save.to_text()).unwrap();
         assert_eq!(back, save);
         assert!(SaveFile::from_text("autre chose").is_err());
-    }
-
-    #[test]
-    fn replaying_a_save_gives_the_same_world() {
-        use evo_sim::World;
-        let mut w = World::new(WorldConfig::new(4, 3));
-        w.orders.submit(0.0, OrderKind::SeedLife);
-        w.orders.submit(2e5, OrderKind::AddPhosphate { moles: 1e12 });
-        for _ in 0..5 {
-            w.step();
-        }
-        let save = SaveFile {
-            name: String::new(),
-            engine_version: String::new(),
-            spec: PlanetSpec::default(),
-            seed: 4,
-            level: 3,
-            seeding: "sources".into(),
-            steps: w.stats.steps,
-            years: w.years,
-            mode: "observateur".into(),
-            orders: w.orders.log(),
-        };
-        let back = SaveFile::from_text(&save.to_text()).unwrap();
-        let mut r = World::replay(back.config(), &back.orders);
-        while r.stats.steps < back.steps {
-            r.step();
-        }
-        assert_eq!(r.state_hash(), w.state_hash());
+        assert_eq!(back.seeding_mode(), Seeding::AllOcean);
     }
 }

@@ -11,4 +11,5 @@ evo-planet.workspace = true
 evo-life.workspace = true
 evo-genetics.workspace = true
 evo-sim.workspace = true
+evo-engine.workspace = true
 evo-morph.workspace = true

@@ -8,23 +8,19 @@
 //! aire, espèces dominantes qui partagent son milieu). Il est déterministe
 //! (graine, espèce, date arrondie) et coûte moins de 200 ms en 1024 × 512.
 //!
-//! [Simplification] Tant que le service moteur « milieu type d'une espèce »
-//! n'est pas publié, `Habitat::of_species` le calcule côté client depuis
-//! l'image du pas ; une espèce éteinte n'a pas encore de décor (il faudra
-//! l'historique régional à la date de son apogée).
+//! Le milieu type vient du service moteur `Query::SpeciesHabitat` ; pour une
+//! espèce éteinte, le moteur le décrit à la date de son apogée.
 
 use crate::frame::Frame;
 use crate::palette::blackbody;
 use evo_morph::canvas::{fbm, mix64, Canvas, DrawRng, INK, OCHRE, PAPER, WATER};
 
-/// Milieu type d'une espèce.
+/// Milieu type d'une espèce, tel que le décor le lit.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Habitat {
-    pub lineage: u32,
-    /// Cellule où l'espèce est la plus abondante.
+    pub species: u32,
+    /// Cellule (du vivant) où l'espèce est la plus abondante.
     pub cell: usize,
-    /// Nombre de cellules de son aire.
-    pub range_cells: usize,
     pub is_ocean: bool,
     /// Profondeur d'eau moyenne (m, 0 à terre) et altitude moyenne des terres.
     pub depth_m: f32,
@@ -33,10 +29,10 @@ pub struct Habitat {
     pub ice_cover: f32,
     pub light_w_m2: f32,
     pub vent: bool,
-    /// Couleur de l'espèce (pigment) et des trois dominantes du même milieu.
+    /// Couleur de l'espèce (pigment) et des trois espèces de son milieu.
     pub pigment_rgb: Option<[u8; 3]>,
     pub neighbours: Vec<(u32, Option<[u8; 3]>)>,
-    /// Densité du tapis : part de la biomasse de la cellule, 0 à 1.
+    /// Densité du tapis : part de l'espèce dans la biomasse de son milieu, 0 à 1.
     pub density: f32,
     pub star_temperature_k: f64,
     /// Fractions de l'atmosphère qui teintent le ciel.
@@ -45,48 +41,50 @@ pub struct Habitat {
     pub years: f64,
 }
 
+/// Profondeur prêtée à un lac (m) : le moteur ne publie pas encore la
+/// profondeur des eaux douces. [Simplification]
+const LAKE_DEPTH_M: f32 = 20.0;
+
 impl Habitat {
-    pub fn of_species(frame: &Frame, lineage: u32) -> Option<Habitat> {
-        let range = frame.range_of(lineage);
-        let &(cell, _) = range.iter().max_by(|a, b| a.1.total_cmp(&b.1))?;
-        let n = range.len() as f32;
-        let mean = |f: &dyn Fn(usize) -> f32| range.iter().map(|&(c, _)| f(c)).sum::<f32>() / n;
-        let ocean_share = mean(&|c| if frame.cells[c].is_ocean { 1.0 } else { 0.0 });
-        let pops = frame.populations_of(cell);
-        let me = pops.iter().find(|p| p.lineage == lineage)?;
-        let pigment_rgb = me.pigment_nm.map(|nm| evo_life::pigment_colour(nm as f64));
-        let neighbours = pops
-            .iter()
-            .filter(|p| p.lineage != lineage)
-            .take(3)
-            .map(|p| (p.lineage, p.pigment_nm.map(|nm| evo_life::pigment_colour(nm as f64))))
-            .collect();
-        let total = frame.cells[cell].biomass.max(1e-9);
-        Some(Habitat {
-            lineage,
+    /// Décor à partir du milieu type publié par le moteur ; l'état publié
+    /// fournit les pigments des espèces, la glace et l'atmosphère.
+    pub fn from_engine(h: &evo_engine::Habitat, frame: &Frame) -> Habitat {
+        let pigment = |id: u32| frame.species(id).and_then(|s| s.pigment_rgb);
+        let cell = h.peak_bio_cell as usize;
+        let ice_cover = frame.cells().get(cell).map(|c| c.ice_cover).unwrap_or(0.0);
+        let is_ocean = h.sea_share + h.fresh_share >= 0.5;
+        let depth_m = if !is_ocean {
+            0.0
+        } else if h.sea_share >= h.fresh_share {
+            (-h.elevation_m).max(1.0) as f32
+        } else {
+            LAKE_DEPTH_M
+        };
+        let shared: f64 = h.companions.iter().map(|c| c.2).sum();
+        Habitat {
+            species: h.species,
             cell,
-            range_cells: range.len(),
-            is_ocean: ocean_share >= 0.5,
-            depth_m: mean(&|c| (-frame.cells[c].height_m).max(0.0)),
-            height_m: mean(&|c| frame.cells[c].height_m.max(0.0)),
-            temperature_k: mean(&|c| frame.cells[c].temperature_k),
-            ice_cover: mean(&|c| frame.cells[c].ice_cover),
-            light_w_m2: mean(&|c| frame.cells[c].light_w_m2),
-            vent: frame.cells[cell].vent,
-            pigment_rgb,
-            neighbours,
-            density: (me.biomass / total).clamp(0.0, 1.0),
-            star_temperature_k: frame.planet.star_temperature_k,
-            o2_mixing: frame.globals.o2_mixing,
-            ch4_ppb: frame.globals.ch4_ppb,
-            years: frame.years,
-        })
+            is_ocean,
+            depth_m,
+            height_m: h.elevation_m.max(0.0) as f32,
+            temperature_k: h.temperature_k as f32,
+            ice_cover,
+            light_w_m2: h.light_w_m2 as f32,
+            vent: h.vent_share >= 0.5,
+            pigment_rgb: pigment(h.species),
+            neighbours: h.companions.iter().take(3).map(|c| (c.0, pigment(c.0))).collect(),
+            density: (1.0 - shared).clamp(0.2, 1.0) as f32,
+            star_temperature_k: h.star_temperature_k,
+            o2_mixing: frame.state.globals.o2_mixing,
+            ch4_ppb: frame.state.globals.ch4_ppb,
+            years: h.years,
+        }
     }
 
     /// Graine du décor : il ne change que si l'espèce change de milieu.
     pub fn decor_seed(&self, game_seed: u64) -> u64 {
         let depth_band = (self.depth_m / 250.0) as u64;
-        mix64(game_seed ^ mix64(self.lineage as u64) ^ (self.cell as u64) << 20 ^ depth_band << 48)
+        mix64(game_seed ^ mix64(self.species as u64) ^ (self.cell as u64) << 20 ^ depth_band << 48)
     }
 }
 
@@ -320,19 +318,39 @@ fn stromatolite(cv: &mut Canvas, cx: f32, base: f32, r: f32, colour: [f32; 3], s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evo_sim::{World, WorldConfig};
+
+    fn sample() -> evo_engine::Habitat {
+        evo_engine::Habitat {
+            species: 3,
+            name: "méthanogène".into(),
+            living: true,
+            years: 1e6,
+            peak_bio_cell: 4,
+            elevation_m: -2500.0,
+            temperature_k: 300.0,
+            seasonal_amplitude_k: 2.0,
+            light_w_m2: 0.0,
+            ph: 7.0,
+            salinity: 35.0,
+            oxygen: 0.0,
+            sea_share: 1.0,
+            fresh_share: 0.0,
+            vent_share: 0.8,
+            abs_latitude_rad: 0.3,
+            star_temperature_k: 5772.0,
+            planet_temperature_k: 288.0,
+            pressure_pa: 1e5,
+            companions: vec![(5, "fermentatrice".into(), 0.3)],
+            region_at_peak: None,
+        }
+    }
 
     #[test]
     fn decor_is_deterministic_and_within_budget() {
-        let mut w = World::new(WorldConfig::new(5, 3));
-        w.seed_life();
-        for _ in 0..3 {
-            w.step();
-        }
-        let f = Frame::from_world(&w);
-        let lineage = f.populations[0].lineage;
-        let h = Habitat::of_species(&f, lineage).expect("milieu");
-        assert!(h.is_ocean && h.vent);
+        let f = crate::frame::tests::sample_frame(5);
+        let h = Habitat::from_engine(&sample(), &f);
+        assert!(h.is_ocean && h.vent && h.depth_m == 2500.0);
+        assert!((h.density - 0.7).abs() < 1e-6 && h.neighbours.len() == 1);
         let seed = h.decor_seed(5);
         let t = std::time::Instant::now();
         let a = paint(&h, seed, 1024, 512);
@@ -343,11 +361,20 @@ mod tests {
     }
 
     #[test]
+    fn lakes_and_land_get_their_own_scene() {
+        let f = crate::frame::tests::sample_frame(5);
+        let lake = evo_engine::Habitat { sea_share: 0.0, fresh_share: 0.9, elevation_m: 300.0, ..sample() };
+        let h = Habitat::from_engine(&lake, &f);
+        assert!(h.is_ocean && h.depth_m == LAKE_DEPTH_M && h.height_m == 300.0);
+        let land = evo_engine::Habitat { sea_share: 0.0, fresh_share: 0.1, ..lake };
+        assert!(!Habitat::from_engine(&land, &f).is_ocean);
+    }
+
+    #[test]
     fn methane_haze_warms_the_sky_and_oxygen_cools_it() {
         let base = Habitat {
-            lineage: 0,
+            species: 0,
             cell: 0,
-            range_cells: 1,
             is_ocean: true,
             depth_m: 50.0,
             height_m: 0.0,

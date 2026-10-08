@@ -120,27 +120,36 @@ pub struct SpeciesNames {
 }
 
 pub fn species_names(seed: u64, grid: &GeodesicGrid, lineage: u32, signature: u32, origin_cell: u32, lang: Lang) -> SpeciesNames {
-    let region = region_of(grid, (origin_cell as usize).min(grid.len().saturating_sub(1)));
-    let place = place_name(seed, region);
+    let place = place_name(seed, region_of(grid, (origin_cell as usize).min(grid.len().saturating_sub(1))));
     let reaction = main_reaction(signature);
-    // Plusieurs lignées d'un même lieu : on ajoute un rang (« tarvelensis
-    // secunda ») pour que deux espèces ne portent jamais le même nom.
+    let common = match lang {
+        Lang::Fr => format!("{} de {} n° {}", capitalise(guild_common(reaction, lang)), place, lineage),
+        Lang::En => format!("{} {} no. {}", place, guild_common(reaction, lang), lineage),
+    };
+    SpeciesNames { scientific: binomial(seed, &place, reaction, lineage as u64), common }
+}
+
+/// Nom savant d'une espèce (guilde) : genre de son métabolisme, épithète de
+/// son lieu d'origine.
+pub fn scientific_name(seed: u64, grid: &GeodesicGrid, signature: u32, origin_cell: u32) -> String {
+    let place = place_name(seed, region_of(grid, (origin_cell as usize).min(grid.len().saturating_sub(1))));
+    binomial(seed, &place, main_reaction(signature), 0x5350_0000_0000 ^ signature as u64)
+}
+
+fn binomial(seed: u64, place: &str, reaction: Option<ReactionId>, key: u64) -> String {
+    // Plusieurs espèces d'un même lieu : une variété (« tarvelensis
+    // obscura ») les distingue le plus souvent.
     let stem = place.to_lowercase();
     let stem = stem.trim_end_matches(['a', 'e', 'i', 'o', 'u']);
     let mut scientific = format!("{} {}ensis", genus(reaction), stem);
-    let mut h = splitmix64(seed ^ (lineage as u64).wrapping_mul(0x9E37_79B9));
-    h = splitmix64(h);
+    let h = splitmix64(splitmix64(seed ^ key.wrapping_mul(0x9E37_79B9)));
     const VARIETAS: [&str; 8] = ["", "", "", "minor", "major", "pallida", "obscura", "gracilis"];
     let v = VARIETAS[(h % VARIETAS.len() as u64) as usize];
     if !v.is_empty() {
         scientific.push(' ');
         scientific.push_str(v);
     }
-    let common = match lang {
-        Lang::Fr => format!("{} de {} n° {}", capitalise(guild_common(reaction, lang)), place, lineage),
-        Lang::En => format!("{} {} no. {}", place, guild_common(reaction, lang), lineage),
-    };
-    SpeciesNames { scientific, common }
+    scientific
 }
 
 fn capitalise(s: &str) -> String {

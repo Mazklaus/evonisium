@@ -22,4 +22,4 @@ pub mod species;
 pub mod tree;
 
 pub use format::Lang;
-pub use frame::{Frame, LineageFrame, PlanetInfo, PopulationFrame};
+pub use frame::{Frame, LineageFrame, PlanetInfo};

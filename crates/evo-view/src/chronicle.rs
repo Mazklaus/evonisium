@@ -10,6 +10,7 @@
 
 use crate::format::{duration, power_of_ten_in, Lang};
 use evo_core::events::{Event, EventKind, Origin};
+use evo_sim::history::EventView;
 
 /// Familles d'événements des règles d'arrêt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -45,7 +46,7 @@ impl Family {
             EventKind::Snowball { .. } => Family::Catastrophe,
             EventKind::PlateReorganisation { .. } => Family::Geology,
             EventKind::AcceleratorOn { .. } | EventKind::AcceleratorOff { .. } => Family::Accelerator,
-            EventKind::OrderApplied { .. } => Family::Intervention,
+            EventKind::OrderApplied { .. } | EventKind::OrderRefused { .. } => Family::Intervention,
         }
     }
 
@@ -107,11 +108,21 @@ pub fn notable_threshold(years_per_second: f64) -> f64 {
 
 pub const MAJOR_THRESHOLD: f64 = 0.85;
 
+/// Événement de la chronique à partir de celui que publie le moteur (la
+/// cellule y est une cellule du vivant, que le client emploie telle quelle
+/// comme cellule physique : les grilles sont emboîtées).
+pub fn from_view(v: &EventView) -> Event {
+    Event { id: v.id, years: v.years, cell: v.cell, kind: v.kind.clone(), origin: v.origin, cause: v.cause, interest: v.interest as f64 }
+}
+
 pub fn level(e: &Event, years_per_second: f64) -> Level {
     // Les ordres du joueur sont notés, jamais signalés : il sait ce qu'il a
     // demandé. Les pas de vitesse et les pauses ne sont même pas notés.
-    if let EventKind::OrderApplied { .. } = e.kind {
-        return Level::Routine;
+    // Un refus, en revanche, doit se voir.
+    match e.kind {
+        EventKind::OrderApplied { .. } => return Level::Routine,
+        EventKind::OrderRefused { .. } => return Level::Notable,
+        _ => {}
     }
     if e.interest >= MAJOR_THRESHOLD {
         Level::Major
@@ -297,6 +308,8 @@ pub fn body(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
                 format!("Time command: {label}.")
             }
         }
+        (EventKind::OrderRefused { reason, .. }, Lang::Fr) => format!("Intervention refusée : {reason}."),
+        (EventKind::OrderRefused { reason, .. }, Lang::En) => format!("Intervention refused: {reason}."),
     };
     let accel = match (e.origin, lang) {
         (Origin::Accelerator, Lang::Fr) => " (un accélérateur a agi)",

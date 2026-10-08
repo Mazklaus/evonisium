@@ -1,12 +1,18 @@
 //! Fiche d'espèce simple (premier jouable) : noms, traits en clair, aire,
 //! effectif, origine et statut, et passage vers le générateur d'apparence.
+//!
+//! Pendant l'ère microbienne, une espèce du moteur est une guilde
+//! métabolique, identifiée par sa signature (les réactions qu'elle
+//! catalyse) ; ses lignées et ses écotypes en sont les variantes.
 
 use crate::format::Lang;
-use crate::frame::{Frame, LineageFrame, PopulationFrame};
-use crate::naming::{metabolism_list, species_names, SpeciesNames};
+use crate::frame::{Frame, LineageFrame};
+use crate::naming::{metabolism_list, scientific_name};
 use evo_life::metabolism::OXYGENIC_PHOTOSYNTHESIS;
 use evo_morph::MicrobeTraits;
 use evo_planet::grid::GeodesicGrid;
+use evo_sim::history::SpeciesView;
+use evo_sim::observation::PopulationView;
 
 /// Tendance de l'effectif.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,65 +59,69 @@ impl Status {
     }
 }
 
-/// Résumé d'une espèce lu dans l'image du pas.
+/// Résumé d'une espèce lu dans l'état publié et l'arbre des lignées.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpeciesSummary {
-    pub lineage: u32,
-    pub names: SpeciesNames,
+    pub species: u32,
+    pub name: String,
+    pub scientific: String,
     pub metabolisms: Vec<&'static str>,
-    pub pigment_nm: Option<f32>,
-    pub range_cells: usize,
-    /// Part de la surface de la planète occupée.
+    pub pigment_rgb: Option<[u8; 3]>,
+    /// Cellules du vivant occupées, et leur part de la planète.
+    pub range_cells: u32,
     pub range_share: f32,
     pub biomass: f64,
-    pub born_years: f64,
-    pub parent: Option<u32>,
-    pub extinct_years: Option<f64>,
-    pub traits: Option<MicrobeTraits>,
+    pub ecotypes: u32,
+    pub photosynthesis_stage: u8,
+    pub peak_cell: u32,
+    pub origin_cell: u32,
+    /// Première lignée de cette signature : date et lignée mère.
+    pub born_years: Option<f64>,
+    pub parent_lineage: Option<u32>,
+    pub lineages: usize,
 }
 
-pub fn summary(frame: &Frame, grid: &GeodesicGrid, lineage: &LineageFrame, lang: Lang) -> SpeciesSummary {
-    let range = frame.range_of(lineage.id);
-    let pop: Option<PopulationFrame> = range
-        .iter()
-        .max_by(|a, b| a.1.total_cmp(&b.1))
-        .and_then(|&(c, _)| frame.populations_of(c).iter().find(|p| p.lineage == lineage.id).copied());
-    let signature = pop.map_or(lineage.signature, |p| p.signature);
-    let area: f64 = range.iter().map(|&(c, _)| grid.unit_areas[c]).sum();
+pub fn summary(frame: &Frame, grid: &GeodesicGrid, s: &SpeciesView, lineages: &[LineageFrame], lang: Lang) -> SpeciesSummary {
+    let mine: Vec<&LineageFrame> = lineages.iter().filter(|l| l.signature == s.signature).collect();
+    let first = mine.iter().min_by(|a, b| a.born_years.total_cmp(&b.born_years).then(a.id.cmp(&b.id)));
     SpeciesSummary {
-        lineage: lineage.id,
-        names: species_names(frame.planet.seed, grid, lineage.id, signature, lineage.origin_cell, lang),
-        metabolisms: metabolism_list(signature, lang),
-        pigment_nm: pop.and_then(|p| p.pigment_nm),
-        range_cells: range.len(),
-        range_share: (area / (4.0 * std::f64::consts::PI)) as f32,
-        biomass: range.iter().map(|r| r.1 as f64).sum(),
-        born_years: lineage.born_years,
-        parent: (lineage.parent != lineage.id).then_some(lineage.parent),
-        extinct_years: lineage.extinct_years,
-        traits: pop.map(|p| traits_of(&p)),
+        species: s.id,
+        name: s.name.clone(),
+        scientific: scientific_name(frame.planet.seed, grid, s.signature, s.origin_bio_cell),
+        metabolisms: metabolism_list(s.signature, lang),
+        pigment_rgb: s.pigment_rgb,
+        range_cells: s.cells,
+        range_share: s.cells as f32 / frame.state.bio_cells.max(1) as f32,
+        biomass: s.biomass,
+        ecotypes: s.ecotypes,
+        photosynthesis_stage: s.photosynthesis_stage,
+        peak_cell: s.peak_bio_cell,
+        origin_cell: s.origin_bio_cell,
+        born_years: first.map(|l| l.born_years),
+        parent_lineage: first.and_then(|l| (l.parent != l.id).then_some(l.parent)),
+        lineages: mine.iter().filter(|l| l.extinct_years.is_none()).count(),
     }
 }
 
 /// Ce que le générateur d'apparence lit d'une population.
-pub fn traits_of(p: &PopulationFrame) -> MicrobeTraits {
+pub fn traits_of(p: &PopulationView) -> MicrobeTraits {
     MicrobeTraits {
         lineage: p.lineage,
-        signature: p.signature,
-        pigment_rgb: p.pigment_nm.map(|nm| evo_life::pigment_colour(nm as f64)),
-        gene_count: p.gene_count,
+        signature: p.species,
+        pigment_rgb: p.pigment_rgb.or_else(|| p.pigment_nm.map(|nm| evo_life::pigment_colour(nm as f64))),
+        gene_count: p.genes as u32,
         phototroph: p.phototroph,
-        oxygenic: p.signature & (1 << OXYGENIC_PHOTOSYNTHESIS) != 0,
+        oxygenic: p.species & (1 << OXYGENIC_PHOTOSYNTHESIS) != 0,
     }
 }
 
 /// Membres de la vue microscope d'une cellule.
-pub fn microscope_members(frame: &Frame, cell: usize) -> Vec<evo_morph::Member> {
-    let pops = frame.populations_of(cell);
-    let total: f32 = pops.iter().map(|p| p.biomass).sum();
-    pops.iter()
+pub fn microscope_members(populations: &[PopulationView], game_seed: u64) -> Vec<evo_morph::Member> {
+    let total: f32 = populations.iter().map(|p| p.biomass).sum();
+    populations
+        .iter()
         .map(|p| evo_morph::Member {
-            form: evo_morph::form(&traits_of(p), frame.planet.seed),
+            form: evo_morph::form(&traits_of(p), game_seed),
             share: if total > 0.0 { p.biomass / total } else { 0.0 },
         })
         .collect()
@@ -120,23 +130,37 @@ pub fn microscope_members(frame: &Frame, cell: usize) -> Vec<evo_morph::Member> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::lineages_of;
-    use evo_sim::{World, WorldConfig};
+    use crate::frame::tests::sample_frame;
 
     #[test]
-    fn summary_of_the_seeded_lineage() {
-        let mut w = World::new(WorldConfig::new(8, 3));
-        w.seed_life();
-        w.step();
-        let f = Frame::from_world(&w);
-        let ls = lineages_of(&w);
-        let s = summary(&f, &w.planet.grid, &ls[0], Lang::Fr);
-        assert!(s.range_cells > 0 && s.range_share > 0.0 && s.biomass > 0.0);
-        assert!(s.metabolisms.contains(&"méthanogenèse"));
-        assert!(s.parent.is_none());
-        assert!(s.traits.is_some());
-        let members = microscope_members(&f, f.range_of(0)[0].0);
-        assert!(!members.is_empty());
+    fn summary_of_the_first_species() {
+        let f = sample_frame(8);
+        let s = &f.state.species[0];
+        let lineage = LineageFrame {
+            id: 0,
+            parent: 0,
+            born_years: 0.0,
+            extinct_years: None,
+            origin_cell: s.origin_bio_cell,
+            signature: s.signature,
+        };
+        let sum = summary(&f, &GeodesicGrid::new(3), s, &[lineage], Lang::Fr);
+        assert!(sum.range_cells > 0 && sum.range_share > 0.0 && sum.biomass > 0.0);
+        assert!(sum.metabolisms.contains(&"méthanogenèse"));
+        assert_eq!(sum.born_years, Some(0.0));
+        assert!(sum.parent_lineage.is_none());
+        let pop = PopulationView {
+            lineage: 0,
+            species: s.signature,
+            biomass: 1.0,
+            growth_per_year: 0.0,
+            genes: 5,
+            pigment_rgb: None,
+            pigment_nm: None,
+            phototroph: false,
+            photosynthesis_stage: 0,
+        };
+        assert_eq!(microscope_members(&[pop], 1).len(), 1);
         assert_eq!(Status::from_series(&[1.0, 2.0], false), Status::Expanding);
         assert_eq!(Status::from_series(&[1.0, 0.5], false), Status::Declining);
     }
