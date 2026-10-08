@@ -15,6 +15,8 @@ uniform sampler2D data0 : filter_nearest;
 uniform sampler2D data1 : filter_nearest;
 uniform sampler2D data2 : filter_nearest;
 uniform sampler2D data3 : filter_nearest;
+// Comparaison « avec et sans » (étape 4, voir evo-view/src/compare.rs).
+uniform sampler2D data4 : filter_nearest;
 uniform sampler2D prev0 : filter_nearest;
 uniform sampler2D prev2 : filter_nearest;
 uniform sampler2D palette : filter_linear, repeat_disable;
@@ -128,6 +130,7 @@ void vertex() {
 	vec4 p0 = fetch(prev0, uv);
 	vec4 p2 = fetch(prev2, uv);
 	vec4 d3 = fetch(data3, uv);
+	vec4 d4 = layer_tex == 4 ? fetch(data4, uv) : vec4(0.0);
 	vec3 dir = normalize(VERTEX);
 	// Glissement des plaques : la position courante, reculée de la part du
 	// pas qui n'est pas encore jouée, le long de la vitesse de la plaque
@@ -148,7 +151,7 @@ void vertex() {
 	v_ocean = float((flags & 1) != 0);
 	v_pig_w = float((flags & 4) != 0);
 	v_focus = float((flags & 16) != 0);
-	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : d3));
+	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : (layer_tex == 3 ? d3 : d4)));
 	float raw = channel(lt, layer_channel);
 	if (layer_transform == 1) {
 		raw = log(max(raw, 1e-30)) / log(10.0);

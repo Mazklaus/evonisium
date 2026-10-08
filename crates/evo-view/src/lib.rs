@@ -13,6 +13,7 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod chronicle;
+pub mod compare;
 pub mod decor;
 pub mod foodweb;
 pub mod format;

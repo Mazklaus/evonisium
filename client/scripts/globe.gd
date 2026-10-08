@@ -16,6 +16,13 @@ const ATMOSPHERE_SHADER := preload("res://shaders/atmosphere.gdshader")
 var planet: MeshInstance3D
 var atmosphere: MeshInstance3D
 var arrows: MeshInstance3D
+## Barrières et anomalies climatiques posées par le joueur (étape 4).
+var marks: MeshInstance3D
+var marks_key := ""
+## Calque « avec et sans » : écart à la branche sans intervention.
+var comparison := false
+var comparison_tex: ImageTexture
+var layer_before_comparison := {}
 var camera: Camera3D
 var material: ShaderMaterial
 var arrow_material: StandardMaterial3D
@@ -98,6 +105,13 @@ func _ready() -> void:
 	arrows.material_override = arrow_material
 	arrows.visible = false
 	add_child(arrows)
+
+	var mark_material := StandardMaterial3D.new()
+	mark_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mark_material.vertex_color_use_as_albedo = true
+	marks = MeshInstance3D.new()
+	marks.material_override = mark_material
+	add_child(marks)
 
 	App.settings_changed.connect(_apply_settings)
 	_apply_settings()
@@ -210,6 +224,79 @@ func refresh_frame(force: bool = false) -> void:
 	material.set_shader_parameter("blend", blend)
 	if show_plates:
 		_build_arrows()
+	_build_marks()
+	if comparison:
+		_update_comparison()
+
+## Barrières en trait épais (bleu-gris pour un bras de mer, sépia pour des
+## montagnes) et calottes des poussées climatiques en tireté vermillon ou
+## lavis d'eau.
+func _build_marks() -> void:
+	var d: Dictionary = App.session.disturbances()
+	var barriers: Array = d.get("barriers", [])
+	var anomalies: Array = d.get("anomalies", [])
+	var key := "%d-%d" % [barriers.size(), anomalies.size()]
+	if key == marks_key:
+		return
+	marks_key = key
+	if barriers.is_empty() and anomalies.is_empty():
+		marks.mesh = null
+		return
+	var im := ImmediateMesh.new()
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	for b in barriers:
+		var pts: PackedVector3Array = b["points"]
+		var c := Atlas.WATER.darkened(0.35) if bool(b["sea"]) else Atlas.INK
+		for lift in [1.004, 1.006, 1.008]:
+			for i in pts.size() - 1:
+				im.surface_set_color(c)
+				im.surface_add_vertex(pts[i] * lift)
+				im.surface_set_color(c)
+				im.surface_add_vertex(pts[i + 1] * lift)
+	for a in anomalies:
+		if bool(a["global"]):
+			continue
+		var centre: Vector3 = a["centre"]
+		var r: float = a["radius"]
+		var c := Atlas.VERMILION if float(a["delta_k"]) > 0.0 else Atlas.WATER.darkened(0.45)
+		var side := centre.cross(Vector3.UP if absf(centre.y) < 0.9 else Vector3.RIGHT).normalized()
+		var up := centre.cross(side).normalized()
+		var n := 72
+		for i in n:
+			if i % 2 == 1:
+				continue
+			for j in [i, i + 1]:
+				var t := TAU * float(j) / float(n)
+				var p := (centre * cos(r) + (side * cos(t) + up * sin(t)) * sin(r)).normalized() * 1.005
+				im.surface_set_color(c)
+				im.surface_add_vertex(p)
+	im.surface_end()
+	marks.mesh = im
+
+## Calque « avec et sans » : log₁₀ du rapport des biomasses avec et sans
+## l'intervention, en palette divergente.
+func set_comparison(on: bool) -> void:
+	if on == comparison:
+		if on:
+			_update_comparison()
+		return
+	comparison = on
+	if on:
+		layer_before_comparison = layer
+		_update_comparison()
+		set_layer({"key": "avec-sans", "texture": 4, "channel": 0, "transform": 0, "min": -2.0, "max": 2.0, "palette": 1})
+	else:
+		set_layer(layer_before_comparison)
+
+func _update_comparison() -> void:
+	var img: Image = App.session.comparison_texture()
+	if img == null:
+		return
+	if comparison_tex != null and comparison_tex.get_width() == img.get_width() and comparison_tex.get_height() == img.get_height():
+		comparison_tex.update(img)
+	else:
+		comparison_tex = ImageTexture.create_from_image(img)
+	material.set_shader_parameter("data4", comparison_tex)
 
 ## Calque de données (dictionnaire de session.layers()) ou {} : vue naturelle.
 func set_layer(l: Dictionary) -> void:

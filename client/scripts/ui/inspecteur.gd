@@ -4,6 +4,8 @@ extends PanelContainer
 ## la loupe sur la vie microscopique de la cellule.
 
 signal species_requested(species: int)
+## Réseau trophique ou colonne stratigraphique de la cellule (étape 4).
+signal tool_requested(tool: String, cell: int)
 
 var cell := -1
 var body: VBoxContainer
@@ -115,6 +117,10 @@ func _fill(with_loupe: bool = true) -> void:
 		share.custom_minimum_size.x = 48
 		row.add_child(share)
 		body.add_child(row)
+	var tools := HBoxContainer.new()
+	body.add_child(tools)
+	tools.add_child(Atlas.button(App.t("food_web"), tool_requested.emit.bind("reseau", cell)))
+	tools.add_child(Atlas.button(App.t("strata"), tool_requested.emit.bind("strates", cell)))
 	if keep_loupe:
 		body.add_child(Atlas.hsep())
 		body.add_child(loupe_caption)

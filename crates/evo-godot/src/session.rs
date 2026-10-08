@@ -6,6 +6,8 @@
 //! transmet au moteur les deux seules choses que le client écrit : des ordres
 //! et la zone d'intérêt.
 
+mod tools;
+
 use crate::jobs::Jobs;
 use crate::runner::{Game, Loading};
 use evo_core::events::{Event, EventKind, Origin};
@@ -256,6 +258,14 @@ impl EvoSession {
     /// préréglage.
     #[func]
     fn start(&mut self, preset: GString, seed: i64, level: i64, orbit: f64, water: f64, star_k: f64) -> bool {
+        self.start_game(preset, seed, level, orbit, water, star_k, false)
+    }
+
+    /// Nouvelle partie en mode bac à sable (interventions sans limite
+    /// d'influence) ou observateur.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn start_game(&mut self, preset: GString, seed: i64, level: i64, orbit: f64, water: f64, star_k: f64, sandbox: bool) -> bool {
         let spec = PlanetSpec {
             preset: preset.to_string(),
             orbit_factor: orbit,
@@ -270,7 +280,7 @@ impl EvoSession {
         self.loading = None;
         self.set_grid(level);
         self.reset_view();
-        match Game::start(spec, seed as u64, level, "sources", false) {
+        match Game::start(spec, seed as u64, level, "sources", sandbox) {
             Ok(g) => {
                 self.game = Some(g);
                 true
