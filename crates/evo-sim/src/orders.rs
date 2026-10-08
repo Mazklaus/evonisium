@@ -191,6 +191,12 @@ impl OrderQueue {
         self.pending.drain(..n).collect()
     }
 
+    /// Retire des ordres en attente (branche « sans » : les ordres retirés
+    /// n'ont jamais été donnés). Les identifiants ne sont pas réattribués.
+    pub fn withdraw(&mut self, ids: &[u64]) {
+        self.pending.retain(|o| !ids.contains(&o.id));
+    }
+
     pub fn pending(&self) -> &[Order] {
         &self.pending
     }

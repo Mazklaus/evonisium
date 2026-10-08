@@ -14,6 +14,7 @@
 
 pub mod chronicle;
 pub mod decor;
+pub mod foodweb;
 pub mod format;
 pub mod frame;
 pub mod layers;

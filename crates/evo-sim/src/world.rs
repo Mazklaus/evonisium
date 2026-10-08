@@ -1676,6 +1676,7 @@ pub fn population_view(p: &Population) -> PopulationView {
         species: p.signature(),
         biomass: p.biomass as f32,
         growth_per_year: p.rates.r as f32,
+        birth_per_year: p.rates.birth as f32,
         genes: p.genome.genes.len() as u16,
         pigment_rgb: p.phenotype.pigment_nm.map(pigment_colour),
         pigment_nm: p.phenotype.pigment_nm.map(|x| x as f32),
