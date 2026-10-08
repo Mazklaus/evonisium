@@ -379,7 +379,9 @@ impl EvoSession {
                 g.set_speed(pace);
                 self.game = Some(g);
             }
-            Err(e) => godot_error!("partie impossible : {e}"),
+            Err(e) => {
+                godot_error!("partie impossible : {e}");
+            }
         }
         self.textures_step = None;
     }
