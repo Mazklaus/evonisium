@@ -219,6 +219,26 @@ impl Phenotype {
         }
     }
 
+    /// Voie principale : la voie utilisable portée par le plus d'efficacité
+    /// enzymatique (à égalité, la première). C'est la guilde au sens large,
+    /// celle que le plafond de populations par cellule protège ; la signature
+    /// complète distingue en plus chaque combinaison de voies.
+    pub fn main_pathway(&self) -> Option<ReactionId> {
+        let mut eff = [0.0; REACTION_COUNT];
+        for e in &self.enzymes {
+            if self.signature & (1 << e.reaction) != 0 {
+                eff[e.reaction as usize] += e.efficiency;
+            }
+        }
+        let mut best: Option<(usize, f64)> = None;
+        for (r, &e) in eff.iter().enumerate() {
+            if e > 0.0 && best.is_none_or(|b| e > b.1) {
+                best = Some((r, e));
+            }
+        }
+        best.map(|b| b.0 as ReactionId)
+    }
+
     /// Température optimale moyenne des enzymes, pondérée par l'efficacité.
     pub fn mean_t_opt(&self) -> Option<f64> {
         let w: f64 = self.enzymes.iter().map(|e| e.efficiency).sum();

@@ -23,6 +23,7 @@ use evo_planet::hydrology::CellDisplay;
 use evo_planet::tectonics::Tectonics;
 use evo_planet::{BioGrid, CellEnvironment, GeodesicGrid, GlobalReservoirs, Planet, PlanetParams, WaterChemistry, WATER_POOL_COUNT};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
@@ -30,7 +31,7 @@ use std::sync::Arc;
 /// Signature des fichiers de sauvegarde.
 pub const MAGIC: &[u8; 9] = b"EVONISIUM";
 /// Version du format ; une sauvegarde d'une autre version est refusée.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct SavedPopulation {
@@ -40,38 +41,44 @@ struct SavedPopulation {
     rates: GrowthRates,
 }
 
+// Les gros morceaux sont empruntés à l'écriture (pas de copie de l'état) et
+// possédés à la lecture : `Cow` s'écrit comme la valeur qu'il porte.
 #[derive(Serialize, Deserialize)]
-struct SavedPlanet {
-    params: PlanetParams,
-    cells: Vec<CellEnvironment>,
-    tectonics: Tectonics,
-    climate: ClimateState,
-    reservoirs: GlobalReservoirs,
+struct SavedPlanet<'a> {
+    params: Cow<'a, PlanetParams>,
+    cells: Cow<'a, [CellEnvironment]>,
+    tectonics: Cow<'a, Tectonics>,
+    climate: Cow<'a, ClimateState>,
+    reservoirs: Cow<'a, GlobalReservoirs>,
     sea_level_m: f64,
     deep_volume_m3: f64,
     tectonic_clock: f64,
     hydrothermal_share: f64,
-    display: Vec<CellDisplay>,
+    display: Cow<'a, [CellDisplay]>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct SaveState {
+struct SaveState<'a> {
+    // En tête : ce que l'écran des sauvegardes lit sans charger la partie.
     engine_version: String,
-    config: WorldConfig,
-    planet: SavedPlanet,
-    chemistry: Vec<WaterChemistry>,
+    years: f64,
+    config: Cow<'a, WorldConfig>,
+    planet: SavedPlanet<'a>,
+    chemistry: Cow<'a, [WaterChemistry]>,
     genomes: Vec<Genome>,
     communities: Vec<Vec<SavedPopulation>>,
+    /// Registre des lignées sans les génomes fondateurs, rangés dans la
+    /// table des génomes (`founders`, un indice par lignée).
     lineages: LineageRegistry,
-    events: EventLog,
-    journal: GenomeJournal,
-    flux: FluxRegistry,
-    orders: OrderQueue,
-    history: History,
-    progress: Progress,
-    years: f64,
+    founders: Vec<Option<u32>>,
+    events: Cow<'a, EventLog>,
+    journal: Cow<'a, GenomeJournal>,
+    flux: Cow<'a, FluxRegistry>,
+    orders: Cow<'a, OrderQueue>,
+    history: Cow<'a, History>,
+    progress: Cow<'a, Progress>,
     paused: bool,
-    marked: Vec<u32>,
+    marked: Cow<'a, [u32]>,
     oxygen_production: f64,
     previous_rates: Option<[f64; WATER_POOL_COUNT]>,
     stats: WorldStats,
@@ -88,51 +95,59 @@ impl World {
     pub fn save_to(&self, out: &mut impl Write) -> io::Result<()> {
         let mut table: HashMap<usize, u32> = HashMap::new();
         let mut genomes = Vec::new();
+        let mut index = |g: &Arc<Genome>, genomes: &mut Vec<Genome>| -> u32 {
+            *table.entry(Arc::as_ptr(g) as usize).or_insert_with(|| {
+                genomes.push((**g).clone());
+                (genomes.len() - 1) as u32
+            })
+        };
         let communities = self
             .communities
             .iter()
             .map(|pops| {
                 pops.iter()
                     .map(|p| {
-                        let key = Arc::as_ptr(&p.genome) as usize;
-                        let genome = *table.entry(key).or_insert_with(|| {
-                            genomes.push((*p.genome).clone());
-                            (genomes.len() - 1) as u32
-                        });
+                        let genome = index(&p.genome, &mut genomes);
                         SavedPopulation { lineage: p.lineage, genome, biomass: p.biomass, rates: p.rates }
                     })
                     .collect()
             })
             .collect();
+        let founders = self.lineages.records.iter().map(|r| r.founder.as_ref().map(|g| index(g, &mut genomes))).collect();
+        let mut lineages = self.lineages.clone();
+        for r in &mut lineages.records {
+            r.founder = None;
+        }
         let pl = &self.planet;
         let state = SaveState {
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
-            config: self.config.clone(),
+            years: self.years,
+            config: Cow::Borrowed(&self.config),
             planet: SavedPlanet {
-                params: pl.params.clone(),
-                cells: pl.cells.clone(),
-                tectonics: pl.tectonics.clone(),
-                climate: pl.climate.clone(),
-                reservoirs: pl.reservoirs.clone(),
+                params: Cow::Borrowed(&pl.params),
+                cells: Cow::Borrowed(&pl.cells),
+                tectonics: Cow::Borrowed(&pl.tectonics),
+                climate: Cow::Borrowed(&pl.climate),
+                reservoirs: Cow::Borrowed(&pl.reservoirs),
                 sea_level_m: pl.sea_level_m,
                 deep_volume_m3: pl.deep_volume_m3,
                 tectonic_clock: pl.tectonic_clock,
                 hydrothermal_share: pl.hydrothermal_share,
-                display: pl.display.clone(),
+                display: Cow::Borrowed(&pl.display),
             },
-            chemistry: self.chemistry.clone(),
+            chemistry: Cow::Borrowed(&self.chemistry),
             genomes,
             communities,
-            lineages: self.lineages.clone(),
-            events: self.events.clone(),
-            journal: self.journal.clone(),
-            flux: self.flux.clone(),
-            orders: self.orders.clone(),
-            history: self.history.clone(),
-            progress: self.progress.clone(),
-            years: self.years,
+            lineages,
+            founders,
+            events: Cow::Borrowed(&self.events),
+            journal: Cow::Borrowed(&self.journal),
+            flux: Cow::Borrowed(&self.flux),
+            orders: Cow::Borrowed(&self.orders),
+            history: Cow::Borrowed(&self.history),
+            progress: Cow::Borrowed(&self.progress),
             paused: self.paused,
-            marked: self.marked.clone(),
+            marked: Cow::Borrowed(&self.marked),
             oxygen_production: self.oxygen_production,
             previous_rates: self.previous_rates(),
             stats: self.stats,
@@ -141,58 +156,49 @@ impl World {
         };
         out.write_all(MAGIC)?;
         out.write_all(&FORMAT_VERSION.to_le_bytes())?;
-        let mut z = flate2::write::DeflateEncoder::new(out, flate2::Compression::fast());
-        bincode::serialize_into(&mut z, &state).map_err(|e| invalid(e.to_string()))?;
-        z.finish()?;
+        // bincode écrit champ par champ : sans tampon, chaque petit morceau
+        // traverse le compresseur, vingt fois plus lentement.
+        let z = flate2::write::DeflateEncoder::new(out, flate2::Compression::fast());
+        let mut buf = io::BufWriter::with_capacity(1 << 20, z);
+        bincode::serialize_into(&mut buf, &state).map_err(|e| invalid(e.to_string()))?;
+        buf.into_inner().map_err(|e| e.into_error())?.finish()?;
         Ok(())
     }
 
     /// Reprend une partie depuis un point de sauvegarde.
     pub fn load_from(input: &mut impl Read) -> io::Result<World> {
-        let mut magic = [0u8; 9];
-        input.read_exact(&mut magic)?;
-        if &magic != MAGIC {
-            return Err(invalid("ce fichier n'est pas une sauvegarde d'Evonisium"));
-        }
-        let mut v = [0u8; 4];
-        input.read_exact(&mut v)?;
-        let version = u32::from_le_bytes(v);
-        if version != FORMAT_VERSION {
-            return Err(invalid(format!("format de sauvegarde {version}, ce moteur lit le format {FORMAT_VERSION}")));
-        }
-        let z = flate2::read::DeflateDecoder::new(input);
+        read_header(input)?;
+        let z = io::BufReader::with_capacity(1 << 20, flate2::read::DeflateDecoder::new(input));
         let s: SaveState = bincode::deserialize_from(z).map_err(|e| invalid(e.to_string()))?;
-        let cfg = s.config;
+        let cfg = s.config.into_owned();
         let grid = GeodesicGrid::new(cfg.level);
         let sp = s.planet;
         let planet = Planet {
-            params: sp.params,
+            params: sp.params.into_owned(),
             grid,
-            cells: sp.cells,
-            tectonics: sp.tectonics,
-            climate: sp.climate,
-            reservoirs: sp.reservoirs,
+            cells: sp.cells.into_owned(),
+            tectonics: sp.tectonics.into_owned(),
+            climate: sp.climate.into_owned(),
+            reservoirs: sp.reservoirs.into_owned(),
             sea_level_m: sp.sea_level_m,
             deep_volume_m3: sp.deep_volume_m3,
             tectonic_clock: sp.tectonic_clock,
             hydrothermal_share: sp.hydrothermal_share,
-            display: sp.display,
+            display: sp.display.into_owned(),
         };
         let mut bio = BioGrid::new(&planet.grid, cfg.bio_level);
         bio.aggregate(&planet.cells);
-        let shared: Vec<(Arc<Genome>, Arc<Phenotype>)> = s
-            .genomes
-            .into_iter()
-            .map(|g| {
-                let p = Phenotype::from_genome(&g, &cfg.physiology);
-                (Arc::new(g), Arc::new(p))
-            })
-            .collect();
+        // Phénotypes construits pour les seuls génomes portés par une
+        // population (les fondateurs de lignées n'en ont pas besoin).
+        let shared: Vec<Arc<Genome>> = s.genomes.into_iter().map(Arc::new).collect();
+        let mut phenotypes: Vec<Option<Arc<Phenotype>>> = vec![None; shared.len()];
         let mut communities = Vec::with_capacity(s.communities.len());
         for pops in s.communities {
             let mut v = Vec::with_capacity(pops.len());
             for p in pops {
-                let (g, ph) = shared.get(p.genome as usize).ok_or_else(|| invalid("génome absent de la table"))?;
+                let k = p.genome as usize;
+                let g = shared.get(k).ok_or_else(|| invalid("génome absent de la table"))?;
+                let ph = phenotypes[k].get_or_insert_with(|| Arc::new(Phenotype::from_genome(g, &cfg.physiology)));
                 v.push(Population { lineage: p.lineage, genome: g.clone(), phenotype: ph.clone(), biomass: p.biomass, rates: p.rates });
             }
             communities.push(v);
@@ -200,17 +206,26 @@ impl World {
         if communities.len() != bio.len() || s.chemistry.len() != bio.len() {
             return Err(invalid("taille de la grille du vivant incohérente"));
         }
-        let mut world = World::assemble(cfg, planet, bio, s.chemistry, communities);
+        let mut world = World::assemble(cfg, planet, bio, s.chemistry.into_owned(), communities);
         world.lineages = s.lineages;
-        world.events = s.events;
-        world.journal = s.journal;
-        world.flux = s.flux;
-        world.orders = s.orders;
-        world.history = s.history;
-        world.progress = s.progress;
+        if s.founders.len() != world.lineages.records.len() {
+            return Err(invalid("génomes fondateurs incohérents"));
+        }
+        for (r, f) in world.lineages.records.iter_mut().zip(s.founders) {
+            r.founder = match f {
+                Some(i) => Some(shared.get(i as usize).ok_or_else(|| invalid("génome absent de la table"))?.clone()),
+                None => None,
+            };
+        }
+        world.events = s.events.into_owned();
+        world.journal = s.journal.into_owned();
+        world.flux = s.flux.into_owned();
+        world.orders = s.orders.into_owned();
+        world.history = s.history.into_owned();
+        world.progress = s.progress.into_owned();
         world.years = s.years;
         world.paused = s.paused;
-        world.marked = s.marked;
+        world.marked = s.marked.into_owned();
         world.oxygen_production = s.oxygen_production;
         world.set_previous_rates(s.previous_rates);
         world.stats = s.stats;
@@ -242,8 +257,32 @@ impl World {
 
 /// Configuration minimale lue sans charger la partie (écran des sauvegardes).
 pub fn peek_config(input: &mut impl Read) -> io::Result<(WorldConfig, f64)> {
-    let w = World::load_from(input)?;
-    Ok((w.config.clone(), w.years))
+    #[derive(Deserialize)]
+    struct Head {
+        _engine_version: String,
+        years: f64,
+        config: WorldConfig,
+    }
+    read_header(input)?;
+    let h: Head =
+        bincode::deserialize_from(io::BufReader::new(flate2::read::DeflateDecoder::new(input))).map_err(|e| invalid(e.to_string()))?;
+    Ok((h.config, h.years))
+}
+
+/// Lit et vérifie la signature et la version du format.
+fn read_header(input: &mut impl Read) -> io::Result<()> {
+    let mut magic = [0u8; 9];
+    input.read_exact(&mut magic)?;
+    if &magic != MAGIC {
+        return Err(invalid("ce fichier n'est pas une sauvegarde d'Evonisium"));
+    }
+    let mut v = [0u8; 4];
+    input.read_exact(&mut v)?;
+    let version = u32::from_le_bytes(v);
+    if version != FORMAT_VERSION {
+        return Err(invalid(format!("format de sauvegarde {version}, ce moteur lit le format {FORMAT_VERSION}")));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -265,6 +304,8 @@ mod tests {
         a.save_to(&mut bytes).unwrap();
         let mut b = World::load_from(&mut bytes.as_slice()).unwrap();
         assert_eq!(a.state_hash(), b.state_hash());
+        let (peeked, years) = peek_config(&mut bytes.as_slice()).unwrap();
+        assert_eq!((peeked.seed, years), (a.config.seed, a.years));
         for _ in 0..8 {
             a.step();
             b.step();

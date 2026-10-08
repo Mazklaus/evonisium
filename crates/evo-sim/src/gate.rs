@@ -42,6 +42,9 @@ pub struct GateOptions {
     pub worlds: Vec<String>,
     /// Dossier où écrire l'historique et les événements de chaque monde.
     pub out_dir: Option<PathBuf>,
+    /// Durée d'un tour d'évolution, si elle diffère de celle par défaut
+    /// (voir `EvolutionParams::round_years` ; 0 : un tour par pas).
+    pub round_years: Option<f64>,
 }
 
 impl Default for GateOptions {
@@ -55,6 +58,7 @@ impl Default for GateOptions {
             hold_years: 50e6,
             worlds: Vec::new(),
             out_dir: None,
+            round_years: None,
         }
     }
 }
@@ -95,6 +99,16 @@ pub struct WorldResult {
     /// Correction des électrons sur les flux extrapolés, relative à la
     /// production photosynthétique d'O₂ (voir `close_electrons`).
     pub redox_correction: f64,
+    /// Part des cellules du vivant peuplées qui dépassaient le plafond de
+    /// populations avant éviction : sur toute la partie, et sur ses 100
+    /// derniers pas (monde mûr).
+    pub saturated_share: f64,
+    pub saturated_share_late: f64,
+    /// Part des génotypes candidats au tunnel dont les candidats dépassaient
+    /// la borne d'essais, et essais et réussites du tunnel.
+    pub tunnel_capped_share: f64,
+    pub tunnel_attempts: u64,
+    pub tunnel_successes: u64,
     pub oxygen_budget: evo_planet::geochem::OxygenBudget,
     pub replay_ok: bool,
     pub passed: bool,
@@ -127,12 +141,22 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     let start = Instant::now();
     let mut cfg = WorldConfig::with_planet(params.clone(), seed, opts.level);
     cfg.step_years = opts.step_years;
+    if let Some(r) = opts.round_years {
+        cfg.evolution.round_years = (r > 0.0).then_some(r);
+    }
     let mut world = World::new(cfg);
     world.seed_life();
     let mut above_since: Option<f64> = None;
     let (mut trace, mut reached, mut max_o2) = (None, None, 0.0f64);
+    // Cellules peuplées et saturées des derniers pas.
+    let mut late: std::collections::VecDeque<(u64, u64)> = std::collections::VecDeque::new();
     while world.years < opts.max_years {
+        let before = (world.stats.occupied_cell_steps, world.stats.saturated_cell_steps);
         world.step();
+        late.push_back((world.stats.occupied_cell_steps - before.0, world.stats.saturated_cell_steps - before.1));
+        if late.len() > 100 {
+            late.pop_front();
+        }
         let o2 = world.planet.reservoirs.mixing_ratio(Gas::O2);
         if world.stats.steps.is_multiple_of(500) {
             eprintln!(
@@ -221,6 +245,11 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
         lake_biomass: summary.lake_biomass,
         lake_cells: summary.lake_cells,
         redox_correction: world.stats.redox_correction / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
+        saturated_share: world.stats.saturated_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
+        saturated_share_late: late.iter().map(|l| l.1).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
+        tunnel_capped_share: world.stats.tunnel_capped as f64 / world.stats.tunnel_genotypes.max(1) as f64,
+        tunnel_attempts: world.stats.tunnel_attempts,
+        tunnel_successes: world.stats.tunnel_successes,
         oxygen_budget: budget,
         replay_ok,
         passed,
@@ -394,6 +423,30 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
             r.seconds,
             r.threads,
             format_years(r.years / r.seconds.max(1e-9))
+        );
+    }
+
+    let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
+    let _ = writeln!(
+        out,
+        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde. « Cellules saturées » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas (monde mûr ; au-delà de 10 %, le plafond est à revoir). Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
+        crate::evolution::EvolutionParams::default().tunnel_attempts_per_genotype
+    );
+    let _ = writeln!(
+        out,
+        "| Monde | Graine | Cellules saturées (partie) | Cellules saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|"
+    );
+    for r in results {
+        let _ = writeln!(
+            out,
+            "| {} | {} | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
+            r.name,
+            r.seed,
+            100.0 * r.saturated_share,
+            100.0 * r.saturated_share_late,
+            100.0 * r.tunnel_capped_share,
+            r.tunnel_attempts,
+            r.tunnel_successes
         );
     }
     out

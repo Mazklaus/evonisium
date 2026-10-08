@@ -162,6 +162,17 @@ pub struct WorldStats {
     pub genetic_evaluations: u64,
     pub tunnel_attempts: u64,
     pub tunnel_successes: u64,
+    /// Substitutions avantageuses (coefficient de sélection positif) ; les
+    /// autres sont neutres.
+    pub adaptive_substitutions: u64,
+    /// Génotypes (par pas) qui avaient au moins un candidat au tunnel, et
+    /// ceux dont les candidats dépassaient la borne d'essais.
+    pub tunnel_genotypes: u64,
+    pub tunnel_capped: u64,
+    /// Cellules du vivant peuplées, et cellules qui dépassaient le plafond
+    /// de populations avant éviction, cumulées sur les pas.
+    pub occupied_cell_steps: u64,
+    pub saturated_cell_steps: u64,
     /// Modifications de génome fixées, par cause ([`GenomeChangeCause::index`]).
     pub fixed_changes_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
     /// Cellules passées de l'océan à la terre et inversement.
@@ -177,6 +188,8 @@ impl WorldStats {
         self.genetic_evaluations += o.genetic_evaluations;
         self.tunnel_attempts += o.tunnel_attempts;
         self.tunnel_successes += o.tunnel_successes;
+        self.tunnel_genotypes += o.tunnel_genotypes;
+        self.tunnel_capped += o.tunnel_capped;
         for (a, b) in self.fixed_changes_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -625,7 +638,15 @@ impl World {
 
         // 3. Évolution.
         let t2 = Instant::now();
-        let modified = self.evolution_phase(years, dt, step_index);
+        let rounds = self.config.evolution.round_years.map_or(1, |r| ((dt / r) - 1e-9).ceil().max(1.0) as u64);
+        if self.progress.accelerator_on {
+            self.stats.accelerator_steps += 1;
+        }
+        let mut modified = Vec::new();
+        for round in 0..rounds {
+            let sub = dt / rounds as f64;
+            modified.extend(self.evolution_phase(years + round as f64 * sub, sub, step_index, round));
+        }
         check(self, "évolution");
         timings.evolution = t2.elapsed();
 
@@ -850,18 +871,15 @@ impl World {
     /// Évolution par dème ; renvoie les populations modifiées (cellule,
     /// indice) avec la cause de leur modification, pour la détection des
     /// innovations.
-    fn evolution_phase(&mut self, years: f64, dt: f64, step_index: u64) -> Vec<(usize, usize, GenomeChangeCause)> {
+    fn evolution_phase(&mut self, years: f64, dt: f64, step_index: u64, round: u64) -> Vec<(usize, usize, GenomeChangeCause)> {
         let cfg = &self.config;
         let accelerator = self.progress.accelerator_on;
-        if accelerator {
-            self.stats.accelerator_steps += 1;
-        }
         let (communities, chemistry, envs) = (&self.communities, &self.chemistry, &self.bio.env);
         let results: Vec<(Vec<Fixation>, EvolutionStats)> = self
             .demes
             .par_iter()
             .enumerate()
-            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, step_index, accelerator))
+            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, step_index, round, accelerator))
             .collect();
         let mut modified = Vec::new();
         for (fixations, stats) in results {
@@ -879,6 +897,7 @@ impl World {
     /// du dème qui le portent, ou, pour une guilde nouvelle, dans la cellule
     /// représentative.
     fn apply_fixation(&mut self, years: f64, f: Fixation) -> Option<(usize, usize, GenomeChangeCause)> {
+        let selection = f.selection;
         let (c, i) = f.rep;
         let resident = &self.communities[c][i];
         let parent_lineage = resident.lineage;
@@ -925,6 +944,9 @@ impl World {
             return None;
         }
         self.stats.substitutions += 1;
+        if selection > 0.0 {
+            self.stats.adaptive_substitutions += 1;
+        }
         self.stats.fixed_changes_by_cause[f.cause.index()] += 1;
         let lineage = self.communities[c][index].lineage;
         self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause: f.cause, element: f.element });
@@ -1026,41 +1048,68 @@ impl World {
 
     /// Retire les plus petites populations des cellules trop peuplées ; leur
     /// biomasse retourne à la couche d'eau (carbone organique et phosphate).
+    ///
+    /// Garde-fous (document d'architecture, « Correction sur monde mûr ») :
+    /// la dernière population d'une guilde n'est jamais retirée, quitte à
+    /// dépasser le plafond, et l'éviction va de la moins abondante à la plus
+    /// abondante, à biomasse égale dans l'ordre d'arrivée (déterministe). La
+    /// guilde est ici la voie principale ([`Phenotype::main_pathway`]) : neuf
+    /// au plus, alors que les combinaisons de voies se comptent par centaines
+    /// et videraient le plafond de son sens.
     fn trim_communities(&mut self) {
         let max = self.config.max_populations_per_cell.max(1);
         let cp = self.config.physiology.carbon_to_phosphorus;
         let envs = &self.bio.env;
-        let removed: u64 = self
+        let (removed, saturated, occupied) = self
             .communities
             .par_iter_mut()
             .zip(self.chemistry.par_iter_mut())
             .enumerate()
             .map(|(c, (pops, chem))| {
+                let occupied = u64::from(!pops.is_empty());
                 if pops.len() <= max {
-                    return 0;
+                    return (0, 0, occupied);
+                }
+                let guilds: Vec<Option<u8>> = pops.iter().map(|p| p.phenotype.main_pathway()).collect();
+                let mut guild: BTreeMap<Option<u8>, usize> = BTreeMap::new();
+                for g in &guilds {
+                    *guild.entry(*g).or_default() += 1;
                 }
                 // Tri stable : à biomasse égale, l'ordre d'arrivée décide.
                 let mut order: Vec<usize> = (0..pops.len()).collect();
-                order.sort_by(|&a, &b| pops[b].biomass.total_cmp(&pops[a].biomass));
-                let mut keep = vec![false; pops.len()];
-                for &i in &order[..max] {
-                    keep[i] = true;
+                order.sort_by(|&a, &b| pops[a].biomass.total_cmp(&pops[b].biomass));
+                let mut keep = vec![true; pops.len()];
+                let mut excess = pops.len() - max;
+                for &i in &order {
+                    if excess == 0 {
+                        break;
+                    }
+                    let n = guild.get_mut(&guilds[i]).expect("guilde comptée");
+                    if *n > 1 {
+                        *n -= 1;
+                        keep[i] = false;
+                        excess -= 1;
+                    }
                 }
                 let v = envs[c].water_volume_m3;
                 let mut i = 0;
+                let mut removed = 0;
                 pops.retain(|p| {
                     let k = keep[i];
                     i += 1;
                     if !k {
                         chem[WaterPool::Doc as usize] += p.biomass / v;
                         chem[WaterPool::Po4 as usize] += p.biomass / cp / v;
+                        removed += 1;
                     }
                     k
                 });
-                (keep.len() - max) as u64
+                (removed, 1, occupied)
             })
-            .sum();
+            .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
         self.stats.local_extinctions += removed;
+        self.stats.saturated_cell_steps += saturated;
+        self.stats.occupied_cell_steps += occupied;
     }
 
     fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>) {
@@ -1681,6 +1730,7 @@ pub struct Summary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     fn small_world(seed: u64) -> World {
         let mut cfg = WorldConfig::new(seed, 3);
@@ -1752,8 +1802,10 @@ mod tests {
         assert!(end.stats.substitutions > 0);
         assert_eq!(w.journal.total(), end.stats.substitutions);
         // L'adaptation thermique demande plus de générations que la
-        // colonisation.
-        for _ in 0..40 {
+        // colonisation : après 60 pas, l'écart dépend encore beaucoup de la
+        // graine (de 0,3 à 1,9 fois celui de l'ancêtre sur 24 graines) ;
+        // après 260, il est sous 0,75 pour toutes celles essayées.
+        for _ in 0..240 {
             w.step();
         }
         let end = w.summary();
@@ -1817,6 +1869,45 @@ mod tests {
             c.step();
         }
         assert_ne!(a.state_hash(), c.state_hash());
+    }
+
+    #[test]
+    fn the_population_cap_never_evicts_the_last_of_a_guild() {
+        let mut cfg = WorldConfig::new(5, 3);
+        cfg.step_years = 100_000.0;
+        cfg.max_populations_per_cell = 2;
+        let mut w = World::new(cfg);
+        w.seed_life();
+        for _ in 0..60 {
+            w.step();
+            for pops in &w.communities {
+                let guilds: BTreeSet<_> = pops.iter().map(|p| p.phenotype.main_pathway()).collect();
+                // Au-dessus du plafond, il ne reste qu'une population par guilde.
+                assert!(pops.len() <= 2 || guilds.len() == pops.len(), "{} populations pour {} guildes", pops.len(), guilds.len());
+            }
+        }
+        assert!(w.stats.saturated_cell_steps > 0, "le plafond n'a jamais servi");
+        assert!(w.stats.saturated_cell_steps <= w.stats.occupied_cell_steps);
+        assert!(w.stats.tunnel_capped <= w.stats.tunnel_genotypes);
+    }
+
+    #[test]
+    fn a_long_step_runs_one_evolution_round_per_slice() {
+        let run = |step: f64, round: Option<f64>| {
+            let mut cfg = WorldConfig::new(8, 3);
+            cfg.step_years = step;
+            cfg.evolution.round_years = round;
+            let mut w = World::new(cfg);
+            w.seed_life();
+            for _ in 0..10 {
+                w.step();
+            }
+            (w.stats.substitutions, w.state_hash())
+        };
+        // Un tour d'au plus le pas : rien ne change.
+        assert_eq!(run(100_000.0, None).1, run(100_000.0, Some(100_000.0)).1);
+        // Deux tours par pas : bien plus de substitutions qu'avec un seul.
+        assert!(run(200_000.0, Some(100_000.0)).0 > run(200_000.0, None).0);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 //! microbien, file d'ordres, historique, état publié, porte de l'étape 2.
 
 pub mod bench;
+pub mod equivalence;
 pub mod evolution;
 pub mod gate;
 pub mod history;

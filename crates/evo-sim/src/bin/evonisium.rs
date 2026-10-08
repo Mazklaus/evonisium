@@ -4,11 +4,13 @@
 //!   evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]
 //!   evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]
 //!   evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]
+//!   evonisium equivalence [--world CLÉ] [--seeds 2026,7,42] [--level L] [--steps-years 100000,200000] [--years Y] [--save-results DOSSIER] [--assemble DOSSIER] [--out FICHIER]
 //!
 //! Mondes : terre, ocean, desert, super-terre, petite, sans-lune.
 
 use evo_planet::PlanetParams;
 use evo_sim::bench::{run_benchmarks, BenchOptions};
+use evo_sim::equivalence::{format_equivalence, run_one, EquivalenceOptions, EquivalenceRun};
 use evo_sim::gate::{format_gate, run_gate, GateOptions, WorldResult};
 use evo_sim::orders::{Intervention, OrderKind};
 use evo_sim::report::{format_summary, format_years};
@@ -67,6 +69,7 @@ fn main() {
                 hold_years: arg(&args, "--hold-years", defaults.hold_years),
                 worlds: opt(&args, "--worlds").map(|w| w.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default(),
                 out_dir: opt(&args, "--data").map(Into::into),
+                round_years: opt(&args, "--round-years").map(|v| v.parse().expect("durée invalide")),
             };
             // Rapport assemblé à partir des résultats déjà enregistrés, monde
             // par monde (les parties longues tournent séparément).
@@ -115,6 +118,7 @@ fn main() {
         }
         Some("empreinte") => fingerprint(&args),
         Some("chrono") => chrono(&args),
+        Some("equivalence") => equivalence(&args),
         Some("bench") => {
             let levels: String = arg(&args, "--levels", "6,7".to_string());
             let opts = BenchOptions {
@@ -210,7 +214,37 @@ fn chrono(args: &[String]) {
         world.save_file(&path).expect("écriture de la sauvegarde");
         return;
     }
+    let t0 = Instant::now();
     let mut world = World::load_file(&path).expect("lecture de la sauvegarde");
+    if let Some(v) = opt(args, "--step-years") {
+        world.config.step_years = v.parse().expect("pas invalide");
+    }
+    if let Some(v) = opt(args, "--round-years") {
+        let r: f64 = v.parse().expect("durée invalide");
+        world.config.evolution.round_years = (r > 0.0).then_some(r);
+    }
+    eprintln!("lecture : {:.2} s", t0.elapsed().as_secs_f64());
+    if args.iter().any(|a| a == "--sizes") {
+        let mb = |n: u64| n as f64 / 1e6;
+        eprintln!(
+            "tailles (Mo, avant compression) : lignées {:.1}, événements {:.1}, journal {:.1}, historique {:.1}, ordres {:.1}, chimie {:.1}, planète {:.1}",
+            mb(bincode::serialized_size(&world.lineages).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.events).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.journal).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.history).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.orders).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.chemistry).unwrap_or(0)),
+            mb(bincode::serialized_size(&world.planet.cells).unwrap_or(0)),
+        );
+        let recs = &world.lineages.records;
+        let founders: Vec<usize> = recs.iter().filter_map(|r| r.founder.as_ref().map(|g| std::sync::Arc::as_ptr(g) as usize)).collect();
+        let distinct: std::collections::BTreeSet<_> = founders.iter().collect();
+        eprintln!("lignées : {} fiches, {} génomes fondateurs, {} distincts", recs.len(), founders.len(), distinct.len());
+        let t = Instant::now();
+        let mut out = Vec::new();
+        world.save_to(&mut out).expect("écriture");
+        eprintln!("écriture : {:.2} s, {:.1} Mo", t.elapsed().as_secs_f64(), mb(out.len() as u64));
+    }
     let steps: u32 = arg(args, "--steps", 5);
     let mut total = evo_sim::world::PhaseTimings::default();
     let evals = world.stats.genetic_evaluations;
@@ -232,4 +266,52 @@ fn chrono(args: &[String]) {
         (world.stats.genetic_evaluations - evals) as f64 / steps as f64,
         world.state_hash()
     );
+}
+
+/// Même partie aux deux pas, graine par graine ; chaque partie est
+/// enregistrée à part pour reprendre une série interrompue.
+fn equivalence(args: &[String]) {
+    let d = EquivalenceOptions::default();
+    let list = |name: &str| opt(args, name).map(|v| v.split(',').map(|x| x.trim().to_string()).collect::<Vec<_>>());
+    let opts = EquivalenceOptions {
+        world: arg(args, "--world", d.world),
+        seeds: list("--seeds").map(|v| v.iter().map(|x| x.parse().expect("graine invalide")).collect()).unwrap_or(d.seeds),
+        level: arg(args, "--level", d.level),
+        steps_years: list("--steps-years").map(|v| v.iter().map(|x| x.parse().expect("pas invalide")).collect()).unwrap_or(d.steps_years),
+        years: arg(args, "--years", d.years),
+        oxygen_threshold: arg(args, "--threshold", d.oxygen_threshold),
+        round_years: opt(args, "--round-years").map(|v| v.parse().expect("durée invalide")),
+    };
+    let dir = opt(args, "--save-results").or_else(|| opt(args, "--assemble"));
+    let path =
+        |seed: u64, step: f64| dir.as_ref().map(|d| std::path::Path::new(d).join(format!("{}-{seed}-{step:.0}.equivalence", opts.world)));
+    let mut runs: Vec<EquivalenceRun> = Vec::new();
+    for &step in &opts.steps_years {
+        for &seed in &opts.seeds {
+            if let Some(Ok(bytes)) = path(seed, step).map(std::fs::read) {
+                runs.push(bincode::deserialize(&bytes).expect("résultat illisible"));
+                continue;
+            }
+            if opt(args, "--assemble").is_some() {
+                continue;
+            }
+            let r = run_one(&opts, seed, step);
+            eprintln!(
+                "{} graine {seed}, pas de {} : O₂ > seuil à {}, {:.0} substitutions/Ma dont {:.0} avantageuses, {} guildes, {:.0} s",
+                opts.world,
+                format_years(step),
+                r.oxygen_threshold_years.map_or("—".into(), format_years),
+                r.substitutions_per_ma(),
+                r.adaptive_per_ma(),
+                r.guilds,
+                r.seconds
+            );
+            if let Some(p) = path(seed, step) {
+                let _ = std::fs::create_dir_all(p.parent().expect("dossier"));
+                std::fs::write(p, bincode::serialize(&r).expect("résultat sérialisable")).expect("écriture du résultat");
+            }
+            runs.push(r);
+        }
+    }
+    write_or_print(opt(args, "--out"), &format_equivalence(&opts, &runs));
 }

@@ -16,7 +16,7 @@ rayon = "1"
 mimalloc = { version = "0.1", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }
 bincode = "1.3"
-flate2 = "1"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 libm = "0.2"
 evo-core = { path = "crates/evo-core" }
