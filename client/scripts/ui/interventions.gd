@@ -8,7 +8,7 @@ extends "res://scripts/ui/fiche.gd"
 signal intervened(kind: String, moles: float)
 
 const KINDS := {
-	"phosphate": {"min": 12.0, "max": 16.0, "default": 14.0, "unit": "mol P"},
+	"phosphate": {"min": 12.0, "max": 16.0, "default": 13.0, "unit": "mol P"},
 	"eruption": {"min": 15.0, "max": 18.5, "default": 16.0, "unit": "mol CO₂"},
 	"methane": {"min": 13.0, "max": 17.0, "default": 15.0, "unit": "mol CH₄"},
 }

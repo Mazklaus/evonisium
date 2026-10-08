@@ -47,7 +47,7 @@ func _ready() -> void:
 	h.add_child(Atlas.button(App.t("next_event") + " ›", func(): next_requested.emit(), App.t("next_event") + " (N)"))
 	real_label = Atlas.text("", 15, true)
 	real_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	real_label.custom_minimum_size.x = 150
+	real_label.custom_minimum_size.x = 110
 	real_label.tooltip_text = App.t("real_speed_long")
 	real_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	h.add_child(real_label)
@@ -55,7 +55,7 @@ func _ready() -> void:
 	o2_label = _indicator(h, App.t("oxygen"))
 	temp_label = _indicator(h, App.t("temperature"))
 	bio_label = _indicator(h, App.t("biomass"))
-	lin_label = _indicator(h, App.t("lineages"))
+	lin_label = _indicator(h, App.t("lineages_short"))
 	inf_label = _indicator(h, App.t("influence_short"))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -70,7 +70,7 @@ func _indicator(parent: Control, label: String) -> Label:
 	v.add_child(l)
 	var value := Atlas.text("—", 19)
 	value.autowrap_mode = TextServer.AUTOWRAP_OFF
-	value.custom_minimum_size.x = 84
+	value.custom_minimum_size.x = 76
 	v.add_child(value)
 	parent.add_child(v)
 	return value

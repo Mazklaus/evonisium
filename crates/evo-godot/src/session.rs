@@ -822,8 +822,18 @@ impl EvoSession {
                 chem.push(&cd.to_variant());
             }
             d.set("chemistry", &chem);
-            let total: f32 = x.populations.iter().map(|p| p.biomass).sum();
+            // Une lignée peut compter plusieurs écotypes dans la cellule : une
+            // ligne par lignée, de la plus abondante à la plus rare.
+            let mut by_lineage: Vec<evo_sim::observation::PopulationView> = Vec::new();
             for p in &x.populations {
+                match by_lineage.iter_mut().find(|q| q.lineage == p.lineage) {
+                    Some(q) => q.biomass += p.biomass,
+                    None => by_lineage.push(p.clone()),
+                }
+            }
+            by_lineage.sort_by(|a, b| b.biomass.total_cmp(&a.biomass).then(a.lineage.cmp(&b.lineage)));
+            let total: f32 = by_lineage.iter().map(|p| p.biomass).sum();
+            for p in &by_lineage {
                 let mut pd = VarDictionary::new();
                 pd.set("lineage", p.lineage as i64);
                 pd.set("species", p.species as i64);
@@ -894,7 +904,10 @@ impl EvoSession {
         d.set("extinct", false);
         // Lignée suivie quand le joueur suit l'espèce : sa plus ancienne
         // lignée vivante.
-        let founder = lineages.iter().filter(|l| l.signature == s.species && l.extinct_years.is_none()).min_by(|a, b| a.born_years.total_cmp(&b.born_years).then(a.id.cmp(&b.id)));
+        let founder = lineages
+            .iter()
+            .filter(|l| l.signature == s.species && l.extinct_years.is_none())
+            .min_by(|a, b| a.born_years.total_cmp(&b.born_years).then(a.id.cmp(&b.id)));
         d.set("founder", founder.map_or(-1, |l| l.id as i64));
         d.set("marked", founder.is_some_and(|l| self.focus.marked.contains(&l.id)));
         d.set("peak_cell", s.peak_cell as i64);
@@ -1216,7 +1229,16 @@ impl EvoSession {
         let mut out = VarArray::new();
         if let Some(g) = &self.game {
             let st = g.engine.status();
-            if let (true, Some(h)) = (st.paused, st.state_hash) {
+            // Une partie reprise n'a pas encore d'empreinte tant qu'aucun pas
+            // n'a tourné : on la demande (en pause, le moteur répond vite).
+            let hash = st.state_hash.or_else(|| {
+                let a = st.paused.then(|| g.engine.query(Query::StateHash).recv_timeout(std::time::Duration::from_secs(5)).ok());
+                match a.flatten() {
+                    Some(Answer::StateHash(h)) => Some(h),
+                    _ => None,
+                }
+            });
+            if let (true, Some(h)) = (st.paused, hash) {
                 out.push(&(st.steps as i64).to_variant());
                 out.push(&GString::from(&format!("{h:016x}")).to_variant());
             }

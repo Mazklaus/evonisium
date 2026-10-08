@@ -198,7 +198,7 @@ func _play_scenario() -> void:
 	App.globe.target_distance = 4.0
 	await _wait(1.0)
 	await _shot("10-oxygene-frise")
-	var top := _top_lineage()
+	var top := _top_species()
 	report["espece_montree"] = top
 	if top >= 0:
 		jeu.open_species(top)
@@ -239,16 +239,10 @@ func _populated_cell() -> int:
 		return -1
 	return int(App.session.species_info(ids[0]).get("peak_cell", -1))
 
-func _top_lineage() -> int:
-	var t: Dictionary = App.session.tree(20)
-	if t.is_empty():
-		return -1
-	var ids: PackedInt32Array = t["ids"]
-	var living: PackedByteArray = t["living"]
-	for i in range(ids.size() - 1, -1, -1):
-		if living[i] != 0:
-			return ids[i]
-	return -1
+func _top_species() -> int:
+	# L'espèce qui domine le plus de cellules.
+	var ids: PackedInt64Array = App.session.guild_ids()
+	return -1 if ids.is_empty() else int(ids[0])
 
 func _stats(a: Array) -> Dictionary:
 	if a.is_empty():

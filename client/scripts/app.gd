@@ -103,6 +103,7 @@ const TEXT := {
 	"cancel": ["Annuler", "Cancel"],
 	"influence": ["Réserve d'influence", "Influence reserve"],
 	"intervene_pick": ["Choisissez d'abord un lieu sur le globe (clic sur une cellule), puis rouvrez cette fiche.", "First pick a place on the globe (click a cell), then reopen this sheet."],
+	"lineages_short": ["Lignées", "Lineages"],
 	"influence_short": ["Influence", "Influence"],
 	"ecotypes": ["écotypes", "ecotypes"],
 	"intervene_where": ["Lieu", "Place"],
