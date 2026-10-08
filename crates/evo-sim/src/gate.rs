@@ -450,7 +450,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
     let _ = writeln!(
         out,
-        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante en abondance projetée au pas suivant, N·e^(rΔt), jamais la dernière d'une guilde (voie principale). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, presque toujours à cause d'arrivants du pas. « Saturées » : part des cellules qui ont perdu une population établie (plus que la biomasse d'un fondateur) ; au-delà de 1 % sur les 100 derniers pas (monde mûr), la règle est à revoir. Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
+        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde (voie principale). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, presque toujours à cause d'arrivants du pas. « Saturées » : part des cellules qui ont perdu une population établie (plus que la biomasse d'un fondateur) ; au-delà de 2 % sur les 100 derniers pas (monde mûr), la règle est à revoir. Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
         crate::evolution::EvolutionParams::default().tunnel_attempts_per_genotype
     );
     let _ = writeln!(

@@ -1058,7 +1058,7 @@ impl World {
     /// Garde-fous (document d'architecture, « Correction sur monde mûr ») :
     /// la dernière population d'une guilde n'est jamais retirée, quitte à
     /// dépasser le plafond, et l'éviction va de la moins abondante à la plus
-    /// abondante en abondance projetée au pas suivant (déterministe). La
+    /// abondante, à biomasse égale dans l'ordre d'arrivée (déterministe). La
     /// guilde est ici la voie principale ([`Phenotype::main_pathway`]) : neuf
     /// au plus, alors que les combinaisons de voies se comptent par centaines
     /// et videraient le plafond de son sens.
@@ -1067,8 +1067,6 @@ impl World {
         let cp = self.config.physiology.carbon_to_phosphorus;
         let envs = &self.bio.env;
         let founder = self.config.founder_biomass;
-        // Horizon de la projection : la durée d'écologie résolue d'un pas.
-        let horizon = self.config.eco_substeps as f64 * self.config.eco_dt_years;
         let (removed, saturated, established, growing, occupied) = self
             .communities
             .par_iter_mut()
@@ -1084,13 +1082,9 @@ impl World {
                 for g in &guilds {
                     *guild.entry(*g).or_default() += 1;
                 }
-                // Abondance projetée à la fin de l'écologie du pas suivant,
-                // N·e^(r·Δt), en logarithme : un arrivant plus apte n'est pas
-                // évincé avant d'avoir pu croître. À égalité, la dernière
-                // arrivée part la première.
-                let projected: Vec<f64> = pops.iter().map(|p| p.biomass.dln() + p.rates.r * horizon).collect();
+                // Tri stable : à biomasse égale, l'ordre d'arrivée décide.
                 let mut order: Vec<usize> = (0..pops.len()).collect();
-                order.sort_by(|&a, &b| projected[a].total_cmp(&projected[b]).then(b.cmp(&a)));
+                order.sort_by(|&a, &b| pops[a].biomass.total_cmp(&pops[b].biomass));
                 let mut keep = vec![true; pops.len()];
                 let mut excess = pops.len() - max;
                 for &i in &order {
