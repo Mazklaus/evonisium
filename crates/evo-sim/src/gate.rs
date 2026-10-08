@@ -134,7 +134,7 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     while world.years < opts.max_years {
         world.step();
         let o2 = world.planet.reservoirs.mixing_ratio(Gas::O2);
-        if world.stats.steps % 500 == 0 {
+        if world.stats.steps.is_multiple_of(500) {
             eprintln!(
                 "  {key} (graine {seed}) : {}, O₂ {o2:.1e}, étape {}, {:.0} s",
                 format_years(world.years),
