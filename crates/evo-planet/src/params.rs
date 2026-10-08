@@ -132,6 +132,9 @@ pub struct PlanetParams {
     /// Part minimale des cellules océaniques qui portent des sources, quand
     /// les dorsales sont émergées.
     pub vent_min_ocean_share: f64,
+    /// Part minimale de l'hydrothermalisme sous-marin quand les dorsales sont
+    /// émergées (circulation hors axe dans la croûte immergée).
+    pub vent_off_axis_floor: f64,
 
     // — Volcanisme et hydrothermalisme (au départ, proportionnels à
     //   l'activité tectonique et à la chaleur interne) —
@@ -243,6 +246,7 @@ impl PlanetParams {
             erosion_myr: 100.0,
             vent_crust_age_myr: 4.0,
             vent_min_ocean_share: 0.05,
+            vent_off_axis_floor: 0.1,
             outgassing_co2: 1.5e13,
             outgassing_h2_ratio: 0.03,
             vent_h2_flux: 1.0e12,

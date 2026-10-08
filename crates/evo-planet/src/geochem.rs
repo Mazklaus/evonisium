@@ -135,6 +135,8 @@ pub struct BoxContext {
     /// Activité volcanique et hydrothermale relative au départ (expansion
     /// des dorsales × chaleur interne).
     pub activity: f64,
+    /// Part de l'hydrothermalisme sous-marin active (dorsales immergées).
+    pub hydrothermal_share: f64,
     /// Part des sédiments marins entraînée en subduction par an.
     pub subduction_per_year: f64,
     /// Gravité et aire de la planète, pour la pression.
@@ -440,7 +442,7 @@ impl GlobalReservoirs {
             self.atmosphere[Gas::H2 as usize] += v * params.outgassing_h2_ratio;
             flux.exchange(Element::Carbon, v);
             acc.outgassing_co2 += v;
-            let deep_share = (1.0 - params.vent_local_share) * ctx.activity * h;
+            let deep_share = (1.0 - params.vent_local_share) * ctx.activity * ctx.hydrothermal_share * h;
             self.deep_fe2 += params.vent_fe_flux * deep_share;
             self.deep_mn2 += params.vent_mn_flux * deep_share;
 
@@ -532,6 +534,7 @@ mod tests {
             deep_volume_m3: 1.3e18,
             mean_temperature_k: t,
             activity: 1.0,
+            hydrothermal_share: 1.0,
             subduction_per_year: 0.0,
             gravity: params.gravity(),
             area_m2: params.surface_area(),

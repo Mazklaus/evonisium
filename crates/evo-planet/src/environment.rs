@@ -81,6 +81,10 @@ pub struct Planet {
     pub deep_volume_m3: f64,
     /// Temps écoulé depuis le dernier pas tectonique, années.
     pub tectonic_clock: f64,
+    /// Part de l'hydrothermalisme sous-marin encore active : fraction de la
+    /// croûte jeune (dorsales) qui est sous l'eau, avec un plancher pour la
+    /// circulation hors axe. Vaut 1 quand toutes les dorsales sont immergées.
+    pub hydrothermal_share: f64,
 }
 
 /// Pas tectonique, années (document Planète : 0,1 à 1 Ma).
@@ -152,7 +156,12 @@ impl Planet {
         // bassins), la circulation hydrothermale passe par la croûte immergée
         // la plus jeune (sources hors axe, serpentinisation) : on garde au
         // moins une part fixe des cellules océaniques, les plus jeunes.
-        let mut vents: Vec<usize> = (0..n).filter(|&c| is_ocean[c] && self.tectonics.parcel_of(c).age_myr < p.vent_crust_age_myr).collect();
+        let young: Vec<usize> = (0..n).filter(|&c| self.tectonics.parcel_of(c).age_myr < p.vent_crust_age_myr).collect();
+        let mut vents: Vec<usize> = young.iter().copied().filter(|&c| is_ocean[c]).collect();
+        // Une dorsale émergée dégaze dans l'air (comme l'Islande) : seule la
+        // part immergée nourrit la mer en H₂, H₂S, fer et manganèse.
+        let submerged = if young.is_empty() { 1.0 } else { vents.len() as f64 / young.len() as f64 };
+        self.hydrothermal_share = submerged.max(p.vent_off_axis_floor);
         let ocean_count = is_ocean.iter().filter(|&&o| o).count();
         let min_vents = ((ocean_count as f64 * p.vent_min_ocean_share).ceil() as usize).min(ocean_count);
         if vents.len() < min_vents {
@@ -163,7 +172,7 @@ impl Planet {
             vents = by_age;
         }
         let activity = self.activity(years);
-        let per_vent = activity * p.vent_local_share / vents.len().max(1) as f64;
+        let per_vent = activity * self.hydrothermal_share * p.vent_local_share / vents.len().max(1) as f64;
 
         let k = p.water_light_attenuation;
         let gravity = p.gravity();
@@ -367,6 +376,7 @@ impl Planet {
             deep_volume_m3: self.deep_volume_m3,
             mean_temperature_k: self.climate.mean_temperature_k,
             activity: self.activity(years),
+            hydrothermal_share: self.hydrothermal_share,
             subduction_per_year: subduction,
             gravity: self.params.gravity(),
             area_m2: self.params.surface_area(),

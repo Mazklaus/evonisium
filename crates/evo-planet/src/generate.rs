@@ -39,6 +39,7 @@ pub fn generate(params: PlanetParams, level: u32, seed: u64) -> Planet {
         sea_level_m: 0.0,
         deep_volume_m3: water,
         tectonic_clock: 0.0,
+        hydrothermal_share: 1.0,
     };
     planet.refresh(0.0);
     // L'état de glace de départ est celui de l'équilibre chaud.
