@@ -1,0 +1,18 @@
+; Extension native du moteur (crate evo-godot). Les deux profils de Godot
+; chargent la bibliothèque optimisée : le moteur non optimisé serait trop
+; lent pour jouer.
+
+[configuration]
+
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.6
+reloadable = false
+
+[libraries]
+
+linux.debug.x86_64 = "res://../target/release/libevo_godot.so"
+linux.release.x86_64 = "res://../target/release/libevo_godot.so"
+windows.debug.x86_64 = "res://../target/release/evo_godot.dll"
+windows.release.x86_64 = "res://../target/release/evo_godot.dll"
+macos.debug = "res://../target/release/libevo_godot.dylib"
+macos.release = "res://../target/release/libevo_godot.dylib"
