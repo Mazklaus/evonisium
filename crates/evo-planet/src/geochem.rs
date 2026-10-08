@@ -281,7 +281,7 @@ impl GlobalReservoirs {
             // Import net de carbone organique : impossible à cette échelle.
             return;
         }
-        let buried = export * params.organic_burial_efficiency;
+        let buried = export * params.burial_efficiency(deep_oxic);
         self.organic_c += buried;
         let p = (buried / params.burial_carbon_to_phosphorus).min(self.deep_po4);
         self.deep_po4 -= p;
@@ -407,7 +407,7 @@ impl GlobalReservoirs {
             let deep_oxic = self.deep_oxic(params);
             let (export, h2s) = self.apply_surface(params, &moles, deep_oxic);
             acc.organic_export += export;
-            acc.organic_burial += export.max(0.0) * params.organic_burial_efficiency;
+            acc.organic_burial += export.max(0.0) * params.burial_efficiency(deep_oxic);
 
             // 2. Chimie rapide de l'atmosphère (juste après les apports de surface,
             //    pour que les puits lents voient l'O₂ qui reste) : titrage H₂-O₂, oxydation et photolyse
@@ -463,7 +463,11 @@ impl GlobalReservoirs {
             // 5. Puits d'oxygène lents.
             let f_o2 = self.mixing_ratio(Gas::O2);
             let o2 = self.atmosphere[Gas::O2 as usize];
-            let ow = (params.oxidative_weathering_per_m2 * ctx.land_area_m2 * f_o2 / (f_o2 + params.oxidative_weathering_half) * h).min(o2);
+            let ow = (params.oxidative_weathering_per_m2
+                * ctx.land_area_m2
+                * (f_o2.max(0.0) / params.oxidative_weathering_reference).powf(params.oxidative_weathering_exponent)
+                * h)
+                .min(o2);
             self.atmosphere[Gas::O2 as usize] -= ow;
             self.oxygen.oxidative_weathering += ow;
             // Sulfure dégazé : oxydé en sulfate s'il y a de l'O₂.

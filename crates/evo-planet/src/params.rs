@@ -161,6 +161,9 @@ pub struct PlanetParams {
     pub weathering_phosphorus_ratio: f64,
     /// Part du carbone organique exporté qui est enfoui dans les sédiments.
     pub organic_burial_efficiency: f64,
+    /// Baisse relative de cette part quand l'océan profond est oxygéné (la
+    /// matière organique s'y dégrade avant d'être enfouie).
+    pub organic_burial_oxic_reduction: f64,
     /// Rapport C/P du carbone organique enfoui, et P piégé par mole
     /// d'oxydes de fer déposés.
     pub burial_carbon_to_phosphorus: f64,
@@ -168,10 +171,12 @@ pub struct PlanetParams {
     /// Fraction molaire d'O₂ qui rend aérobie la moitié de la
     /// reminéralisation profonde, et l'oxydation du fer profond.
     pub deep_oxic_half_mixing: f64,
-    /// Oxydation des roches réduites exposées (sulfures, fer, kérogène) :
-    /// maximum en mol d'O₂·m⁻²·an⁻¹ et fraction de demi-effet.
+    /// Oxydation des roches réduites exposées (sulfures, fer, kérogène),
+    /// mol d'O₂·m⁻²·an⁻¹ à la fraction d'O₂ de référence, et exposant de la
+    /// loi en puissance (0,5 dans les modèles de type COPSE).
     pub oxidative_weathering_per_m2: f64,
-    pub oxidative_weathering_half: f64,
+    pub oxidative_weathering_reference: f64,
+    pub oxidative_weathering_exponent: f64,
     /// Temps de résidence du fer et du manganèse dans un océan profond
     /// anoxique (dépôt de sidérite, pyrite), ans.
     pub deep_metal_residence_years: f64,
@@ -252,11 +257,14 @@ impl PlanetParams {
             seafloor_weathering_share: 0.15,
             weathering_phosphorus_ratio: 0.004,
             organic_burial_efficiency: 0.05,
+            organic_burial_oxic_reduction: 0.6,
             burial_carbon_to_phosphorus: 250.0,
             iron_oxide_phosphorus: 0.02,
             deep_oxic_half_mixing: 1e-3,
-            oxidative_weathering_per_m2: 0.08,
-            oxidative_weathering_half: 1e-3,
+            // Environ 7·10¹² mol d'O₂ par an sur les terres actuelles.
+            oxidative_weathering_per_m2: 0.05,
+            oxidative_weathering_reference: 0.21,
+            oxidative_weathering_exponent: 0.5,
             deep_metal_residence_years: 2.0e5,
         }
     }
@@ -344,6 +352,12 @@ impl PlanetParams {
     }
 
     pub const KEYS: [&'static str; 6] = ["terre", "ocean", "desert", "super-terre", "petite", "sans-lune"];
+
+    /// Part du carbone organique exporté qui est enfoui, selon l'oxygénation
+    /// de l'océan profond (0 : anoxique, 1 : oxygéné).
+    pub fn burial_efficiency(&self, deep_oxic: f64) -> f64 {
+        self.organic_burial_efficiency * (1.0 - self.organic_burial_oxic_reduction * deep_oxic.clamp(0.0, 1.0))
+    }
 
     /// Gravité de surface, m·s⁻², déduite de la masse et du rayon.
     pub fn gravity(&self) -> f64 {

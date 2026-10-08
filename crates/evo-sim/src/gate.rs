@@ -79,6 +79,9 @@ pub struct WorldResult {
     pub plate_reorganisations: usize,
     pub carbon_error: f64,
     pub phosphorus_error: f64,
+    /// Correction des électrons sur les flux extrapolés, relative à la
+    /// production photosynthétique d'O₂ (voir `close_electrons`).
+    pub redox_correction: f64,
     pub oxygen_budget: evo_planet::geochem::OxygenBudget,
     pub replay_ok: bool,
     pub passed: bool,
@@ -186,6 +189,7 @@ pub fn run_world(key: &str, opts: &GateOptions) -> WorldResult {
         plate_reorganisations: world.events.count(|k| matches!(k, EventKind::PlateReorganisation { .. })),
         carbon_error,
         phosphorus_error,
+        redox_correction: world.stats.redox_correction / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
         oxygen_budget: budget,
         replay_ok,
         passed,
@@ -304,18 +308,23 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Aide de l'accélérateur, bilans et rejeu\n");
     let _ = writeln!(
         out,
-        "| Monde | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Rejeu identique | Calcul |\n|---|---|---|---|---|---|---|---|"
+        "« Électrons corrigés » : écart du bilan des électrons des flux de surface prolongés sur chaque pas, corrigé avant leur application, en part de la production photosynthétique d'O₂ de la partie.\n"
+    );
+    let _ = writeln!(
+        out,
+        "| Monde | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Électrons corrigés | Rejeu identique | Calcul |\n|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {:.1e} | {:.1e} | {} | {:.0} s |",
+            "| {} | {} | {} | {} | {:.1e} | {:.1e} | {:.1} % | {} | {:.0} s |",
             r.name,
             r.accelerator_steps,
             r.accelerator_fixed,
             r.causes,
             r.carbon_error,
             r.phosphorus_error,
+            100.0 * r.redox_correction,
             if r.replay_ok { "oui" } else { "non" },
             r.seconds
         );

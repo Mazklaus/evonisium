@@ -71,6 +71,11 @@ pub struct Physiology {
     pub sinking_share: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
+    /// Baisse relative du taux de croissance maximal par gène : répliquer un
+    /// génome plus long prend plus de temps. Sans elle, une cellule gorgée
+    /// d'énergie (phototrophe en pleine lumière) croît au plafond quel que
+    /// soit son génome, et les copies inutiles s'accumulent sans frein.
+    pub replication_cost_per_gene: f64,
     /// Carbone d'une cellule, mol (environ 10⁻¹³ g de carbone).
     pub carbon_per_cell: f64,
     /// Lumière disponible selon la longueur d'onde (étoile, couche d'eau).
@@ -102,6 +107,7 @@ impl Default for Physiology {
             phosphate_half: 1e-4,
             sinking_share: 0.15,
             max_growth: 6000.0,
+            replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,
             spectrum: LightSpectrum::default(),
         }
@@ -240,7 +246,8 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
     // Sans voie qui apporte du carbone, l'énergie d'appoint ne fait que
     // réduire la famine.
     let birth = if carbon_energy > 0.0 {
-        (surplus / cost).clamp(0.0, physio.max_growth) * monod(chem[WaterPool::Po4 as usize], physio.phosphate_half)
+        let max_growth = physio.max_growth / (1.0 + physio.replication_cost_per_gene * p.gene_count as f64);
+        (surplus / cost).clamp(0.0, max_growth) * monod(chem[WaterPool::Po4 as usize], physio.phosphate_half)
     } else {
         0.0
     };

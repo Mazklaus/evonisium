@@ -107,6 +107,25 @@ impl WaterPool {
         }
     }
 
+    /// Pouvoir oxydant par unité, en équivalents d'O₂ (référence : CO₂,
+    /// sulfate, oxydes de fer et de manganèse, eau). Un matériau réduit a une
+    /// valeur négative : CH₂O consomme une mole d'O₂, CH₄ deux, H₂S deux,
+    /// H₂ une demie, Fe²⁺ un quart, Mn²⁺ une demie. La photosynthèse
+    /// (CO₂ + H₂O → CH₂O + O₂) et toute réaction biologique conservent la
+    /// somme.
+    pub fn oxidant_equivalents(self) -> f64 {
+        match self {
+            WaterPool::O2 => 1.0,
+            WaterPool::Doc => -1.0,
+            WaterPool::Ch4 => -2.0,
+            WaterPool::H2 => -0.5,
+            WaterPool::H2s => -2.0,
+            WaterPool::Fe2 => -0.25,
+            WaterPool::Mn2 => -0.5,
+            WaterPool::Dic | WaterPool::Sulfate | WaterPool::FeOx | WaterPool::MnOx | WaterPool::Po4 => 0.0,
+        }
+    }
+
     /// Atomes de phosphore par unité.
     pub fn phosphorus_atoms(self) -> f64 {
         match self {

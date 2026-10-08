@@ -47,6 +47,8 @@ pub struct Phenotype {
     pub oxygen_defense: f64,
     /// Coût d'entretien, kJ par mole de carbone de biomasse et par an.
     pub maintenance_kj: f64,
+    /// Nombre de gènes, fonctionnels ou non (temps de réplication).
+    pub gene_count: u32,
     /// Voies réellement utilisables (bits) : c'est la guilde métabolique.
     pub signature: u32,
     /// Pigment couplé à la chaîne de transport d'électrons : un peu d'énergie
@@ -156,6 +158,7 @@ impl Phenotype {
             water_oxidation,
             oxygen_defense: (defense + 0.5 * water_oxidation).min(1.0),
             maintenance_kj: maintenance,
+            gene_count: genome.genes.len() as u32,
             signature,
             cyclic_phototrophy,
             phototroph: light_signature || cyclic_phototrophy || rhodopsin_q > 0.0,

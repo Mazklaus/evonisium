@@ -265,7 +265,8 @@ impl Planet {
         chem
     }
 
-    fn vent_supply(&self, env: &CellEnvironment, pool: WaterPool) -> f64 {
+    /// Apport des sources hydrothermales d'une cellule, mol·an⁻¹.
+    pub fn vent_supply(&self, env: &CellEnvironment, pool: WaterPool) -> f64 {
         match pool {
             WaterPool::H2 => env.vent_h2_supply,
             WaterPool::H2s => env.vent_h2s_supply,

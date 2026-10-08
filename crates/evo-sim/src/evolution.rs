@@ -21,6 +21,7 @@ use evo_genetics::{
     OriginFixation, GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS, MUTATION_KIND_COUNT,
 };
 use evo_life::community::{CellContext, Population};
+use evo_life::metabolism::photosynthesis_stage;
 use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
 use evo_planet::WaterChemistry;
 use rand::Rng;
@@ -146,6 +147,15 @@ fn fixes(regime: &OriginFixation, s: f64, ne: f64, copies: f64, boost: f64, rng:
     None
 }
 
+/// Vrai si `new` a une fonction absente de `old` : une réaction catalysée de
+/// plus, une étape plus avancée du chemin vers la photosynthèse, ou une
+/// rhodopsine.
+fn gains_function(new: &Phenotype, old: &Phenotype) -> bool {
+    new.signature & !old.signature != 0
+        || photosynthesis_stage(new) > photosynthesis_stage(old)
+        || (new.rhodopsin > 0.0 && old.rhodopsin <= 0.0)
+}
+
 /// Régime « apparition puis fixation » dans les populations d'une cellule.
 #[allow(clippy::too_many_arguments)]
 pub fn evolve_cell(
@@ -232,7 +242,12 @@ pub fn evolve_cell(
                         let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
                         out.stats.tunnel_attempts += 1;
                         let Some((s2, phenotype2, rates2)) = evaluate(&second.genome, &mut out.stats) else { continue };
-                        if s2 <= 0.0 || best.as_ref().is_some_and(|b| b.s >= s2) {
+                        // Le tunnel sert à franchir une innovation à deux
+                        // pièces : le double mutant doit gagner une fonction
+                        // que le résident n'a pas. Sinon, la seconde mutation
+                        // seule, bien plus fréquente, l'emporte sur ce double
+                        // qui traîne la première comme un poids mort.
+                        if s2 <= 0.0 || !gains_function(&phenotype2, &resident.phenotype) || best.as_ref().is_some_and(|b| b.s >= s2) {
                             continue;
                         }
                         let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
