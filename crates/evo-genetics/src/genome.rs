@@ -33,6 +33,65 @@ pub enum DomainFamily {
     /// Complexe à manganèse qui oxyde l'eau : seul, il détruit les espèces
     /// réactives de l'oxygène (équivalent catalase à manganèse).
     WaterOxidation,
+    /// Cytosquelette (équivalent actine, de la superfamille des kinases de
+    /// sucres) : agrandit la cellule et lui permet d'englober des proies
+    /// plus petites qu'elle (phagotrophie).
+    Cytoskeleton,
+    /// Protéine d'adhésion (équivalent cadhérines) : les cellules collent
+    /// entre elles, en agrégats ou, au-delà d'un seuil, en colonie clonale
+    /// dont les cellules filles restent attachées.
+    Adhesion,
+    /// Récepteur et émetteur de signal entre cellules (morphogène) : seul, il
+    /// règle l'expression des gènes sur le besoin et en réduit le coût.
+    Signalling,
+    /// Facteur de transcription (équivalent gènes Hox) : il commande les
+    /// gènes qui le suivent sur le chromosome, jusqu'au régulateur suivant,
+    /// selon le niveau de morphogène qu'il lit. `affinity` est son seuil,
+    /// `absorption_nm` son sens : sous 700 nm il active son bloc au-dessus du
+    /// seuil, au-delà il l'active au-dessous.
+    Regulator,
+    /// Recombinase de méiose (équivalent Spo11, Dmc1) : seule, elle répare
+    /// l'ADN par recombinaison homologue ; chez un eucaryote, elle ouvre la
+    /// reproduction sexuée.
+    Meiosis,
+}
+
+impl DomainFamily {
+    /// Famille lue par la physiologie de la cellule, sans voie métabolique
+    /// propre (structure, adhésion, signal, régulation, méiose).
+    pub fn is_cellular(self) -> bool {
+        matches!(self, Self::Cytoskeleton | Self::Adhesion | Self::Signalling | Self::Regulator | Self::Meiosis)
+    }
+}
+
+/// Seuil du pic d'absorption qui sépare les régulateurs activateurs (en
+/// dessous) des régulateurs inverses (au-dessus), nm.
+pub const REGULATOR_SENSE_NM: f64 = 700.0;
+
+/// Partenaire englouti devenu organite (endosymbiose) : ses gènes
+/// énergétiques, transmis avec la cellule hôte.
+///
+/// [Simplification] Le génome de l'organite ne garde que les gènes des voies
+/// d'énergie du partenaire (catalyse, pigments, chaîne de transport) ; les
+/// autres sont perdus d'emblée. Le transfert de gènes vers le noyau est une
+/// dépendance qui croît avec le temps (document Organismes), pas gène par
+/// gène.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Organelle {
+    pub genes: Vec<Gene>,
+    /// Lignée du partenaire englouti.
+    pub origin_lineage: u32,
+    /// Date de l'endosymbiose, années.
+    pub acquired_years: f64,
+}
+
+impl Organelle {
+    /// Dépendance envers l'hôte à la date `years`, de 0 (symbiote encore
+    /// autonome) à 1 (organite qui ne vit plus seul), qui croît sur
+    /// `integration_years`.
+    pub fn dependency(&self, years: f64, integration_years: f64) -> f64 {
+        ((years - self.acquired_years) / integration_years).clamp(0.0, 1.0)
+    }
 }
 
 /// Parenté déclarée entre familles de domaines : une copie d'un domaine
@@ -81,6 +140,8 @@ pub struct Genome {
     pub genes: Vec<Gene>,
     /// Séquence neutre (bases 0 à 3) : horloge moléculaire et parenté.
     pub marker: [u8; MARKER_LEN],
+    /// Organites hérités d'endosymbioses, transmis verticalement.
+    pub organelles: Vec<Organelle>,
 }
 
 impl Genome {
@@ -107,9 +168,53 @@ impl Genome {
         self.marker.iter().zip(&other.marker).filter(|(a, b)| a != b).count()
     }
 
+    /// Génome sans organite.
+    pub fn new(genes: Vec<Gene>, marker: [u8; MARKER_LEN]) -> Self {
+        Self { genes, marker, organelles: Vec::new() }
+    }
+
+    /// Gènes fonctionnels de tous les organites.
+    pub fn organelle_genes(&self) -> impl Iterator<Item = &Gene> {
+        self.organelles.iter().flat_map(|o| o.genes.iter()).filter(|g| g.functional)
+    }
+
+    /// Blocs régulés : pour chaque gène, l'indice du régulateur qui le
+    /// commande (le dernier régulateur fonctionnel qui le précède), ou `None`
+    /// pour un gène constitutif (avant le premier régulateur). Un régulateur
+    /// se commande lui-même : son bloc commence à lui.
+    pub fn regulated_by(&self) -> Vec<Option<u16>> {
+        let mut current = None;
+        self.genes
+            .iter()
+            .enumerate()
+            .map(|(i, g)| {
+                if g.functional && g.domain.family == DomainFamily::Regulator {
+                    current = Some(i as u16);
+                }
+                current
+            })
+            .collect()
+    }
+
+    /// Étendue `[début, fin)` du bloc du régulateur `i` : lui et les gènes
+    /// qui le suivent jusqu'au régulateur fonctionnel suivant.
+    pub fn block_of(&self, i: usize) -> std::ops::Range<usize> {
+        let end = self.genes[i + 1..]
+            .iter()
+            .position(|g| g.functional && g.domain.family == DomainFamily::Regulator)
+            .map_or(self.genes.len(), |k| i + 1 + k);
+        i..end
+    }
+
     /// Mémoire occupée, en octets.
     pub fn memory_bytes(&self) -> usize {
-        std::mem::size_of::<Genome>() + self.genes.capacity() * std::mem::size_of::<Gene>()
+        std::mem::size_of::<Genome>()
+            + self.genes.capacity() * std::mem::size_of::<Gene>()
+            + self
+                .organelles
+                .iter()
+                .map(|o| std::mem::size_of::<Organelle>() + o.genes.capacity() * std::mem::size_of::<Gene>())
+                .sum::<usize>()
     }
 }
 
@@ -174,6 +279,13 @@ pub enum ChangedElement {
     Marker { site: u16 },
     /// Plusieurs éléments à la fois (double mutant d'un tunnel).
     Several,
+    /// Organite acquis par endosymbiose.
+    Acquired { organelle: u16 },
+    /// Gène d'un organite modifié.
+    OrganelleGene { organelle: u16, index: u16 },
+    /// Bloc régulé (régulateur et gènes qu'il commande) dupliqué ; la copie
+    /// commence à `start`.
+    Module { start: u16, len: u16 },
 }
 
 /// Génome dérivé d'un autre, avec la cause du changement et l'élément touché.

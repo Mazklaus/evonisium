@@ -14,7 +14,7 @@
 //! système se rapprochant pas après pas de son équilibre ; la planète en tire
 //! des flux annuels qu'elle applique sur tout le pas.
 
-use crate::growth::{growth_rates_with, Conditions, GrowthRates, Physiology};
+use crate::growth::{edibility, growth_rates_with, Conditions, GrowthRates, Physiology};
 use crate::metabolism::{EnergySource, REACTIONS};
 use crate::phenotype::{Capacities, Phenotype};
 use evo_core::math::Det;
@@ -72,11 +72,44 @@ impl CellContext<'_> {
         pops.iter().filter(|p| p.phenotype.phototroph).map(|p| p.biomass).sum()
     }
 
-    /// Conditions vues par les organismes quand la biomasse phototrophe de la
-    /// cellule vaut `photo_biomass`.
+    /// Conditions physiques vues par les organismes quand la biomasse
+    /// phototrophe de la cellule vaut `photo_biomass`, sans proie ni
+    /// prédateur.
     pub fn conditions(&self, photo_biomass: f64) -> Conditions {
-        Conditions { temperature_k: self.env.temperature_k, uv_w_m2: self.env.uv_w_m2, light_kj: self.light_per_biomass(photo_biomass) }
+        Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(photo_biomass))
     }
+
+    /// Conditions vues par les organismes de la communauté `pops` : lumière
+    /// partagée, proies et pression des prédateurs (d'après leur dernière
+    /// évaluation).
+    pub fn conditions_of(&self, pops: &[Population], physio: &Physiology) -> Conditions {
+        let mut cond = self.conditions(Self::photo_biomass(pops));
+        let v = self.env.water_volume_m3;
+        if v <= 0.0 || !pops.iter().any(|p| p.phenotype.engulfment > 0.0) {
+            return cond;
+        }
+        for p in pops {
+            cond.prey.push(p.phenotype.body_size, p.biomass / v);
+        }
+        for (j, p) in pops.iter().enumerate() {
+            let demand = p.rates.prey_demand() * p.biomass;
+            if p.phenotype.engulfment <= 0.0 || demand <= 0.0 {
+                continue;
+            }
+            let edible = edible_biomass(pops, j, physio);
+            if edible > 0.0 {
+                cond.predators.push(p.phenotype.cell_size, demand / edible);
+            }
+        }
+        cond
+    }
+}
+
+/// Biomasse que le prédateur `j` peut englober dans la communauté (lui
+/// excepté), pondérée par la facilité à englober chaque proie.
+fn edible_biomass(pops: &[Population], j: usize, physio: &Physiology) -> f64 {
+    let size = pops[j].phenotype.cell_size;
+    pops.iter().enumerate().filter(|&(q, _)| q != j).map(|(_, q)| q.biomass * edibility(size, q.phenotype.body_size, physio)).sum()
 }
 
 /// Évalue toutes les populations d'une cellule dans l'état courant.
@@ -93,7 +126,7 @@ pub fn capacities(pops: &[Population], ctx: &CellContext, physio: &Physiology) -
 
 /// [`evaluate`] avec les capacités déjà calculées (une par population).
 pub fn evaluate_with(pops: &mut [Population], caps: &[Capacities], ctx: &CellContext, chem: &WaterChemistry, physio: &Physiology) {
-    let cond = ctx.conditions(CellContext::photo_biomass(pops));
+    let cond = ctx.conditions_of(pops, physio);
     for (p, c) in pops.iter_mut().zip(caps) {
         p.rates = growth_rates_with(&p.phenotype, c, &cond, chem, physio);
     }
@@ -148,9 +181,60 @@ pub fn substep_with(
                 }
             }
         }
-        demand[WaterPool::Doc as usize] += growth * p.rates.heterotroph_share;
+        demand[WaterPool::Doc as usize] += growth * p.rates.doc_share;
         demand[WaterPool::Dic as usize] += growth * (1.0 - p.rates.heterotroph_share);
         demand[WaterPool::Po4 as usize] += growth / cp;
+        // Digestion aérobie des proies.
+        demand[WaterPool::O2 as usize] += p.rates.prey_uptake * p.rates.prey_aerobic_share * b;
+    }
+    // Prédation : chaque phagotrophe prend ce qu'il demande (digestion et
+    // croissance) aux proies qu'il peut englober, au prorata de leur
+    // biomasse ; une proie ne perd pas plus de la moitié de sa biomasse par
+    // sous-pas. Le carbone pris aux proies est retiré avant la croissance ;
+    // leur phosphore rejoint le phosphate de l'eau, où la croissance le
+    // reprend. `got[j]` : part de sa demande que le prédateur `j` obtient.
+    let mut got: Vec<f64> = Vec::new();
+    let mut taken: Vec<f64> = Vec::new();
+    if pops.iter().any(|p| p.phenotype.engulfment > 0.0 && p.rates.prey_demand() > 0.0) {
+        let n = pops.len();
+        got = vec![0.0; n];
+        taken = vec![0.0; n];
+        let mut loss = vec![0.0; n];
+        let mut alloc: Vec<(usize, usize, f64)> = Vec::new();
+        let wants: Vec<f64> = pops.iter().map(|p| p.rates.prey_demand() * p.biomass * dt).collect();
+        for j in 0..n {
+            let want = wants[j];
+            if pops[j].phenotype.engulfment <= 0.0 || want <= 0.0 {
+                continue;
+            }
+            let edible = edible_biomass(pops, j, physio);
+            if edible <= 0.0 {
+                continue;
+            }
+            let size = pops[j].phenotype.cell_size;
+            for q in 0..n {
+                let e = if q == j { 0.0 } else { edibility(size, pops[q].phenotype.body_size, physio) };
+                if e > 0.0 {
+                    let a = want * e * pops[q].biomass / edible;
+                    alloc.push((j, q, a));
+                    loss[q] += a;
+                }
+            }
+        }
+        let phi: Vec<f64> = (0..n).map(|q| if loss[q] > 0.5 * pops[q].biomass { 0.5 * pops[q].biomass / loss[q] } else { 1.0 }).collect();
+        for &(j, q, a) in &alloc {
+            got[j] += a * phi[q];
+        }
+        for q in 0..n {
+            let l = loss[q] * phi[q];
+            pops[q].biomass -= l;
+            chem[WaterPool::Po4 as usize] += l / cp / volume;
+        }
+        for j in 0..n {
+            let want = wants[j];
+            taken[j] = got[j];
+            got[j] = if want > 0.0 { (got[j] / want).min(1.0) } else { 0.0 };
+        }
     }
     // Facteur de partage quand la demande dépasse le stock.
     let mut factor = [1.0; WATER_POOL_COUNT];
@@ -162,11 +246,16 @@ pub fn substep_with(
     }
     let phi_of = |r: &crate::metabolism::Reaction| r.inputs.iter().map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min);
 
-    for p in pops.iter_mut() {
+    for (j, p) in pops.iter_mut().enumerate() {
         let b = p.biomass * dt;
         let potential = p.rates.birth * b;
+        let prey_got = got.get(j).copied().unwrap_or(0.0);
         // Une voie limitée par l'un de ses intrants l'est en entier.
         let mut energy_scale = p.rates.supplement_kj;
+        // Proies : leur digestion aérobie dépend aussi de l'O₂ disponible.
+        let o2_phi = factor[WaterPool::O2 as usize];
+        let digest_phi = prey_got * (p.rates.prey_aerobic_share * o2_phi + 1.0 - p.rates.prey_aerobic_share);
+        energy_scale += p.rates.prey_energy_kj * digest_phi;
         for r in REACTIONS.iter() {
             let q = p.rates.reaction[r.id as usize];
             if q <= 0.0 {
@@ -192,9 +281,13 @@ pub fn substep_with(
         // Croissance réellement permise par l'énergie, le carbone et le phosphore obtenus.
         let energy_ratio = if p.rates.energy_kj > 0.0 { energy_scale / p.rates.energy_kj } else { 0.0 };
         let het = p.rates.heterotroph_share;
+        let doc_share = p.rates.doc_share;
         let mut carbon_phi: f64 = factor[WaterPool::Po4 as usize];
-        if het > 0.0 {
+        if doc_share > 0.0 {
             carbon_phi = carbon_phi.min(factor[WaterPool::Doc as usize]);
+        }
+        if p.rates.prey_share > 0.0 {
+            carbon_phi = carbon_phi.min(prey_got);
         }
         if het < 1.0 {
             carbon_phi = carbon_phi.min(factor[WaterPool::Dic as usize]);
@@ -242,8 +335,23 @@ pub fn substep_with(
                 }
             }
         }
-        let deaths = p.biomass * (-(-p.rates.mortality * dt).dexp_m1());
-        chem[WaterPool::Doc as usize] -= births * het / volume;
+        // La prédation est retirée plus haut, explicitement.
+        let deaths = p.biomass * (-(-(p.rates.mortality - p.rates.predation) * dt).dexp_m1());
+        if let Some(&carbon) = taken.get(j).filter(|&&c| c > 0.0) {
+            // Carbone pris aux proies : digéré (respiration ou fermentation),
+            // incorporé, et le reste rendu à l'eau en matière organique.
+            let digested = p.rates.prey_uptake * b * digest_phi;
+            let aerobic = p.rates.prey_uptake * b * prey_got * p.rates.prey_aerobic_share * o2_phi;
+            let anaerobic = digested - aerobic;
+            let incorporated = births * p.rates.prey_share;
+            let rest = (carbon - digested - incorporated).max(0.0);
+            chem[WaterPool::O2 as usize] -= aerobic / volume;
+            chem[WaterPool::Dic as usize] += (aerobic + 0.5 * anaerobic) / volume;
+            chem[WaterPool::Ch4 as usize] += 0.5 * anaerobic / volume;
+            chem[WaterPool::Doc as usize] += rest / volume;
+            debug_assert!(digested + incorporated <= carbon * (1.0 + 1e-9) + 1e-12, "proies : {digested} + {incorporated} > {carbon}");
+        }
+        chem[WaterPool::Doc as usize] -= births * doc_share / volume;
         chem[WaterPool::Dic as usize] -= births * (1.0 - het) / volume;
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
         let sinking = deaths * physio.sinking_share;
@@ -320,9 +428,61 @@ mod tests {
                 })
                 .collect(),
             marker: [0; 32],
+            organelles: Vec::new(),
         };
         let phenotype = Arc::new(Phenotype::from_genome(&genome, physio));
         Population { lineage: 0, genome: Arc::new(genome), phenotype, biomass, rates: GrowthRates::default() }
+    }
+
+    fn with_genes(genes: &[(DomainFamily, f64)], biomass: f64, physio: &Physiology) -> Population {
+        let genome = Genome::new(
+            genes
+                .iter()
+                .map(|&(family, efficiency)| Gene {
+                    domain: Domain { family, efficiency, affinity: 1.0, t_opt_k: 300.0, t_width_k: 10.0, absorption_nm: 500.0 },
+                    functional: true,
+                })
+                .collect(),
+            [0; 32],
+        );
+        let phenotype = Arc::new(Phenotype::from_genome(&genome, physio));
+        Population { lineage: 0, genome: Arc::new(genome), phenotype, biomass, rates: GrowthRates::default() }
+    }
+
+    #[test]
+    fn phagotrophs_eat_smaller_cells_and_conserve_carbon() {
+        use DomainFamily::*;
+        let physio = Physiology::default();
+        let e = env();
+        let ctx = CellContext { env: &e, light_biomass_per_m2: 0.1 };
+        let mut chem = [0.0; WATER_POOL_COUNT];
+        chem[WaterPool::Dic as usize] = 8.0;
+        chem[WaterPool::H2 as usize] = 5e-2;
+        chem[WaterPool::O2 as usize] = 1e-2;
+        chem[WaterPool::Po4 as usize] = 1e-3;
+        let prey = with_genes(&[(Catalytic(METHANOGENESIS), 1.0)], 1e9, &physio);
+        let predator = with_genes(
+            &[(Catalytic(FERMENTATION), 1.0), (Catalytic(AEROBIC_RESPIRATION), 0.5), (Cytoskeleton, 0.5), (OxidativeDefense, 1.0)],
+            1e7,
+            &physio,
+        );
+        assert!(predator.phenotype.is_phagotroph());
+        let mut pops = vec![prey, predator];
+        let v = e.water_volume_m3;
+        let before = carbon(&pops, &chem, v);
+        let p_before = phosphorus(&pops, &chem, v, &physio);
+        let mut sunk = 0.0;
+        let start = pops[1].biomass;
+        for _ in 0..30 {
+            sunk += substep(&mut pops, &ctx, &mut chem, 1.0 / 3650.0, &physio).sinking_carbon;
+        }
+        assert!(pops[1].rates.prey_uptake > 0.0);
+        assert!(pops[0].rates.predation > 0.0);
+        assert!(pops[1].biomass > start, "le prédateur croît : {} contre {start}", pops[1].biomass);
+        let after = carbon(&pops, &chem, v) + sunk;
+        assert!((after - before).abs() / before < 1e-9, "carbone avant {before}, après {after}");
+        let p_after = phosphorus(&pops, &chem, v, &physio) + sunk / physio.carbon_to_phosphorus;
+        assert!((p_after - p_before).abs() / p_before < 1e-9, "phosphore avant {p_before}, après {p_after}");
     }
 
     fn carbon(pops: &[Population], chem: &WaterChemistry, v: f64) -> f64 {

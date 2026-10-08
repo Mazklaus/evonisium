@@ -11,6 +11,7 @@ pub mod observation;
 pub mod orders;
 pub mod report;
 pub mod save;
+pub mod transitions;
 pub mod world;
 
 pub use evolution::{AcceleratorParams, EvolutionParams};

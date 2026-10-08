@@ -177,8 +177,46 @@ pub struct SpeciesView {
     /// Cellule du vivant où la première lignée de cette signature est née.
     pub origin_bio_cell: u32,
     /// Signature métabolique (bits des réactions catalysées) ; c'est aussi
-    /// `id` pendant l'ère microbienne.
+    /// `id` pendant l'ère microbienne. Les bits 16 à 19 disent l'organisation
+    /// (phagotrophe, eucaryote, plaste, multicellulaire ; voir
+    /// `evo_life::phenotype`).
     pub signature: u32,
+    /// Organisation de la population la plus abondante (étape 4).
+    pub organisation: Organisation,
+    /// Plan de construction de la population la plus abondante.
+    pub body_plan: Option<std::sync::Arc<evo_life::BodyPlan>>,
+}
+
+/// Organisation d'une espèce : cellule, organites, corps.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Organisation {
+    /// Taille de la cellule relative à une bactérie de 1 µm.
+    pub cell_size: f32,
+    /// Cellules d'un individu (1 pour un unicellulaire).
+    pub body_cells: f32,
+    pub cell_types: u8,
+    pub organelles: u8,
+    pub plastids: u8,
+    pub phagotroph: bool,
+    pub eukaryote: bool,
+    pub multicellular: bool,
+    pub sexual: bool,
+}
+
+impl Organisation {
+    pub fn of(p: &evo_life::Phenotype) -> Self {
+        Self {
+            cell_size: p.cell_size as f32,
+            body_cells: p.cells() as f32,
+            cell_types: p.cell_types() as u8,
+            organelles: p.organelles,
+            plastids: p.plastids,
+            phagotroph: p.is_phagotroph(),
+            eukaryote: p.is_eukaryote(),
+            multicellular: p.is_multicellular(),
+            sexual: p.sexual,
+        }
+    }
 }
 
 /// Un événement, tel que la chronique et les alertes le montrent.

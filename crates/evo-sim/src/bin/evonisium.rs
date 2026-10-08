@@ -118,6 +118,7 @@ fn main() {
         }
         Some("empreinte") => fingerprint(&args),
         Some("chrono") => chrono(&args),
+        Some("complexite") => complexity(&args),
         Some("equivalence") => equivalence(&args),
         Some("bench") => {
             let levels: String = arg(&args, "--levels", "6,7".to_string());
@@ -168,6 +169,85 @@ fn run(args: &[String]) {
         std::fs::write(dir.join("ordres.tsv"), world.orders.to_tsv()).expect("écriture");
         std::fs::write(dir.join("journal-genomes.tsv"), world.journal.to_tsv()).expect("écriture");
         eprintln!("Historique, événements, ordres et journal écrits dans {}", dir.display());
+    }
+}
+
+/// Partie longue qui suit les étapes de la complexité (étape 4) :
+///   evonisium complexite [--world CLÉ] [--seed N] [--level L] [--step-years Y] [--max-years Y] [--every-years Y] [--retention P]
+fn complexity(args: &[String]) {
+    use evo_sim::world::{COMPLEXITY_STAGES, COMPLEXITY_STAGE_COUNT};
+    let key: String = arg(args, "--world", "terre".to_string());
+    let params = PlanetParams::by_key(&key).unwrap_or_else(|| usage());
+    let mut cfg = WorldConfig::with_planet(params, arg(args, "--seed", 2026), arg(args, "--level", 4));
+    cfg.step_years = arg(args, "--step-years", 200_000.0);
+    if let Some(p) = opt(args, "--retention") {
+        cfg.transitions.retention_probability = p.parse().expect("probabilité invalide");
+    }
+    if args.iter().any(|a| a == "--sans-accelerateur") {
+        cfg.evolution.accelerator.enabled = false;
+    }
+    let max_years: f64 = arg(args, "--max-years", 3e9);
+    let every: f64 = arg(args, "--every-years", 50e6);
+    let start = Instant::now();
+    let mut world = World::new(cfg);
+    world.orders.submit(0.0, OrderKind::SeedLife);
+    let mut next = every;
+    let mut seen = [false; COMPLEXITY_STAGE_COUNT];
+    while world.years() < max_years {
+        world.step();
+        for (k, done) in seen.iter_mut().enumerate() {
+            if !*done {
+                if let Some(y) = world.progress.complexity_years[k] {
+                    *done = true;
+                    println!("  ★ {} : {}", COMPLEXITY_STAGES[k], format_years(y));
+                }
+            }
+        }
+        if world.years() >= next {
+            next += every;
+            let s = world.summary();
+            let mut euk = 0.0;
+            let mut phago = 0.0;
+            let mut multi = 0.0;
+            let mut total = 0.0;
+            let (mut max_cells, mut max_types, mut max_size) = (1.0f64, 1usize, 1.0f64);
+            for p in world.communities.iter().flatten() {
+                total += p.biomass;
+                if p.phenotype.is_eukaryote() {
+                    euk += p.biomass;
+                }
+                if p.phenotype.is_phagotroph() {
+                    phago += p.biomass;
+                }
+                if p.phenotype.is_multicellular() {
+                    multi += p.biomass;
+                }
+                max_cells = max_cells.max(p.phenotype.cells());
+                max_types = max_types.max(p.phenotype.cell_types());
+                max_size = max_size.max(p.phenotype.cell_size);
+            }
+            let total = total.max(1e-300);
+            println!(
+                "{:>9} O₂ {:.1e} | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | {:.0} s",
+                format_years(world.years()),
+                s.globals.o2_mixing,
+                100.0 * phago / total,
+                100.0 * euk / total,
+                100.0 * multi / total,
+                max_size,
+                max_cells,
+                max_types,
+                start.elapsed().as_secs_f64()
+            );
+        }
+        if world.progress.complexity_years[6].is_some() && args.iter().any(|a| a == "--stop") {
+            break;
+        }
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    println!("{} simulés en {:.0} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
+    if let Some(path) = opt(args, "--save") {
+        world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
     }
 }
 

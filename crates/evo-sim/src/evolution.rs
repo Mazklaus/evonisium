@@ -34,6 +34,7 @@
 //!   stagne : plus de mutations innovantes et de transferts. Une fixation
 //!   qui n'aurait pas eu lieu sans lui porte la cause « Accélérateur ».
 
+use crate::transitions;
 use crate::world::WorldConfig;
 use evo_core::rng::{rng_for, Stream};
 use evo_genetics::popgen::fixation_probability;
@@ -43,6 +44,7 @@ use evo_genetics::{
 };
 use evo_life::community::{CellContext, Population};
 use evo_life::metabolism::photosynthesis_stage;
+use evo_life::phenotype::PATHWAY_MASK;
 use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
@@ -79,7 +81,7 @@ pub struct EvolutionParams {
 impl Default for EvolutionParams {
     fn default() -> Self {
         Self {
-            candidates_per_kind: [4, 1, 1, 1, 1, 1, 2],
+            candidates_per_kind: [4, 1, 1, 1, 1, 1, 2, 1],
             tunnel: true,
             tunnel_min_selection: -0.05,
             tunnel_attempts_per_genotype: 2,
@@ -102,11 +104,15 @@ pub struct AcceleratorParams {
     /// Multiplicateur des mutations innovantes (de novo, duplication suivie
     /// de divergence) et des transferts horizontaux quand il agit.
     pub boost: f64,
+    /// Durée sans nouvelle étape de la complexité (après la photosynthèse
+    /// oxygénique) avant d'agir sur les transitions de l'étape 4 : rétentions
+    /// d'endosymbiotes et mutations innovantes plus fréquentes.
+    pub complexity_patience_years: f64,
 }
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 300e6, boost: 100.0 }
+        Self { enabled: true, patience_years: 300e6, boost: 100.0, complexity_patience_years: 1.5e9 }
     }
 }
 
@@ -121,6 +127,8 @@ pub struct EvolutionStats {
     /// plus que la borne d'essais.
     pub tunnel_genotypes: u64,
     pub tunnel_capped: u64,
+    /// Mutations réunies par recombinaison chez les sexués.
+    pub recombinations: u64,
     pub fixed_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
 }
 
@@ -132,6 +140,7 @@ impl EvolutionStats {
         self.tunnel_successes += o.tunnel_successes;
         self.tunnel_genotypes += o.tunnel_genotypes;
         self.tunnel_capped += o.tunnel_capped;
+        self.recombinations += o.recombinations;
         for (a, b) in self.fixed_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -269,9 +278,11 @@ pub fn evolve_genotype(
     envs: &[CellEnvironment],
     cfg: &WorldConfig,
     dt: f64,
+    years: f64,
     group: &GenotypeGroup,
     rng: &mut impl Rng,
     accelerator_on: bool,
+    complex_accelerator_on: bool,
     stats: &mut EvolutionStats,
 ) -> Option<(GenomeChange, Phenotype, GrowthRates, f64)> {
     let physio = &cfg.physiology;
@@ -289,18 +300,19 @@ pub fn evolve_genotype(
         .iter()
         .map(|&(c, j, b)| {
             let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-            (c, j, b, ctx.conditions(CellContext::photo_biomass(&communities[c])))
+            (c, j, b, ctx.conditions_of(&communities[c], physio))
         })
         .collect();
     let weight: f64 = judged.iter().map(|j| j.2).sum::<f64>().max(f64::MIN_POSITIVE);
     let chem = &chemistry[rc];
     let cond = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| j.3).unwrap_or_else(|| {
         let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-        ctx.conditions(CellContext::photo_biomass(pops))
+        ctx.conditions_of(pops, physio)
     });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
     let boost = if accelerator_on { evo.accelerator.boost } else { 1.0 };
+    let complex_boost = if complex_accelerator_on { evo.accelerator.boost } else { 1.0 };
     let generations = dt / resident.rates.generation_time(physio);
     let ne = cfg.regime.effective_size(group.census);
     let supply = group.supply_ne.max(ne);
@@ -309,7 +321,7 @@ pub fn evolve_genotype(
     // Évalue un génome candidat contre la population qu'il affronterait.
     // Coefficient de sélection d'un phénotype candidat.
     let judge = |phenotype: Phenotype| -> Option<(f64, Phenotype, GrowthRates)> {
-        if phenotype.signature == 0 {
+        if phenotype.signature & PATHWAY_MASK == 0 {
             return None;
         }
         // Mutation sans effet sur le phénotype (marqueur, gène inactif) :
@@ -354,6 +366,11 @@ pub fn evolve_genotype(
             *best = Some(Best { s, change, phenotype, rates });
         }
     };
+    // Chez un sexué, les autres mutations avantageuses qui se fixeraient
+    // peuvent se réunir à la meilleure (voir `transitions::recombine`).
+    let sexual = resident.phenotype.sexual;
+    let has_regulator = resident.genome.functional_genes().any(|g| g.domain.family == evo_genetics::DomainFamily::Regulator);
+    let mut beneficial: Vec<GenomeChange> = Vec::new();
 
     // Candidats au tunnel : ceux qui ne se fixent pas seuls mais sont assez
     // proches de la neutralité. Seuls les premiers (borne par génotype et
@@ -363,22 +380,32 @@ pub fn evolve_genotype(
     let mut tunnel_eligible = 0usize;
     for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
         let count = evo.candidates_per_kind[k] * group.candidate_factor();
-        if count == 0 {
+        // Sans régulateur, pas de bloc à dupliquer : la classe se confondrait
+        // avec la duplication simple.
+        if count == 0 || (kind == MutationKind::ModuleDuplication && !has_regulator) {
             continue;
         }
-        let innovative = matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence);
-        let kind_boost = if innovative { boost } else { 1.0 };
+        let innovative = matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence | MutationKind::ModuleDuplication);
+        let kind_boost = if innovative { boost.max(complex_boost) } else { 1.0 };
         let copies = supply * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
         for _ in 0..count {
             let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
             let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
+                if sexual && kind == MutationKind::Point && fixes(&cfg.regime, s, ne, copies, kind_boost, rng).is_some() {
+                    beneficial.push(change);
+                }
                 continue;
             }
             match fixes(&cfg.regime, s, ne, copies, kind_boost, rng) {
                 Some(accelerated) => {
                     if accelerated {
                         change.cause = GenomeChangeCause::Accelerator;
+                    }
+                    if sexual && s > 0.0 {
+                        if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+                            beneficial.push(b.change.clone());
+                        }
                     }
                     consider(&mut best, s, change, phenotype, rates);
                 }
@@ -465,6 +492,39 @@ pub fn evolve_genotype(
             }
         }
     }
+    // Endosymbiose : un phagotrophe garde une proie englobée.
+    if resident.phenotype.engulfment > 0.0 {
+        // Les rétentions se comptent sur l'effectif réel (pas sur l'effectif
+        // efficace plafonné) : un événement rare dont le nombre ne dépend
+        // pas de la résolution de la grille.
+        let partners = transitions::engulfed_partners(resident, i, pops, group.census, dt, years, cfg, rng);
+        for partner in partners {
+            let Some((s, phenotype, rates)) = evaluate(&partner.change.genome, stats) else { continue };
+            if best.as_ref().is_some_and(|b| b.s >= s) {
+                continue;
+            }
+            if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, complex_boost, rng) {
+                let mut change = partner.change;
+                if accelerated {
+                    change.cause = GenomeChangeCause::Accelerator;
+                }
+                consider(&mut best, s, change, phenotype, rates);
+            }
+        }
+    }
+    // Sexe : la meilleure mutation se recombine avec les autres avantageuses.
+    if sexual && !beneficial.is_empty() {
+        if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+            if let Some(change) = transitions::recombine(&resident.genome, &b.change, &beneficial) {
+                if let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) {
+                    if s > b.s {
+                        stats.recombinations += 1;
+                        best = Some(Best { s, change, phenotype, rates });
+                    }
+                }
+            }
+        }
+    }
     best.map(|b| (b.change, b.phenotype, b.rates, b.s))
 }
 
@@ -480,9 +540,11 @@ pub fn evolve_deme(
     envs: &[CellEnvironment],
     cfg: &WorldConfig,
     dt: f64,
+    years: f64,
     step_index: u64,
     round: u64,
     accelerator_on: bool,
+    complex_accelerator_on: bool,
 ) -> (Vec<Fixation>, EvolutionStats) {
     let mut stats = EvolutionStats::default();
     let mut out = Vec::new();
@@ -494,9 +556,19 @@ pub fn evolve_deme(
         } else {
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
         };
-        if let Some((change, phenotype, rates, selection)) =
-            evolve_genotype(communities, chemistry, envs, cfg, dt, &group, &mut rng, accelerator_on, &mut stats)
-        {
+        if let Some((change, phenotype, rates, selection)) = evolve_genotype(
+            communities,
+            chemistry,
+            envs,
+            cfg,
+            dt,
+            years,
+            &group,
+            &mut rng,
+            accelerator_on,
+            complex_accelerator_on,
+            &mut stats,
+        ) {
             let GenomeChange { genome, cause, element } = change;
             out.push(Fixation {
                 habitat: group.habitat,
