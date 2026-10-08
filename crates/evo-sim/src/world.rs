@@ -176,6 +176,9 @@ pub struct WorldStats {
     /// Cellules où l'éviction a retiré une population établie (plus que la
     /// biomasse d'un fondateur), et non seulement des arrivants du pas.
     pub established_eviction_cell_steps: u64,
+    /// Parmi elles, celles où la population établie évincée croissait
+    /// encore (r > 0).
+    pub growing_eviction_cell_steps: u64,
     /// Modifications de génome fixées, par cause ([`GenomeChangeCause::index`]).
     pub fixed_changes_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
     /// Cellules passées de l'océan à la terre et inversement.
@@ -1064,7 +1067,7 @@ impl World {
         let cp = self.config.physiology.carbon_to_phosphorus;
         let envs = &self.bio.env;
         let founder = self.config.founder_biomass;
-        let (removed, saturated, established, occupied) = self
+        let (removed, saturated, established, growing, occupied) = self
             .communities
             .par_iter_mut()
             .zip(self.chemistry.par_iter_mut())
@@ -1072,7 +1075,7 @@ impl World {
             .map(|(c, (pops, chem))| {
                 let occupied = u64::from(!pops.is_empty());
                 if pops.len() <= max {
-                    return (0, 0, 0, occupied);
+                    return (0, 0, 0, 0, occupied);
                 }
                 let guilds: Vec<Option<u8>> = pops.iter().map(|p| p.phenotype.main_pathway()).collect();
                 let mut guild: BTreeMap<Option<u8>, usize> = BTreeMap::new();
@@ -1099,6 +1102,7 @@ impl World {
                 let mut i = 0;
                 let mut removed = 0;
                 let mut established = 0;
+                let mut growing = 0;
                 pops.retain(|p| {
                     let k = keep[i];
                     i += 1;
@@ -1107,6 +1111,9 @@ impl World {
                         // a grandi depuis son arrivée.
                         if p.biomass > founder {
                             established = 1;
+                            if p.rates.r > 0.0 {
+                                growing = 1;
+                            }
                         }
                         chem[WaterPool::Doc as usize] += p.biomass / v;
                         chem[WaterPool::Po4 as usize] += p.biomass / cp / v;
@@ -1114,12 +1121,13 @@ impl World {
                     }
                     k
                 });
-                (removed, 1, established, occupied)
+                (removed, 1, established, growing, occupied)
             })
-            .reduce(|| (0, 0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3));
+            .reduce(|| (0, 0, 0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3, a.4 + b.4));
         self.stats.local_extinctions += removed;
         self.stats.saturated_cell_steps += saturated;
         self.stats.established_eviction_cell_steps += established;
+        self.stats.growing_eviction_cell_steps += growing;
         self.stats.occupied_cell_steps += occupied;
     }
 
