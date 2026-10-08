@@ -21,6 +21,10 @@ pub enum Stream {
     Migration = 4,
     Validation = 5,
     Benchmark = 6,
+    Tectonics = 7,
+    Transfer = 8,
+    Climate = 9,
+    Orders = 10,
 }
 
 /// Mélangeur SplitMix64 : diffuse chaque bit d'entrée sur toute la sortie.

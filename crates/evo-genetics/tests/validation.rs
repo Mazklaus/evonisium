@@ -158,3 +158,27 @@ fn origin_fixation_matches_explicit_wright_fisher_with_rare_mutations() {
     assert!((explicit as f64 - expected).abs() < tol);
     assert!((origin_fixation as f64 - expected).abs() < tol);
 }
+
+/// Tunnel stochastique : la formule du moteur contre une simulation de
+/// Wright-Fisher explicite à trois types (sauvage, intermédiaire, double).
+fn assert_tunnel_matches(n: u64, delta: f64, mu2: f64, s: f64, replicates: u32) {
+    use evo_genetics::popgen::{tunnel_probability, wright_fisher_tunnel};
+    let p2 = new_mutant_fixation(s, n as f64);
+    let theory = tunnel_probability(delta, mu2, p2);
+    let mut rng = rng_for(7, Stream::Validation, &[n, delta.to_bits(), mu2.to_bits()]);
+    let hits = (0..replicates).filter(|_| wright_fisher_tunnel(n, delta, mu2, s, &mut rng)).count();
+    let sim = hits as f64 / replicates as f64;
+    let se = (theory * (1.0 - theory) / replicates as f64).sqrt();
+    println!("tunnel N = {n}, δ = {delta}, μ₂ = {mu2}, s = {s} : théorie {theory:.5}, Wright-Fisher {sim:.5} ± {se:.5}");
+    assert!((sim - theory).abs() < 4.0 * se, "théorie {theory}, simulé {sim} (tolérance {})", 4.0 * se);
+}
+
+#[test]
+fn stochastic_tunnel_matches_wright_fisher() {
+    // Intermédiaire légèrement coûteux.
+    assert_tunnel_matches(10_000, 0.01, 1e-3, 0.1, 80_000);
+    // Intermédiaire neutre.
+    assert_tunnel_matches(10_000, 0.0, 2e-4, 0.05, 80_000);
+    // Intermédiaire nettement coûteux, seconde mutation fréquente.
+    assert_tunnel_matches(5_000, 0.05, 1e-2, 0.2, 80_000);
+}

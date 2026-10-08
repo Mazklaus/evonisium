@@ -1,6 +1,6 @@
 [package]
 name = "evo-sim"
-description = "Monde simulé sans affichage, ordonnanceur et outil en ligne de commande (étape 1)."
+description = "Monde simulé sans affichage, file d'ordres, porte de l'étape 2 et outil en ligne de commande."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

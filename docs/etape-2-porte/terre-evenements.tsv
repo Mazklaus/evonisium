@@ -1,0 +1,1387 @@
+id	annees	cellule	type	origine	cause	interet	detail
+0	0	4	vie déposée	moteur		1.00	LifeSeeded { lineage: 0 }
+16	200000	1084	innovation	moteur		0.85	Innovation { lineage: 0, pathway: "rhodopsine", stage: 1, label: "rhodopsine" }
+17	200000	161	innovation	moteur	0	0.70	Innovation { lineage: 0, pathway: "photosynthèse", stage: 2, label: "phototrophie simple" }
+30	400000	795	innovation	moteur	17	0.80	Innovation { lineage: 20, pathway: "photosynthèse", stage: 3, label: "photosynthèse anoxygénique" }
+94917	18800000	455	innovation	moteur	30	0.90	Innovation { lineage: 88076, pathway: "photosynthèse", stage: 4, label: "photosynthèse oxygénique" }
+337007	57000000		seuil d'oxygène	moteur	94917	1.00	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+337715	57200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+338918	57400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+340552	57600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+343541	58000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+343542	58000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+343543	58000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+343544	58000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+344515	58200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+344516	58200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+344517	58200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+346868	58600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+351446	59400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+354833	60200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+358601	61200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+360880	61800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+386319	70200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+387581	70600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+418471	78800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+420170	79200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+422806	79800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+424544	80200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+427011	80800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+427995	81000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+428871	81200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+430487	81600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+435878	82800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+441694	84000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+442704	84200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+444347	84600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+451225	86200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+452865	86600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+468744	90000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+469685	90200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+469686	90200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+470670	90400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+471337	90600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+471338	90600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+472193	90800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+472194	90800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+476860	91800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+477867	92000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+478847	92200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+480670	92600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+482572	93000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+493727	95200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+493728	95200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+495712	95600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+496635	95800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+497719	96000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+498858	96200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+499875	96400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+500826	96600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+501770	96800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+507170	97800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+508244	98000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+510486	98400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+511430	98600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+512497	98800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+520886	100200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+524538	100800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+533848	102200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+537943	102800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+540832	103200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+544883	103800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+555248	105200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+559588	105800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+595636	110200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+600855	110800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+604321	111200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+609835	111800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+613394	112200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+615106	112400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+616963	112600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+618882	112800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+634111	114200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+640718	114800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+645484	115200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+645485	115200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+649363	115600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+651234	115800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+667149	117200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+671879	117600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+692047	119200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+700441	119800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+706284	120200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+714606	120800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+720910	121200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+723836	121400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+726433	121600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+729374	121800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+735957	122200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+745163	122800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+752018	123200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+761689	123800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+765142	124000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+768681	124200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+774803	124600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+777850	124800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+784910	125200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+794863	125800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+802306	126200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+809622	126600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+825183	127400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+828719	127600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+877112	130000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+877113	130000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+881141	130200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+881142	130200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+881143	130200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+887955	130600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+887956	130600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+892540	130800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+892541	130800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+914698	131800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+924086	132200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+932807	132600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+964920	134000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+969556	134200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+969557	134200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+973492	134400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+977059	134600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+977060	134600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+981334	134800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1004028	135800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1037663	137200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1050531	137800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1055604	138000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1065183	138400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1068580	138600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1072928	138800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1077764	139000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1082538	139200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1086514	139400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1089709	139600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1089710	139600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1113015	140600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1151139	142200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1164479	142800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1223354	145200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1236619	145800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1246672	146200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1259973	146800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1269827	147200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1282974	147800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1293070	148200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1302436	148600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1316300	149200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1329555	149800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1353414	150800000		réorganisation des plaques	moteur		0.55	PlateReorganisation { plates: 14 }
+1386520	152200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1395359	152600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1409319	153200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1418292	153600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1455778	155200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1455779	155200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1464064	155600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1468452	155800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1473183	156000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1477833	156200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1485611	156600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1489926	156800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1499424	157200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1512589	157800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1521951	158200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1534919	158800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1585993	161000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1585994	161000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1590280	161200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1590281	161200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+1590282	161200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+1598159	161600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+1598160	161600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+1598161	161600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1602999	161800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1612640	162200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1620855	162600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1646734	163800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1655953	164200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1667823	164800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1676702	165200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1688569	165800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1692966	166000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1697464	166200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1701099	166400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1701100	166400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+1704174	166600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+1704175	166600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1707293	166800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1744628	168600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1757246	169200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1757247	169200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1764566	169600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1768508	169800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1772786	170000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1777213	170200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1781074	170400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1784177	170600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1787282	170800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1820042	172400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1823007	172600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1835691	173200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1842246	173600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1893713	176200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1901071	176600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1932430	178200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+1932431	178200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+1932432	178200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+1932433	178200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+1938601	178600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+1938602	178600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+1943040	178800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+1943041	178800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+1963862	179800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1972055	180200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+1984146	180800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+1992279	181200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+2003508	181800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+2031343	183200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+2035216	183400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2038417	183600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2068706	185200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2075973	185600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2113184	187600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.01, rising: true }
+2124570	188200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.01, rising: false }
+2128456	188400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2131370	188600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2142704	189200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2142705	189200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+2142706	189200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+2142707	189200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+2148306	189600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+2148307	189600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+2152210	189800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+2152211	189800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2246824	195200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2249923	195400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+2252491	195600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+2255003	195800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2277897	197200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2283347	197600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2326055	200400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2328272	200600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2353948	202200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2361770	202800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2383652	204200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2391472	204800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2398086	205200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2408306	206000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2427538	207200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2435031	207800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2456091	209200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2474921	210600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+2484235	211200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+2662162	225400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+2666641	225800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+2758541	233400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+2763333	233800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+2868521	242400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+2873308	242800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3110654	267200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3220126	284000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3223375	284600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3235584	286800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3238602	287400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3240983	287800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3244552	288400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3247981	289000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3254084	290000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3268592	292600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3270838	293000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3316502	300800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+3317778	301000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3318988	301200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3333204	303400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3340406	304600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3377713	311200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3400529	315400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3413494	318200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3421408	319800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3434145	322800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3442482	324600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3444180	325000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3448010	325800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3464800	329200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3480277	332200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3505061	336600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3505902	336800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3511939	338000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3513197	338200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3577113	348200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3602356	352800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3695387	369800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3698619	370400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3723110	374800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3729664	375600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3731053	375800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3732235	376000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3737248	377000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3737249	377000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3737250	377000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3745717	377800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3747530	378000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3749060	378200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3753206	379000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3753207	379000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3754933	379200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3757329	379400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3759753	379600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3759754	379600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3761866	379800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3761867	379800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3763919	380000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3772867	380800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3776655	381200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3776656	381200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3777801	381400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3780567	381800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3781713	382000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3781714	382000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3783797	382200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3789494	382600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3815404	385000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3829871	386400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3831395	386600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3831396	386600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3832472	386800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3833948	387000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3853819	389600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3861668	390600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3864196	391000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+3864197	391000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3864943	391200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3866287	391600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+3868501	392000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+3868502	392000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+3868503	392000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3878736	392800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+3976399	398600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+3992398	400000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4007528	401600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4018200	402800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4038479	405400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4044791	406200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4047583	406600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4050554	407000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4058341	408000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4064366	408800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4067137	409200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4070002	409600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4071525	409800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4079146	410800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4080536	411000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4081934	411200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4083168	411400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4083169	411400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4091031	412400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4103383	413200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4109465	413600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4116080	414000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4121994	414400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4121995	414400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4126330	414800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4130541	415200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4137978	415600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4141786	415800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4153776	416600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4160899	417000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4164071	417200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4164072	417200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4179983	419000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4185535	419600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4198684	421000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4199981	421200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4201777	421400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4204406	421600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4204407	421600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4204408	421600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4209397	422400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4209398	422400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4229783	424800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4230969	425000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4232252	425200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4235877	425600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4235878	425600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4235879	425600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4238433	426000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4240850	426400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4246849	427000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4246850	427000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4255709	427800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4268188	429000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4270287	429200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4270288	429200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4285354	430600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4285355	430600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4285356	430600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4301459	431800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4309298	432400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4320173	433200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4322707	433400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4325213	433600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4326599	433800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4326600	433800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4355134	436000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4369866	437200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4372191	437400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4374732	437600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4375915	437800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4375916	437800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4387995	438800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4387996	438800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4391325	439000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4394660	439200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4402169	439800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4415645	440800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4420457	441200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4420458	441200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4423061	441600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4426095	442000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4429133	442200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4435291	442600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4437481	442800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4439292	443000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4441472	443200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4447141	443600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4447142	443600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4449477	443800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4450856	444000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4450857	444000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4450858	444000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4458829	444600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4462178	444800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4465429	445000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4478707	446400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4483765	446800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4487760	447200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4491686	447600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4514848	449600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4514849	449600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4516016	449800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4516017	449800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4516018	449800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4520704	450200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4520705	450200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4520706	450200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4527548	450800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4527549	450800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4527550	450800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+4543309	452200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4547376	452600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4549755	452800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4555412	453200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4560710	453600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4577533	454800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4580282	455000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4583344	455200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4584723	455400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4584724	455400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4584725	455400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4603322	456600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4616079	457400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4690544	462400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4693404	462600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4693405	462600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4695078	462800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4695079	462800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4703722	463600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4703723	463600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4709042	464000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4709043	464000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4709044	464000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4744530	466400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4757258	467200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4857883	474400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4860512	474600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4860513	474600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4863605	475000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4863606	475000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4871686	475600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+4874839	475800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+4878707	476200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+4878708	476200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+4892690	477200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+4913150	478800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+4921294	479400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5257152	507800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+5284529	510200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+5405992	521000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+5423936	522600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+5461040	525600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+5492582	528200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+5492583	528200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5494742	528400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5496910	528600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+5505680	529400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+5505681	529400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5507847	529600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5587551	536400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5590374	536600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5590375	536600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+5594110	537000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+5594111	537000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5595847	537200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5672569	543400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5675468	543600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5678529	543800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+5680492	544000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+5680493	544000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5680494	544000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5771985	551400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5775048	551600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5775049	551600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+5778729	552000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+5778730	552000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5785242	552400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5788701	552600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+5790739	552800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+5790740	552800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5792798	553000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5943473	562600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5947099	562800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+5953834	563200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+5956978	563400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+5991418	565600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+5997388	566000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6019221	567400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6032012	568200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6054380	569600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6063898	570200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6122726	574000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6133461	574600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6133462	574600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6139180	575000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6139181	575000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6141177	575200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6228277	581200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6234555	581600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6234556	581600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6240029	582000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6240030	582000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6241868	582200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6253608	583000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6259292	583400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6259293	583400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6263369	583800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6266503	584000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6268373	584200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6268374	584200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6270494	584400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6296470	586200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6299583	586400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6302562	586600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6304769	586800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6304770	586800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6322519	588200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6359061	591200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6370224	592200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6385474	593600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6387617	593800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6391698	594200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6393805	594400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6403732	595200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6408757	595600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6408758	595600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6413093	596000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6413094	596000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6414487	596200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6425796	597200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6430629	597600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6434816	598000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6436962	598200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6449890	599400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6464479	600800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+6468433	601200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6474908	601800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6485087	602800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6491636	603400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6509395	605200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6526782	607000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6528578	607200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6530574	607400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6535567	608000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6535568	608000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6541602	608800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6541603	608800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6544880	609200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6544881	609200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6546641	609400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6550620	609800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6552541	610000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6552542	610000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6554118	610200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6556119	610400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6556120	610400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+6558288	610600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+6558289	610600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6560031	610800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6578202	613200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6580057	613400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6585540	614000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6587072	614200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6597514	615400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6626886	618200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6655959	620800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6664938	621600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6684061	623000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6689743	623400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6705114	624400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6719461	625400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+6739390	626800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+6754981	627800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+6887088	636600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+6900058	637400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7111541	650800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7295718	668400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7298873	668800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7302304	669200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7307803	669800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7324206	671400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7325644	671600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7327221	671800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7331445	672200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7333127	672400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7339367	673000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7339368	673000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7339369	673000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7380044	677000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7383820	677400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7423466	681600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7428650	682200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7457448	685400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7466536	686400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7476684	687200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7478388	687400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7480093	687600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7484115	688000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7487344	688400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7494199	689000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7494200	689000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7496898	689200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7610194	701200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7614772	701600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7614773	701600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7616660	701800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7616661	701800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7618825	702000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7643564	704000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7643565	704000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7645413	704200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7649573	704600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7649574	704600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7653276	705000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7653277	705000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7656812	705400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7656813	705400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7658874	705600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7658875	705600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7660772	705800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7663203	706000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7663204	706000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7675207	707000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7677009	707200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7677010	707200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7681722	707800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7685022	708200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7688880	708600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7688881	708600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7688882	708600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7703418	709800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7705533	710000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7709993	710400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7712472	710600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7724043	711600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7726034	711800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7728255	712000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7730611	712200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7730612	712200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7735578	712600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7746941	713600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7749083	713800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7753698	714200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7756041	714400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7787313	717200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7791425	717600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7791426	717600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7793481	717800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7793482	717800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7802656	718600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7807006	719000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7811540	719400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7821288	720200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7822786	720400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7822787	720400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7827504	721000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7830517	721400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7834206	721800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7834207	721800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7843042	722600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7851989	723400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7853690	723600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7855466	723800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7857079	724000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7857080	724000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7859228	724200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7870349	725200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7878578	726000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7889096	727000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7892896	727400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7892897	727400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7894441	727600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7894442	727600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7906716	728800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7919231	730000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7923012	730400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7927180	730800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7929276	731000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7939471	732000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7945463	732600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7951759	733200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7953316	733400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7955041	733600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7958378	734000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7959753	734200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7963206	734600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+7963207	734600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+7964681	734800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+7964682	734800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+7966950	735000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7979337	736200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+7986425	737000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+7995933	738000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8003051	738800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8014012	740000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8019215	740600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8024512	741200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8025933	741400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8025934	741400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8028810	741800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8032981	742400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8036011	742800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8036012	742800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8043640	743600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8049188	744200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8052185	744600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8052186	744600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8055149	745000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8057928	745400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8059531	745600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8061052	745800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8063652	746200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8065295	746400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8072607	747200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8076117	747600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8079493	748000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8087688	749000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8090833	749400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8094208	749800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8097877	750200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8103535	750800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+8107045	751200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8112569	751800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8135147	754200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8138327	754600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8140014	754800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8147321	755600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8152820	756200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8159746	757000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8168397	758000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8170013	758200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8171550	758400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8174598	758800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8175900	759000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8180732	759600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8185776	760200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8187228	760400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8188570	760600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8191111	761000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8191112	761000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8194333	761400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8199548	762000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8202479	762400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8202480	762400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8204863	762800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8204864	762800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8214116	764000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8220846	764800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8222411	765000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8223877	765200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8224972	765400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8226252	765600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8230911	766200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8234042	766600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8235798	766800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8239401	767200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8240963	767400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8242172	767600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8245406	768200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8246590	768400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8250255	769000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8250256	769000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8256189	769800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8259362	770200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8277495	772600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8280576	773000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8282095	773200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8283612	773400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8284798	773600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8284799	773600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8286316	773800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8289382	774200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8290859	774400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8290860	774400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8294194	775000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8300819	776000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8303851	776400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8305337	776600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8305338	776600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8305339	776600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8308174	777000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8308175	777000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8310650	777400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8311788	777600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8313948	778000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8315123	778200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8320845	779000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8320846	779000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8322102	779200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8322103	779200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8327782	780000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8328993	780200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8330919	780600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8331997	780800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8333019	781000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8334112	781200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8339727	782000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8339728	782000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8342234	782400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8342235	782400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8344592	782800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8345829	783000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8348102	783400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8349444	783600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8355291	784400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8355292	784400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8358211	784800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8358212	784800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8359986	785000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8363820	785400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8363821	785400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8363822	785400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8367524	785800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8370585	786200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8374738	786800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8378415	787200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8386229	788000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8390133	788400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8396412	789000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8396413	789000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8415095	791200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8434834	792800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8455651	794600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8455652	794600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8460782	795000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8460783	795000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8464600	795400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8464601	795400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8471887	796000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8471888	796000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8471889	796000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+8474107	796200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+8475965	796400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8475966	796400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8480945	796800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8484297	797200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8487818	797600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8492537	798000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8497494	798400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8539250	801400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8544459	801800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8560101	803000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8602318	805800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8607966	806200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8779125	816200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8782092	816400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8803716	817600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8803717	817600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8807416	817800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8807417	817800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8813492	818200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8813493	818200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8820907	818600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8820908	818600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+8823504	818800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+8823505	818800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+8832116	819200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+8839867	819600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9067134	834600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9184070	846800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9201662	848800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9214738	850200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9216512	850400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9216513	850400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9218002	850600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9218003	850600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9222439	851000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9222440	851000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9224516	851200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9224517	851200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9227462	851400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9232063	851800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9242683	852800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9254206	854000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9255977	854200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9255978	854200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9259551	854600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9262033	854800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9278054	856200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9288188	857200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9290010	857400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9290011	857400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9294762	857800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9294763	857800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9299494	858200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9299495	858200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9301526	858400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9304380	858600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9304381	858600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9306896	858800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9318235	859800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9329977	861000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9331826	861200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9333774	861400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9335505	861600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9335506	861600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9338344	861800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9343151	862200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9347549	862600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9349695	862800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9351719	863000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9351720	863000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9356290	863400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9364458	864200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9366242	864400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9366243	864400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9367862	864600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9370356	864800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9382376	865800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9392222	866600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9396174	867000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9396175	867000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9397767	867200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9397768	867200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9409900	868200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9421927	869200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9448455	872600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9451398	873000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9456295	873600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9461071	874200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9464114	874600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9465607	874800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9467186	875000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9468838	875200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9472029	875600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9479576	876600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9482454	877000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9483945	877200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9485289	877400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9487773	877600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9489872	877800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9489873	877800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9491595	878000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9494759	878200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9494760	878200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9505478	879000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9509484	879400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9511416	879600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9515765	880000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9515766	880000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9520216	880400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9522448	880600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9526827	881000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9536274	881800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9540375	882200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9540376	882200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9547321	882800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9549993	883000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9552195	883200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9554324	883400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9559752	883800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9559753	883800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9575219	885000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9583044	885600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9589136	886200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9589137	886200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9595186	886800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9595187	886800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9597426	887000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9597427	887000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9604200	887600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9604201	887600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9606597	887800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9608926	888000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9610804	888200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9610805	888200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9628559	889600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+9633935	890000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+9638960	890400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9640993	890600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9645443	891000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9647697	891200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9651891	891600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9651892	891600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9738175	900800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+9752506	902400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9754375	902600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9758029	903000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9761738	903400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9778097	904800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9782211	905200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9788252	905800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9797682	906600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9804938	907200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9807167	907400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9809231	907600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9811452	907800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9822590	908800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9835624	909800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9843139	910400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9848225	910800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9862488	912000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9920153	916800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9941544	918400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9944124	918600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+9949580	919000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+9949581	919000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+9956655	919400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+9963706	919800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10005208	922800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10370392	951800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10381610	953200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10399206	955400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10413600	957400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10480768	970400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10481860	970600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10481861	970600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10484271	971000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10484272	971000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10487169	971400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10523043	978400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10528462	979200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10542173	981400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10547642	982200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10568308	985200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10568309	985200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10569790	985400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10591921	987200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10593774	987400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10595619	987600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10595620	987600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10603416	988200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10603417	988200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10609583	988800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10611619	989000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10613778	989200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10613779	989200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10616262	989400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10623327	990000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10625554	990200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10627337	990400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10653698	992800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10655638	993000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10667266	994000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10667267	994000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10674397	994600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10676787	994800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10679261	995000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10679262	995000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10684002	995400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10686183	995600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10690919	996000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10693093	996200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10697697	996600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10700067	996800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10705687	997200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10711269	997600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10713798	997800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10719270	998200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10727652	998800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10727653	998800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10730317	999000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10730318	999000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10730319	999000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10738363	999400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10742138	999600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10752625	1000400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10752626	1000400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10754693	1000600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10760720	1001000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10760721	1001000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10765780	1001400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10765781	1001400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10772218	1001800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10772219	1001800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10775669	1002000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10778460	1002200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10781143	1002400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10781144	1002400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10783740	1002600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10783741	1002600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10789950	1003000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10792425	1003200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10794725	1003400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10798235	1003600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10804062	1004000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10804063	1004000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10806684	1004200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10806685	1004200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10815649	1004800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+10815650	1004800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+10818215	1005000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+10818216	1005000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+10818217	1005000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+10825816	1005400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+10839527	1006400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11039623	1022400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11044325	1022800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11046950	1023000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11052205	1023400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11074021	1025400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11081926	1026200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11094024	1027200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11095723	1027400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11095724	1027400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11097712	1027600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11097713	1027600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11103091	1028000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11103092	1028000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11105511	1028200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11105512	1028200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11105513	1028200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11112099	1028600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11114882	1028800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11117516	1029000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11120399	1029200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11120400	1029200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11120401	1029200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11129879	1029800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11134976	1030200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11154187	1032200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11162353	1033200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11173896	1034600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11179474	1035400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11186228	1036200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11187681	1036400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11187682	1036400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11191623	1036800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11191624	1036800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11191625	1036800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11197412	1037200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11197413	1037200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11199840	1037400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11202381	1037600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11202382	1037600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11202383	1037600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11208163	1038000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11208164	1038000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11213034	1038400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11215127	1038600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11215128	1038600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11215129	1038600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11221784	1039000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11221785	1039000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11221786	1039000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11229725	1039600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11229726	1039600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11229727	1039600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11233272	1039800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11233273	1039800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11235938	1040000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11238368	1040200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11238369	1040200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11242715	1040400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11246296	1040600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11246297	1040600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11246298	1040600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11251116	1041000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11251117	1041000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11255413	1041200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11258847	1041400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11258848	1041400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11261287	1041600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11263584	1041800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11263585	1041800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11267813	1042000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11271099	1042200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11271100	1042200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11273370	1042400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11275565	1042600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11275566	1042600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11275567	1042600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11283245	1043000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11285703	1043200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11285704	1043200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11287784	1043400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11287785	1043400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11291247	1043600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11294081	1043800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11294082	1043800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11294083	1043800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11296946	1044000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11296947	1044000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11302447	1044400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11302448	1044400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11305182	1044600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11305183	1044600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11309702	1045000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11309703	1045000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11311881	1045200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11311882	1045200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11318686	1045600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11320785	1045800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11322696	1046000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11322697	1046000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11322698	1046000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11330138	1046400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11332605	1046600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11332606	1046600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11334910	1046800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11334911	1046800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11334912	1046800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11341298	1047200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11343612	1047400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11343613	1047400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11345632	1047600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11345633	1047600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11348531	1047800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11358222	1048600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11361822	1049000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11372065	1050200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11373364	1050400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11374589	1050600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11376027	1050800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11376028	1050800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11376029	1050800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+11377910	1051000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11412745	1054400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11416082	1054800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11429006	1056200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11443140	1058000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11460393	1060200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11465792	1061000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11474115	1062200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11493320	1064800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11503094	1066200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11562874	1074800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11569237	1075600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11606590	1083200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11607711	1083400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11613361	1084000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11613362	1084000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11616171	1084400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11616172	1084400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11617995	1084600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11617996	1084600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11621030	1084800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11624743	1085200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11627569	1085600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11627570	1085600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11631607	1086000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11631608	1086000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11650358	1088400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11651737	1088600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11656279	1089000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11656280	1089000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11682809	1092600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11685825	1093000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11688571	1093400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11688572	1093400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11694601	1094000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11694602	1094000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11699950	1094400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11702041	1094600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11722806	1097400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11724272	1097600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11725543	1097800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11728420	1098000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11747838	1100400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11749522	1100600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11753739	1101000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11755781	1101200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11762481	1101800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11765734	1102000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11770338	1102400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11772911	1102600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11775737	1102800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11781848	1103200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11791436	1104000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11793236	1104200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11800722	1104800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11804907	1105200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11806824	1105400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11806825	1105400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11825754	1107000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11829954	1107400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11834878	1107800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11834879	1107800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11840765	1108200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11843282	1108400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11845455	1108600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11845456	1108600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11845457	1108600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11888796	1112200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11898963	1113200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11925182	1115400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11933371	1116200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11946516	1117200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11948419	1117400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11948420	1117400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+11950054	1117600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+11950055	1117600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+11964693	1118800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+11991804	1121200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+11995276	1121600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+11998817	1122000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+12002712	1122400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12010337	1123200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12023507	1124600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12038533	1126200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12061360	1128400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12073452	1129600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12080895	1130400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12136626	1136400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12147595	1137400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12159871	1138600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12176096	1140200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12186169	1141200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12190407	1141600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+12197667	1142200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+12202977	1142600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12232922	1145600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12240144	1146600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12277495	1153600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12282949	1154800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12299370	1158600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12308435	1160600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12316448	1162200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12318481	1162600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+12321616	1163200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+12324179	1163600000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12353042	1166400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12356508	1166800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+12356509	1166800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+12361996	1167200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+12363872	1167400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+12366045	1167600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: false }
+12366046	1167600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: false }
+12371695	1168000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-6, rising: true }
+12371696	1168000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 1e-5, rising: true }
+12384208	1169000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12429399	1174600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12437248	1175400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12458109	1177800000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12462262	1178400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12547447	1193600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12550691	1194200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12564558	1197000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: false }
+12569326	1197800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.0001, rising: true }
+12598515	1200800000		réorganisation des plaques	moteur		0.30	PlateReorganisation { plates: 14 }
+12614603	1202400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+12633674	1204400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+12664168	1207800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+12890028	1239600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+12913618	1242000000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+12935506	1245400000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+12961136	1248200000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+13074767	1266200000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+13116363	1272400000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+13127813	1273600000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }
+13156183	1276800000		seuil d'oxygène	moteur	94917	0.90	OxygenThreshold { mixing_ratio: 0.001, rising: true }
+13207382	1283000000		seuil d'oxygène	moteur		0.90	OxygenThreshold { mixing_ratio: 0.001, rising: false }

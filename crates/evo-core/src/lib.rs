@@ -12,6 +12,6 @@ pub mod rng;
 pub mod units;
 
 pub use clock::{MasterClock, Scheduler, SystemClock};
-pub use events::{Event, EventKind, EventLog};
-pub use flux::{Element, FluxRegistry};
+pub use events::{Event, EventKind, EventLog, Origin};
+pub use flux::{Element, FluxRegistry, ELEMENTS};
 pub use rng::{rng_for, SimRng, Stream};

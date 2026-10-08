@@ -111,6 +111,79 @@ impl OriginFixation {
     }
 }
 
+/// Tunnel stochastique (Weissman et coll., 2009) : probabilité qu'une lignée
+/// issue d'un unique mutant intermédiaire, de désavantage `delta` (≥ 0),
+/// produise un double mutant qui s'établit, quand la seconde mutation
+/// survient au taux `mu2` par génération et que le double mutant s'établit
+/// avec la probabilité `p2`.
+///
+/// Processus de branchement à descendance de Poisson (Wright-Fisher) : la
+/// probabilité d'échec q de la lignée vérifie
+///
+/// q = exp(−(1 − δ)·(1 − c)), avec c = μ₂·(1 − p₂) + (1 − μ₂)·q
+///
+/// (c : probabilité d'échec d'un descendant). Au premier ordre on retrouve
+/// p₁ = −δ + √(δ² + 2·μ₂·p₂), la forme de Weissman (−δ + √(δ² + 4μ₂s))/2
+/// ramenée à la variance de Wright-Fisher ; le moteur résout l'équation
+/// complète par la méthode de Newton, plus juste quand p₂ n'est pas petit.
+/// Valable quand la lignée intermédiaire a peu de chances de se fixer
+/// d'elle-même (N·p₁ ≫ 1) ; sinon le régime « apparition puis fixation »
+/// ordinaire prend le relais.
+pub fn tunnel_probability(delta: f64, mu2: f64, p2: f64) -> f64 {
+    let delta = delta.clamp(0.0, 1.0);
+    let (mu2, p2) = (mu2.clamp(0.0, 1.0), p2.clamp(0.0, 1.0));
+    let x = 2.0 * mu2 * p2;
+    if x <= 0.0 {
+        return 0.0;
+    }
+    // Départ : solution au premier ordre (forme stable de −δ + √(δ² + x)).
+    let mut p = (x / (delta + (delta * delta + x).sqrt())).min(1.0);
+    let m = 1.0 - delta;
+    for _ in 0..30 {
+        // g(p) = 1 − p − exp(−m·(μ₂p₂ + (1 − μ₂)p)) = 0.
+        let a = m * (mu2 * p2 + (1.0 - mu2) * p);
+        let e = (-a).exp();
+        let g = 1.0 - p - e;
+        let dg = -1.0 + e * m * (1.0 - mu2);
+        let next = (p - g / dg).clamp(0.0, 1.0);
+        if (next - p).abs() < 1e-15 {
+            p = next;
+            break;
+        }
+        p = next;
+    }
+    p.min(p2)
+}
+
+/// Simulation explicite de Wright-Fisher qui sert de référence au tunnel : une
+/// population de `n` individus sauvages, dont un mutant intermédiaire de
+/// valeur sélective 1 − `delta` ; chaque descendant intermédiaire devient
+/// double mutant (valeur 1 + `s`) avec la probabilité `mu2`. Renvoie vrai si
+/// le double mutant se fixe.
+pub fn wright_fisher_tunnel(n: u64, delta: f64, mu2: f64, s: f64, rng: &mut impl Rng) -> bool {
+    let (mut k1, mut k2) = (1u64, 0u64);
+    loop {
+        if k1 + k2 == 0 {
+            return false;
+        }
+        if k2 == n {
+            return true;
+        }
+        let k0 = n - k1 - k2;
+        let (w0, w1, w2) = (k0 as f64, k1 as f64 * (1.0 - delta), k2 as f64 * (1.0 + s));
+        let total = w0 + w1 + w2;
+        // Tirage multinomial en deux binomiales.
+        let n2 = Binomial::new(n, w2 / total).expect("loi binomiale").sample(rng);
+        let rest = n - n2;
+        let p1 = if w0 + w1 > 0.0 { w1 / (w0 + w1) } else { 0.0 };
+        let n1 = Binomial::new(rest, p1.min(1.0)).expect("loi binomiale").sample(rng);
+        // Mutation des descendants intermédiaires vers le double mutant.
+        let m = if n1 > 0 { Binomial::new(n1, mu2).expect("loi binomiale").sample(rng) } else { 0 };
+        k1 = n1 - m;
+        k2 = n2 + m;
+    }
+}
+
 /// Population diploïde à un locus bi-allélique (allèles 0 et 1).
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiploidPopulation {
@@ -171,6 +244,17 @@ mod tests {
         assert!(p.is_finite() && (0.0..1e-300).contains(&p));
         // Fréquence initiale 1 : fixation certaine.
         assert!((fixation_probability(-0.3, 50.0, 1.0) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tunnel_limits() {
+        // Intermédiaire neutre : √(2·μ₂·p₂) au premier ordre.
+        let p = tunnel_probability(0.0, 1e-6, 0.01);
+        assert!((p - (2e-8f64).sqrt()).abs() / p < 2e-2, "{p}");
+        // Intermédiaire très coûteux : (1 − δ)·μ₂·p₂/δ.
+        let p = tunnel_probability(0.1, 1e-6, 0.1);
+        assert!((p - 9e-7).abs() / 9e-7 < 1e-3, "{p}");
+        assert_eq!(tunnel_probability(0.0, 0.0, 0.1), 0.0);
     }
 
     #[test]
