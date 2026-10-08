@@ -50,6 +50,8 @@ pub struct GateOptions {
     pub innovation_probability: Option<f64>,
     /// Ordre d'éviction sous le plafond, s'il diffère de celui par défaut.
     pub eviction: Option<crate::world::Eviction>,
+    /// Pas fixe : sans allongement aux périodes calmes.
+    pub fixed_step: bool,
 }
 
 impl Default for GateOptions {
@@ -66,6 +68,7 @@ impl Default for GateOptions {
             round_years: None,
             innovation_probability: None,
             eviction: None,
+            fixed_step: false,
         }
     }
 }
@@ -166,6 +169,9 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     }
     if let Some(e) = opts.eviction {
         cfg.eviction = e;
+    }
+    if opts.fixed_step {
+        cfg.adaptive_step = None;
     }
     let mut world = World::new(cfg);
     world.seed_life();

@@ -36,7 +36,7 @@ fn opt(args: &[String], name: &str) -> Option<String> {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
+        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER] [--hold-years Y] [--round-years Y] [--innovation P] [--eviction biomasse|invasion] [--pas-fixe]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
         PlanetParams::KEYS.join(", ")
     );
     std::process::exit(2)
@@ -76,6 +76,7 @@ fn main() {
                     "invasion" => evo_sim::Eviction::InvasionFitness,
                     _ => usage(),
                 }),
+                fixed_step: args.iter().any(|a| a == "--pas-fixe"),
             };
             // Rapport assemblé à partir des résultats déjà enregistrés, monde
             // par monde (les parties longues tournent séparément).
