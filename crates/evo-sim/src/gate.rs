@@ -104,6 +104,10 @@ pub struct WorldResult {
     /// derniers pas (monde mûr).
     pub saturated_share: f64,
     pub saturated_share_late: f64,
+    /// Même part, en ne comptant que les cellules qui ont perdu une
+    /// population établie (règle de Vision : revue au-delà de 1 %).
+    pub established_share: f64,
+    pub established_share_late: f64,
     /// Part des génotypes candidats au tunnel dont les candidats dépassaient
     /// la borne d'essais, et essais et réussites du tunnel.
     pub tunnel_capped_share: f64,
@@ -149,11 +153,17 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     let mut above_since: Option<f64> = None;
     let (mut trace, mut reached, mut max_o2) = (None, None, 0.0f64);
     // Cellules peuplées et saturées des derniers pas.
-    let mut late: std::collections::VecDeque<(u64, u64)> = std::collections::VecDeque::new();
+    let mut late: std::collections::VecDeque<(u64, u64, u64)> = std::collections::VecDeque::new();
     while world.years < opts.max_years {
-        let before = (world.stats.occupied_cell_steps, world.stats.saturated_cell_steps);
+        let st = &world.stats;
+        let before = (st.occupied_cell_steps, st.saturated_cell_steps, st.established_eviction_cell_steps);
         world.step();
-        late.push_back((world.stats.occupied_cell_steps - before.0, world.stats.saturated_cell_steps - before.1));
+        let st = &world.stats;
+        late.push_back((
+            st.occupied_cell_steps - before.0,
+            st.saturated_cell_steps - before.1,
+            st.established_eviction_cell_steps - before.2,
+        ));
         if late.len() > 100 {
             late.pop_front();
         }
@@ -247,6 +257,8 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
         redox_correction: world.stats.redox_correction / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
         saturated_share: world.stats.saturated_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
         saturated_share_late: late.iter().map(|l| l.1).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
+        established_share: world.stats.established_eviction_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
+        established_share_late: late.iter().map(|l| l.2).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
         tunnel_capped_share: world.stats.tunnel_capped as f64 / world.stats.tunnel_genotypes.max(1) as f64,
         tunnel_attempts: world.stats.tunnel_attempts,
         tunnel_successes: world.stats.tunnel_successes,
@@ -433,21 +445,23 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
     let _ = writeln!(
         out,
-        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde. « Cellules saturées » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas (monde mûr ; au-delà de 10 %, le plafond est à revoir). Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
+        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante en abondance projetée au pas suivant, N·e^(rΔt), jamais la dernière d'une guilde (voie principale). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, presque toujours à cause d'arrivants du pas. « Saturées » : part des cellules qui ont perdu une population établie (plus que la biomasse d'un fondateur) ; au-delà de 1 % sur les 100 derniers pas (monde mûr), la règle est à revoir. Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
         crate::evolution::EvolutionParams::default().tunnel_attempts_per_genotype
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Cellules saturées (partie) | Cellules saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
+            "| {} | {} | {:.1} % | {:.1} % | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
             r.name,
             r.seed,
             100.0 * r.saturated_share,
             100.0 * r.saturated_share_late,
+            100.0 * r.established_share,
+            100.0 * r.established_share_late,
             100.0 * r.tunnel_capped_share,
             r.tunnel_attempts,
             r.tunnel_successes
