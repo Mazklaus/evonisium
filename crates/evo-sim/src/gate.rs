@@ -108,6 +108,9 @@ pub struct WorldResult {
     /// population établie (règle de Vision : revue au-delà de 1 %).
     pub established_share: f64,
     pub established_share_late: f64,
+    /// Même part, en ne comptant que les populations établies qui
+    /// croissaient encore.
+    pub growing_share_late: f64,
     /// Part des génotypes candidats au tunnel dont les candidats dépassaient
     /// la borne d'essais, et essais et réussites du tunnel.
     pub tunnel_capped_share: f64,
@@ -153,16 +156,17 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     let mut above_since: Option<f64> = None;
     let (mut trace, mut reached, mut max_o2) = (None, None, 0.0f64);
     // Cellules peuplées et saturées des derniers pas.
-    let mut late: std::collections::VecDeque<(u64, u64, u64)> = std::collections::VecDeque::new();
+    let mut late: std::collections::VecDeque<(u64, u64, u64, u64)> = std::collections::VecDeque::new();
     while world.years < opts.max_years {
         let st = &world.stats;
-        let before = (st.occupied_cell_steps, st.saturated_cell_steps, st.established_eviction_cell_steps);
+        let before = (st.occupied_cell_steps, st.saturated_cell_steps, st.established_eviction_cell_steps, st.growing_eviction_cell_steps);
         world.step();
         let st = &world.stats;
         late.push_back((
             st.occupied_cell_steps - before.0,
             st.saturated_cell_steps - before.1,
             st.established_eviction_cell_steps - before.2,
+            st.growing_eviction_cell_steps - before.3,
         ));
         if late.len() > 100 {
             late.pop_front();
@@ -259,6 +263,7 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
         saturated_share_late: late.iter().map(|l| l.1).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
         established_share: world.stats.established_eviction_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
         established_share_late: late.iter().map(|l| l.2).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
+        growing_share_late: late.iter().map(|l| l.3).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
         tunnel_capped_share: world.stats.tunnel_capped as f64 / world.stats.tunnel_genotypes.max(1) as f64,
         tunnel_attempts: world.stats.tunnel_attempts,
         tunnel_successes: world.stats.tunnel_successes,
@@ -450,18 +455,19 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | dont population encore en croissance | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {:.1} % | {:.1} % | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
+            "| {} | {} | {:.1} % | {:.1} % | {:.2} % | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
             r.name,
             r.seed,
             100.0 * r.saturated_share,
             100.0 * r.saturated_share_late,
             100.0 * r.established_share,
             100.0 * r.established_share_late,
+            100.0 * r.growing_share_late,
             100.0 * r.tunnel_capped_share,
             r.tunnel_attempts,
             r.tunnel_successes
