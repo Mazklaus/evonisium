@@ -85,9 +85,11 @@ impl CellContext<'_> {
     pub fn conditions_of(&self, pops: &[Population], physio: &Physiology) -> Conditions {
         let mut cond = self.conditions(Self::photo_biomass(pops));
         let v = self.env.water_volume_m3;
-        if v <= 0.0 || !pops.iter().any(|p| p.phenotype.engulfment > 0.0) {
+        if v <= 0.0 {
             return cond;
         }
+        // Les proies sont toujours listées : un mutant phagotrophe jugé dans
+        // une cellule qui n'en a pas encore doit les voir.
         for p in pops {
             cond.prey.push(p.phenotype.body_size, p.biomass / v);
         }

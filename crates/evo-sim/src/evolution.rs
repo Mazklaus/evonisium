@@ -135,7 +135,7 @@ pub struct AcceleratorParams {
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 600e6, boost: 100.0, complexity_patience_years: 1.5e9 }
+        Self { enabled: true, patience_years: 600e6, boost: 100.0, complexity_patience_years: 1.0e9 }
     }
 }
 
@@ -582,7 +582,12 @@ pub fn evolve_genotype(
                 if best.as_ref().is_some_and(|b| b.s >= s) {
                     continue;
                 }
-                if regime.candidate_fixes(s, ne, arising / count as f64, rng) {
+                // L'accélérateur de la complexité rend ces copies plus fréquentes.
+                if let Some(accelerated) = fixes(regime, s, ne, arising / count as f64, complex_boost, rng) {
+                    let mut change = change;
+                    if accelerated {
+                        change.cause = GenomeChangeCause::Accelerator;
+                    }
                     consider(&mut best, s, change, phenotype, rates);
                 }
             }

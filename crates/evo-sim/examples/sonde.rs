@@ -18,13 +18,21 @@ fn main() {
         cfg.step_years = 200_000.0;
         let mut w = World::new(cfg);
         w.orders.submit(0.0, OrderKind::SeedLife);
-        for _ in 0..1000 {
+        let years: f64 = args.iter().position(|a| a == "--prepare").and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok()).unwrap_or(200e6);
+        while w.years() < years {
             w.step();
         }
         w.save_file(path).expect("écriture");
         w
     };
-    let physio = world.config.physiology.clone();
+    let mut physio = world.config.physiology.clone();
+    if let Some(c) = std::env::var("SONDE_CYTO_COST").ok().and_then(|v| v.parse().ok()) {
+        physio.cytoskeleton_cost_kj = c;
+    }
+    if let Some(c) = std::env::var("SONDE_ENGULF").ok() {
+        let v: Vec<f64> = c.split(',').map(|x| x.parse().unwrap()).collect();
+        (physio.engulf_min_ratio, physio.engulf_full_ratio) = (v[0], v[1]);
+    }
     let mut tried = 0;
     let mut best: Vec<(f64, f64)> = vec![(f64::MIN, 0.0); 6];
     let cytos = [0.0, 0.05, 0.1, 0.2, 0.4, 0.8];
