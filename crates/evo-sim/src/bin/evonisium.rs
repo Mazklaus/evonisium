@@ -210,8 +210,18 @@ fn complexity(args: &[String]) {
     world.orders.submit(0.0, OrderKind::SeedLife);
     let mut next = every;
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
+    let mut accelerated = false;
+    let mut seen_oxygenic = false;
     while world.years() < max_years {
         world.step();
+        if world.progress.complex_accelerator_on != accelerated {
+            accelerated = world.progress.complex_accelerator_on;
+            println!("  ⚑ accélérateur de la complexité {} : {}", if accelerated { "en marche" } else { "arrêté" }, format_years(world.years()));
+        }
+        if let Some(y) = world.progress.stage_years[4].filter(|_| !seen_oxygenic) {
+            seen_oxygenic = true;
+            println!("  ☀ photosynthèse oxygénique : {}", format_years(y));
+        }
         for (k, done) in seen.iter_mut().enumerate() {
             if !*done {
                 if let Some(y) = world.progress.complexity_years[k] {
@@ -250,9 +260,11 @@ fn complexity(args: &[String]) {
             }
             let total = total.max(1e-300);
             println!(
-                "{:>9} O₂ {:.1e} | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
+                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
                 format_years(world.years()),
                 s.globals.o2_mixing,
+                s.globals.mean_temperature_k,
+                100.0 * s.globals.ice_fraction,
                 100.0 * phago / total,
                 100.0 * euk / total,
                 100.0 * multi / total,
