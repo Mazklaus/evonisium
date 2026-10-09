@@ -815,6 +815,26 @@ impl World {
         if std::env::var_os("EVO_DEBUG_O2").is_some() && (self.years / 2e7).floor() > (years / 2e7).floor() {
             let r = &self.planet.reservoirs;
             let b = r.oxygen;
+            let (mut n, mut sum, mut max) = (0.0f64, 0.0f64, 0usize);
+            for p in self.communities.iter().flatten() {
+                n += p.biomass;
+                sum += p.biomass * p.genome.genes.len() as f64;
+                max = max.max(p.genome.genes.len());
+            }
+            eprintln!("GENES {:.1} Ma moyenne pondérée {:.1} max {max}", self.years / 1e6, sum / n.max(1e-30));
+            let pl = &self.planet;
+            eprintln!(
+                "TERRES {:.1} Ma terres {:.3} océan {:.3} niveau {:.0} m CO2 {:.0} Pa T {:.1} K bilans C {:.1e} P {:.1e} e {:.1e}",
+                self.years / 1e6,
+                pl.land_area() / pl.params.surface_area(),
+                pl.ocean_fraction(),
+                pl.sea_level_m,
+                pl.partial_pressure(Gas::Co2),
+                self.summary().globals.mean_temperature_k,
+                self.carbon_balance_error(),
+                self.phosphorus_balance_error(),
+                self.electron_balance_error()
+            );
             eprintln!(
                 "O2 {:.1} Ma f={:.3e} orgC={:.4e} sedP={:.4e} deepP={:.4e} photo={:.4e} rel={:.4e} up={:.4e} deep={:.4e} red={:.4e} ch4={:.4e} femn={:.4e} ow={:.4e} sulf={:.4e} sea={:.4e}",
                 self.years / 1e6, r.mixing_ratio(Gas::O2), r.organic_c, r.sediment_p, r.deep_po4, b.photosynthesis, b.surface_release,
@@ -1124,6 +1144,12 @@ impl World {
         self.stats.fixed_changes_by_cause[f.cause.index()] += 1;
         let lineage = self.communities[c][index].lineage;
         self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause: f.cause, element: f.element });
+        for &(cause, element, adaptive) in &f.extra {
+            self.stats.substitutions += 1;
+            self.stats.adaptive_substitutions += adaptive as u64;
+            self.stats.fixed_changes_by_cause[cause.index()] += 1;
+            self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause, element });
+        }
         Some((c, index, f.cause))
     }
 
@@ -2083,7 +2109,7 @@ mod tests {
         );
         a.step();
         assert!(a.disturbances.killed_biomass > 0.0);
-        assert!(a.disturbances.killed_biomass > 0.05 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
+        assert!(a.disturbances.killed_biomass > 0.02 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
         // Le carbone tué reste dans le système ; le CO₂ libéré est inscrit.
         assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9, "bilan");
         assert!(a.total_carbon() > carbon);

@@ -222,7 +222,20 @@ impl Tectonics {
         self.steps += 1;
         let mut reorganised = false;
         if years - self.last_reorganisation_years >= params.plate_reorganisation_myr * 1e6 {
-            self.plates = Self::random_plates(params, &mut rng, self.plates.len(), heat);
+            // Réorganisation : un nouveau découpage en plaques. Sans lui, les
+            // frontières s'effacent une à une (une parcelle prise entre deux
+            // plaques garde celle de sa voisine) et, en un à deux milliards
+            // d'années, une seule plaque couvre la planète : plus de dorsales
+            // ni de subduction, donc plus de dégazage.
+            let count = params.plate_count.max(2) as usize;
+            let seeds: Vec<Vec3> = (0..count).map(|_| random_unit(&mut rng)).collect();
+            let weights: Vec<f64> = (0..count).map(|_| rng.random_range(0.8..1.25)).collect();
+            let noise = smooth_field(grid, &mut rng, 48);
+            for p in self.parcels.iter_mut() {
+                let score = |k: usize| dot(p.pos, seeds[k]) * weights[k] + 0.15 * noise[p.cell as usize];
+                p.plate = (0..count).max_by(|&a, &b| score(a).total_cmp(&score(b))).unwrap_or(0) as u16;
+            }
+            self.plates = Self::random_plates(params, &mut rng, count, heat);
             self.last_reorganisation_years = years;
             reorganised = true;
         }
@@ -260,12 +273,29 @@ impl Tectonics {
                 continue;
             }
             let group: Vec<Parcel> = order[a..b].iter().map(|&k| self.parcels[k as usize]).collect();
-            // Survivant : continent d'abord (il ne plonge pas), puis la croûte
-            // océanique la plus jeune (la moins dense) ; à égalité, la plus
-            // proche du centre de la cellule.
-            let rank = |p: &Parcel| (p.continental, -p.age_myr, dot(p.pos, grid.centers[c]));
-            let mut survivor = group[0];
-            for p in &group[1..] {
+            // Survivant. Deux parcelles d'une même plaque dans une cellule ne
+            // sont qu'un effet de la discrétisation : la plus proche du centre
+            // reste, qu'elle soit continentale ou non (préférer le continent
+            // ferait gagner les côtes d'une cellule à chaque fois, et les
+            // continents couvriraient la planète en un milliard d'années).
+            // Entre plaques : continent d'abord (il ne plonge pas), puis la
+            // croûte océanique la plus jeune (la moins dense) ; à égalité, la
+            // plus proche du centre.
+            let near = |p: &Parcel| dot(p.pos, grid.centers[c]);
+            let mut nearest: Vec<Parcel> = Vec::new();
+            for p in &group {
+                match nearest.iter_mut().find(|q| q.plate == p.plate) {
+                    Some(q) => {
+                        if near(p) > near(q) {
+                            *q = *p;
+                        }
+                    }
+                    None => nearest.push(*p),
+                }
+            }
+            let rank = |p: &Parcel| (p.continental, -p.age_myr, near(p));
+            let mut survivor = nearest[0];
+            for p in &nearest[1..] {
                 if rank(p).partial_cmp(&rank(&survivor)) == Some(std::cmp::Ordering::Greater) {
                     survivor = *p;
                 }
@@ -376,8 +406,58 @@ impl Tectonics {
             })
             .collect();
         self.cell_parcel = (0..n as u32).collect();
+        self.keep_continental_area(grid, params);
         self.last = activity;
         reorganised
+    }
+
+    /// Les parcelles sautent de cellule en cellule : à chaque pas, des
+    /// cellules en perdent une et d'autres se comblent par copie d'une
+    /// voisine, et la surface des continents dérive au hasard de ces
+    /// arrondis (jusqu'à couvrir ou quitter la planète en un milliard
+    /// d'années). On la ramène à `continental_fraction` en déplaçant leurs
+    /// côtes : les cellules océaniques les plus entourées de continent de leur
+    /// plaque deviennent continentales, ou l'inverse. [Simplification
+    /// signalée] La surface des continents est tenue constante ; leur
+    /// croissance par les arcs et leur recyclage ne sont pas suivis.
+    fn keep_continental_area(&mut self, grid: &GeodesicGrid, params: &PlanetParams) {
+        let total: f64 = grid.unit_areas.iter().sum();
+        let target = params.continental_fraction * total;
+        let n = self.parcels.len();
+        let mut area: f64 = (0..n).filter(|&c| self.parcels[c].continental).map(|c| grid.unit_areas[c]).sum();
+        for _pass in 0..8 {
+            let grow = area < target;
+            let gap = (target - area).abs();
+            if gap < 0.5 * grid.unit_areas.iter().copied().fold(f64::INFINITY, f64::min) {
+                return;
+            }
+            // Côtes : cellules de l'autre nature ayant des voisines de la
+            // nature voulue sur la même plaque, les plus entourées d'abord.
+            let mut coast: Vec<(usize, usize)> = (0..n)
+                .filter(|&c| self.parcels[c].continental != grow)
+                .filter_map(|c| {
+                    let p = self.parcels[c];
+                    let k =
+                        grid.neighbours_of(c).filter(|&m| self.parcels[m].plate == p.plate && self.parcels[m].continental == grow).count();
+                    (k > 0).then_some((k, c))
+                })
+                .collect();
+            if coast.is_empty() {
+                return;
+            }
+            coast.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            let mut moved = 0.0;
+            for &(_, c) in &coast {
+                if moved >= gap - 0.5 * grid.unit_areas[c] {
+                    break;
+                }
+                let p = &mut self.parcels[c];
+                p.continental = grow;
+                p.thickness_km = if grow { params.continental_crust_km } else { params.oceanic_crust_km };
+                moved += grid.unit_areas[c];
+            }
+            area += if grow { moved } else { -moved };
+        }
     }
 
     /// Altitude du dessus de la croûte par rapport au niveau de référence

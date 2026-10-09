@@ -65,8 +65,11 @@ impl Default for MutationParams {
             rate_per_gene: 3e-3,
             max_repair_factor: 10.0,
             // La divergence vers une famille apparentée est une partie des
-            // duplications ; le de novo reste dix fois plus rare.
-            weights: [0.70, 0.08, 0.06, 0.06, 0.089, 0.001, 0.01],
+            // duplications ; le de novo reste dix fois plus rare. Biais de
+            // délétion des bactéries (Kuo et Ochman, 2009 ; Mira et coll.,
+            // 2001) : les délétions sont plus fréquentes que les
+            // duplications, ce qui borne la taille des génomes.
+            weights: [0.70, 0.08, 0.03, 0.12, 0.089, 0.001, 0.01],
             small_step: 0.08,
             large_step: 0.5,
             large_step_share: 0.05,
