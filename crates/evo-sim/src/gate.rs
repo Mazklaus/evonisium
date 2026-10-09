@@ -338,13 +338,14 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let world_passed = |k: &str| results.iter().any(|r| r.key == k && r.passed);
     let passed_worlds = keys.iter().filter(|k| world_passed(k)).count();
     let desert_only = keys.iter().all(|k| world_passed(k) || *k == "desert");
-    let _ = writeln!(out, "# Porte de l'étape 3 : l'oxygène s'accumule sur les six mondes à la résolution normale\n");
+    let _ = writeln!(out, "# Porte de l'oxygène (étapes 3 et 4) : l'oxygène s'accumule sur les six mondes\n");
     let _ = writeln!(
         out,
-        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas de {}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
+        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas demandé de {}{}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
         opts.level,
         results.first().map_or(0, |r| r.cells),
         format_years(opts.step_years),
+        if opts.fixed_step { " (fixe)" } else { " (allongé jusqu'à 3 fois aux périodes calmes)" },
         format_years(opts.max_years),
         match opts.round_years.map_or(crate::evolution::EvolutionParams::default().round_years, |r| (r > 0.0).then_some(r)) {
             Some(r) => format!("un tour d'évolution « apparition puis fixation » par tranche de {} du pas", format_years(r)),
@@ -480,7 +481,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
     let _ = writeln!(
         out,
-        "Plafond de populations par cellule du vivant : jamais la dernière d'une guilde (voie principale) ; parmi les autres, on évince d'abord la plus basse fitness d'invasion (taux de croissance dans la communauté résidente), ou la moins abondante sous la règle de l'étape 3. « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas. « Saturées » : part des cellules peuplées qui ont perdu une population établie (plus que la biomasse d'un fondateur), même découpage (au-delà de 2 % sur monde mûr, la règle est à revoir) ; « dont en croissance » : celles dont la population évincée croissait encore. Innovations : mutants innovants (de novo, duplication suivie de divergence) apparus sur la partie, tirés selon une loi de Poisson, dont ceux que l'accélérateur a ajoutés. Tunnel : essais (un par mutant innovant qui ne se fixe pas seul) et réussites, au taux de Weissman et coll. (2009) tiré selon une loi de Poisson.\n"
+        "Plafond de populations par cellule du vivant : jamais la dernière d'une guilde (voie principale) ; parmi les autres, on évince d'abord la moins abondante (règle par défaut), ou, avec `--eviction invasion`, la plus basse fitness d'invasion (taux de croissance dans la communauté résidente). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas. « Saturées » : part des cellules peuplées qui ont perdu une population établie (plus que la biomasse d'un fondateur), même découpage (au-delà de 2 % sur monde mûr, la règle est à revoir) ; « dont en croissance » : celles dont la population évincée croissait encore. Innovations : mutants innovants (de novo, duplication suivie de divergence) apparus sur la partie, tirés selon une loi de Poisson, dont ceux que l'accélérateur a ajoutés. Tunnel : essais (un par mutant innovant qui ne se fixe pas seul) et réussites, au taux de Weissman et coll. (2009) tiré selon une loi de Poisson.\n"
     );
     let _ = writeln!(
         out,

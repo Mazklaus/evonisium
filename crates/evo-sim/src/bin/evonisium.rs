@@ -355,6 +355,7 @@ fn chrono(args: &[String]) {
         eprintln!("écriture : {:.2} s, {:.1} Mo", t.elapsed().as_secs_f64(), mb(out.len() as u64));
     }
     let steps: u32 = arg(args, "--steps", 5);
+    let years = world.years;
     let mut total = evo_sim::world::PhaseTimings::default();
     let evals = world.stats.genetic_evaluations;
     let (occupied, saturated, established) =
@@ -383,6 +384,8 @@ fn chrono(args: &[String]) {
         (world.stats.genetic_evaluations - evals) as f64 / steps as f64,
         world.state_hash()
     );
+    let span = (world.years - years) / steps as f64;
+    println!("pas moyen {} ; {:.0} ka par seconde", format_years(span), span / 1e3 / (t.total().as_secs_f64()).max(1e-9));
 }
 
 /// Même partie aux deux pas, graine par graine ; chaque partie est
