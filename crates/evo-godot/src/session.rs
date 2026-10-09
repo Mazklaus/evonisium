@@ -7,6 +7,7 @@
 //! et la zone d'intérêt.
 
 mod bodies;
+mod region;
 mod tools;
 
 use crate::jobs::Jobs;
@@ -94,6 +95,7 @@ pub struct EvoSession {
     events_polled: usize,
     jobs: Jobs,
     bodies: crate::bodies::Bodies,
+    region: crate::bodies::RegionSlot,
     /// Biomasse des espèces regardées, pas après pas (statut des fiches).
     watch: HashMap<u32, Vec<f64>>,
     watch_step: u64,
@@ -117,6 +119,7 @@ impl IRefCounted for EvoSession {
             events_polled: 0,
             jobs: Jobs::default(),
             bodies: Default::default(),
+            region: Default::default(),
             watch: HashMap::new(),
             watch_step: 0,
             bridge_ms: 0.0,
@@ -240,6 +243,7 @@ impl EvoSession {
         self.focus = Focus::default();
         self.jobs = Jobs::default();
         self.bodies.clear();
+        self.region.clear();
     }
 
     fn intervention(kind: &str, amount: f64, cell: u32, radius_km: f64) -> Option<Intervention> {
@@ -321,6 +325,10 @@ impl EvoSession {
             d.set("planet", save.spec.to_params().name.as_str());
             d.set("code", save.spec.code(save.seed, save.level).as_str());
             d.set("steps", save.steps as i64);
+            // Point de sauvegarde dont la partie était repartie : les
+            // sauvegardes forment un arbre de branches.
+            d.set("branch_of", save.branch_of.as_str());
+            d.set("interventions", save.interventions.len() as i64);
         }
         d
     }

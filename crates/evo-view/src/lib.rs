@@ -26,6 +26,7 @@ pub mod palette;
 pub mod pick;
 pub mod save;
 pub mod species;
+pub mod terrain;
 pub mod tree;
 
 pub use format::Lang;

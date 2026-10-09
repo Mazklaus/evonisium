@@ -8,10 +8,12 @@ extends Node3D
 signal cell_selected(cell: int)
 signal cell_hovered(cell: int)
 
-const MIN_DISTANCE := 1.18
+## Au plus près : la bande des paysages (G3), au-dessus du relief exagéré.
+const MIN_DISTANCE := 1.025
 const MAX_DISTANCE := 9.0
 const ATLAS_SHADER := preload("res://shaders/globe_atlas.gdshader")
 const ATMOSPHERE_SHADER := preload("res://shaders/atmosphere.gdshader")
+const INK_SHADER := preload("res://shaders/contour_encre.gdshader")
 
 var planet: MeshInstance3D
 var atmosphere: MeshInstance3D
@@ -23,6 +25,16 @@ var marks_key := ""
 var comparison := false
 var comparison_tex: ImageTexture
 var layer_before_comparison := {}
+## Région subdivisée autour du point regardé (incrément G3) et contour
+## d'encre en post-traitement.
+var region: MeshInstance3D
+var region_key := ""
+var region_centre := Vector3.ZERO
+var region_radius := 0.0
+var region_params := Vector2i(-1, -1)
+var ink_quad: MeshInstance3D
+var ink_material: ShaderMaterial
+var landscape := 0.0
 var camera: Camera3D
 var material: ShaderMaterial
 var arrow_material: StandardMaterial3D
@@ -113,6 +125,25 @@ func _ready() -> void:
 	marks.material_override = mark_material
 	add_child(marks)
 
+	region = MeshInstance3D.new()
+	region.material_override = material
+	region.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	region.set_instance_shader_parameter("regional", 1.0)
+	region.visible = false
+	add_child(region)
+
+	ink_material = ShaderMaterial.new()
+	ink_material.shader = INK_SHADER
+	ink_material.render_priority = 2
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2, 2)
+	ink_quad = MeshInstance3D.new()
+	ink_quad.mesh = quad
+	ink_quad.material_override = ink_material
+	ink_quad.extra_cull_margin = 16384.0
+	ink_quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	camera.add_child(ink_quad)
+
 	App.settings_changed.connect(_apply_settings)
 	_apply_settings()
 	_place_camera()
@@ -131,7 +162,9 @@ func _apply_settings() -> void:
 func _update_relief() -> void:
 	# Relief exagéré quinze fois au réglage 1 (le relief réel est invisible à
 	# l'échelle du globe).
-	material.set_shader_parameter("relief_scale", float(App.settings["relief"]) * 15.0 / radius_m)
+	# Aux paysages, l'exagération retombe à huit fois : des montagnes vues
+	# de près, pas des aiguilles.
+	material.set_shader_parameter("relief_scale", float(App.settings["relief"]) * lerp(15.0, 8.0, landscape) / radius_m)
 
 ## Prépare le maillage à la taille de la grille de la partie.
 func ensure_mesh() -> void:
@@ -167,6 +200,10 @@ func ensure_mesh() -> void:
 
 func reset() -> void:
 	mesh_cells = -1
+	region.visible = false
+	region_key = ""
+	region_params = Vector2i(-1, -1)
+	material.set_shader_parameter("region_cap", Vector4(0, 1, 0, 2))
 	selected_cell = -1
 	hover_cell = -1
 	frames_seen = 0
@@ -371,6 +408,11 @@ func _place_camera() -> void:
 	var dir := Vector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw))
 	camera.position = dir * distance
 	camera.look_at(Vector3.ZERO, Vector3.UP)
+	# Près du sol, la caméra se redresse vers l'horizon : un paysage plutôt
+	# qu'une carte.
+	var tilt := deg_to_rad(55.0) * smoothstep(0.15, 0.03, distance - 1.0)
+	if tilt > 0.0:
+		camera.rotate_object_local(Vector3.RIGHT, tilt)
 	camera.h_offset = lerp(camera.h_offset, -view_offset * distance * 0.25, 0.2)
 	# Lumière d'atelier venue d'en haut à gauche de la vue, ou étoile fixe.
 	if bool(App.settings["terminator"]):
@@ -422,7 +464,8 @@ func _cell_radius() -> float:
 	return sqrt(4.0 / max(mesh_cells, 12))
 
 func zoom_by(factor: float) -> void:
-	target_distance = clamp(target_distance * factor, MIN_DISTANCE, MAX_DISTANCE)
+	# Le zoom agit sur l'altitude : la descente reste régulière jusqu'au sol.
+	target_distance = clamp(1.0 + (target_distance - 1.0) * factor, MIN_DISTANCE, MAX_DISTANCE)
 
 func rotate_by(dyaw: float, dpitch: float) -> void:
 	var k := (distance - 1.0) * 0.5
@@ -439,6 +482,7 @@ func _process(delta: float) -> void:
 		if keys != Vector2.ZERO and get_viewport().gui_get_focus_owner() == null:
 			rotate_by(keys.x * delta * 1.6, keys.y * delta * 1.6)
 	_place_camera()
+	_update_region()
 	if blend < 1.0:
 		blend = min(1.0, blend + delta / blend_duration)
 		material.set_shader_parameter("blend", blend)
@@ -446,6 +490,65 @@ func _process(delta: float) -> void:
 	if observe_timer <= 0.0:
 		observe_timer = 0.5
 		_send_observation()
+
+## Bandes Z3 (régions) et Z4 (paysages) : la région subdivisée autour du
+## point regardé remplace le globe sous elle ; hachures de pente et contour
+## d'encre montent avec le zoom.
+func _update_region() -> void:
+	var band := int(view_cap().y)
+	var fade := clampf((distance - 1.0 - 0.35) / -0.3, 0.0, 1.0)
+	if absf(fade - landscape) > 0.01:
+		landscape = fade
+		material.set_shader_parameter("landscape", landscape)
+		_update_relief()
+	ink_material.set_shader_parameter("strength", clampf((band - 2) / 3.0, 0.0, 1.0) * 0.8)
+	if band < 3 or not App.session.is_running() or mesh_cells <= 0:
+		if region.visible:
+			region.visible = false
+			material.set_shader_parameter("region_cap", Vector4(0, 1, 0, 2))
+		return
+	var params := Vector2i(9, 3) if band == 3 else (Vector2i(6, 4) if band == 4 else Vector2i(4, 5))
+	var here := camera.position.normalized()
+	var moved := region_radius <= 0.0 or here.angle_to(region_centre) > region_radius * 0.45
+	if params != region_params or moved or region_key == "":
+		var cell := App.session.cell_at(here)
+		if cell >= 0:
+			var key: String = App.session.request_region(cell, params.x, params.y)
+			if key != "" and key != region_key:
+				_take_region(key, params)
+	elif region_key != "":
+		# La même demande peut renvoyer une clé nouvelle quand l'état avance.
+		var cell2 := App.session.cell_at(region_centre)
+		var key2: String = App.session.request_region(cell2, params.x, params.y)
+		if key2 != region_key:
+			_take_region(key2, params)
+
+func _take_region(key: String, params: Vector2i) -> void:
+	var d: Dictionary = App.session.take_region(key)
+	if d.is_empty():
+		return
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = d["vertices"]
+	arrays[Mesh.ARRAY_NORMAL] = d["vertices"]
+	arrays[Mesh.ARRAY_TEX_UV] = d["uv"]
+	arrays[Mesh.ARRAY_TEX_UV2] = d["uv2"]
+	arrays[Mesh.ARRAY_CUSTOM0] = d["custom0"]
+	arrays[Mesh.ARRAY_CUSTOM1] = d["custom1"]
+	arrays[Mesh.ARRAY_CUSTOM2] = d["custom2"]
+	arrays[Mesh.ARRAY_INDEX] = d["indices"]
+	var mesh := ArrayMesh.new()
+	var flags := (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT) \
+		| (Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
+	mesh.custom_aabb = AABB(Vector3(-1.2, -1.2, -1.2), Vector3(2.4, 2.4, 2.4))
+	region.mesh = mesh
+	region.visible = true
+	region_key = key
+	region_params = params
+	region_centre = (d["centre"] as Vector3).normalized()
+	region_radius = float(d["covered_radius"])
+	material.set_shader_parameter("region_cap", Vector4(region_centre.x, region_centre.y, region_centre.z, cos(region_radius)))
 
 func _send_observation() -> void:
 	if not App.session.is_running():

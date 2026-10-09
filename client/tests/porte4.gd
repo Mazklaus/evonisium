@@ -83,6 +83,20 @@ func _populated_cell() -> int:
 		return -1
 	return int(App.session.species_info(ids[0]).get("peak_cell", -1))
 
+## Essai court du globe G3 : un massif vu en région puis en paysage.
+func _g3_only() -> void:
+	await _run_to(2.0e5)
+	var top: int = App.session.highest_cell(true)
+	App.globe.go_to_cell(top, 1.22)
+	var ok := await _until(func(): return App.globe.region.visible, 60.0)
+	await _wait(1.5)
+	await _shot("g3-region")
+	App.globe.target_distance = 1.03
+	ok = ok and await _until(func(): return App.globe.region.visible and App.globe.region_params.y == 5, 60.0)
+	await _wait(2.0)
+	await _shot("g3-paysage")
+	_finish(ok)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
@@ -99,6 +113,9 @@ func _scenario() -> void:
 	var jeu = _screen()
 	App.session.set_rules_profile("aucun")
 	App.session.set_speed(1.0e6)
+	if opts.get("seul", "") == "g3":
+		await _g3_only()
+		return
 	var ma := float(opts["ma"]) * 1.0e6
 	var grown := await _run_to(ma)
 	report["vie_installee"] = grown and int(App.session.frame_info().get("lineages", 0)) > 0
@@ -188,6 +205,23 @@ func _scenario() -> void:
 	await _shot("06-colonne-stratigraphique")
 	jeu.fiche.close()
 
+	# Globe G3 : la région subdivisée autour de la cellule, puis le
+	# paysage vu de près, caméra redressée vers l'horizon.
+	App.globe.go_to_cell(cell, 1.22)
+	var region_ok := await _until(func(): return App.globe.region.visible, 60.0)
+	await _wait(1.5)
+	await _shot("12-region")
+	App.globe.target_distance = 1.03
+	var landscape_ok := await _until(func(): return App.globe.region.visible and App.globe.region_params.y == 5, 60.0)
+	await _wait(2.0)
+	if landscape_ok:
+		report["g3_paysage_triangles"] = App.globe.region.mesh.surface_get_array_index_len(0) / 3
+	report["g3_region"] = region_ok
+	report["g3_paysage"] = landscape_ok
+	await _shot("13-paysage")
+	App.globe.target_distance = 3.0
+	await _wait(1.0)
+
 	# Fiche d'espèce : planche devant le décor, avec les silhouettes des
 	# espèces voisines.
 	var sp := int(App.session.guild_ids()[0])
@@ -229,5 +263,6 @@ func _scenario() -> void:
 
 	var passed: bool = report["vie_installee"] and order >= 0 and caught and report["comparaison_meme_date"] and rows.size() >= 5 \
 		and web_ok and strata_ok and iridium and report["barrieres"] >= 1 \
-		and body_ok and cmp_ok and int(report["comparateur_lignes"]) >= 10 and test_ok
+		and body_ok and cmp_ok and int(report["comparateur_lignes"]) >= 10 and test_ok \
+		and region_ok and landscape_ok
 	_finish(passed)

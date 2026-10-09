@@ -83,13 +83,39 @@ func _show_saves() -> void:
 	var list := ItemList.new()
 	list.custom_minimum_size = Vector2(480, 260)
 	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Arbre des branches : une sauvegarde faite après avoir rechargé une
+	# autre se range sous elle.
+	var info := {}
+	var children := {}
 	for s in saves:
 		var d: Dictionary = App.session.describe_save(s["path"])
+		info[s["path"]] = d
+	var roots := []
+	for s in saves:
+		var parent: String = ProjectSettings.globalize_path(str(info[s["path"]].get("branch_of", "")))
+		var found := ""
+		for other in saves:
+			if other["path"] != s["path"] and ProjectSettings.globalize_path(other["path"]) == parent:
+				found = other["path"]
+		if found == "":
+			roots.append(s)
+		else:
+			if not children.has(found):
+				children[found] = []
+			children[found].append(s)
+	var add := func(self_ref: Callable, s: Dictionary, depth: int) -> void:
+		var d: Dictionary = info[s["path"]]
 		var label: String = s["file"]
 		if not d.is_empty():
 			label = "%s — %s — %s" % [d["name"], d["planet"], d["date"]]
+		if depth > 0:
+			label = "    ".repeat(depth - 1) + "  ↳ " + label
 		list.add_item(label)
 		list.set_item_metadata(list.item_count - 1, s["path"])
+		for c in children.get(s["path"], []):
+			self_ref.call(self_ref, c, min(depth + 1, 6))
+	for s in roots:
+		add.call(add, s, 0)
 	list.item_activated.connect(func(i): _continue(list.get_item_metadata(i)))
 	v.add_child(list)
 	var h := HBoxContainer.new()

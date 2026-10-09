@@ -49,22 +49,22 @@ La photosynthèse oxygénique est la seule source. La couche de surface en repre
 
 | Monde | Graine | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Bilan électrons | Électrons corrigés | Rejeu identique | Calcul | Vitesse |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Terre (Archéen) | 2026 | 0 | 0 | mutation spontanée 37062476, transfert horizontal 2499043 | 3.1e-11 | 1.6e-11 | 4.2e-8 | 7.2 % | oui | 290 s sur 4 fils | 290.6 ka par seconde |
-| Monde océan | 2026 | 0 | 0 | mutation spontanée 69221746, transfert horizontal 4735206 | 2.9e-12 | 3.9e-13 | 4.9e-8 | 6.1 % | oui | 551 s sur 4 fils | 199.0 ka par seconde |
-| Monde désertique | 2026 | 0 | 0 | mutation spontanée 31016294, transfert horizontal 1840430 | 2.4e-11 | 8.3e-12 | 1.9e-8 | 10.8 % | oui | 289 s sur 4 fils | 271.4 ka par seconde |
-| Super-Terre | 2026 | 0 | 0 | mutation spontanée 54507676, transfert horizontal 3876106 | 9.7e-12 | 3.0e-12 | 5.8e-8 | 7.8 % | oui | 485 s sur 4 fils | 182.1 ka par seconde |
-| Petite planète | 2026 | 0 | 0 | mutation spontanée 44254176, transfert horizontal 3596631 | 6.3e-12 | 2.1e-13 | 1.7e-8 | 37.2 % | oui | 664 s sur 4 fils | 213.2 ka par seconde |
-| Monde sans lune | 2026 | 0 | 0 | mutation spontanée 37022040, transfert horizontal 2661627 | 3.6e-11 | 2.7e-12 | 6.8e-8 | 9.9 % | oui | 291 s sur 4 fils | 278.7 ka par seconde |
+| Terre (Archéen) | 2026 | 0 | 0 | mutation spontanée 37062476, transfert horizontal 2499043 | 3.1e-11 | 1.6e-11 | 4.2e-8 | 7.2 % | oui | 290 s sur 4 fils | 290.7 ka par seconde |
+| Monde océan | 2026 | 0 | 0 | mutation spontanée 69221746, transfert horizontal 4735206 | 2.9e-12 | 3.9e-13 | 4.9e-8 | 6.1 % | oui | 545 s sur 4 fils | 200.9 ka par seconde |
+| Monde désertique | 2026 | 0 | 0 | mutation spontanée 31016294, transfert horizontal 1840430 | 2.4e-11 | 8.3e-12 | 1.9e-8 | 10.8 % | oui | 284 s sur 4 fils | 275.8 ka par seconde |
+| Super-Terre | 2026 | 0 | 0 | mutation spontanée 54507676, transfert horizontal 3876106 | 9.7e-12 | 3.0e-12 | 5.8e-8 | 7.8 % | oui | 471 s sur 4 fils | 187.6 ka par seconde |
+| Petite planète | 2026 | 0 | 0 | mutation spontanée 44254176, transfert horizontal 3596631 | 6.3e-12 | 2.1e-13 | 1.7e-8 | 37.2 % | oui | 662 s sur 4 fils | 213.9 ka par seconde |
+| Monde sans lune | 2026 | 0 | 0 | mutation spontanée 37022040, transfert horizontal 2661627 | 3.6e-11 | 2.7e-12 | 6.8e-8 | 9.9 % | oui | 290 s sur 4 fils | 279.6 ka par seconde |
 
 ## Garde-fous du plafond de populations et du tunnel
 
-Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde. « Cellules saturées » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas (monde mûr ; au-delà de 10 %, le plafond est à revoir). Tunnel : au plus 2 essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.
+Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde (voie principale). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, presque toujours à cause d'arrivants du pas. « Saturées » : part des cellules qui ont perdu une population établie (plus que la biomasse d'un fondateur) ; au-delà de 2 % sur les 100 derniers pas (monde mûr), la règle est à revoir. Tunnel : au plus 2 essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.
 
-| Monde | Graine | Cellules saturées (partie) | Cellules saturées (100 derniers pas) | Borne du tunnel atteinte | Essais du tunnel | Réussites |
-|---|---|---|---|---|---|---|
-| Terre (Archéen) | 2026 | 75.95 % | 85.03 % | 83.3 % | 72207129 | 20998 |
-| Monde océan | 2026 | 83.13 % | 99.98 % | 83.1 % | 137727743 | 37860 |
-| Monde désertique | 2026 | 85.29 % | 96.06 % | 86.2 % | 61610312 | 14312 |
-| Super-Terre | 2026 | 84.47 % | 99.85 % | 82.8 % | 108407627 | 30908 |
-| Petite planète | 2026 | 55.72 % | 67.98 % | 82.9 % | 87901328 | 15008 |
-| Monde sans lune | 2026 | 79.44 % | 85.79 % | 82.0 % | 70943859 | 21952 |
+| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | dont population encore en croissance | Borne du tunnel atteinte | Essais du tunnel | Réussites |
+|---|---|---|---|---|---|---|---|---|---|
+| Terre (Archéen) | 2026 | 76.0 % | 85.0 % | 2.80 % | 0.41 % | 0.36 % | 83.3 % | 72207129 | 20998 |
+| Monde océan | 2026 | 83.1 % | 100.0 % | 2.54 % | 0.75 % | 0.72 % | 83.1 % | 137727743 | 37860 |
+| Monde désertique | 2026 | 85.3 % | 96.1 % | 3.10 % | 1.86 % | 1.72 % | 86.2 % | 61610312 | 14312 |
+| Super-Terre | 2026 | 84.5 % | 99.9 % | 3.61 % | 1.91 % | 1.74 % | 82.8 % | 108407627 | 30908 |
+| Petite planète | 2026 | 55.7 % | 68.0 % | 1.04 % | 0.78 % | 0.72 % | 82.9 % | 87901328 | 15008 |
+| Monde sans lune | 2026 | 79.4 % | 85.8 % | 3.44 % | 0.38 % | 0.34 % | 82.0 % | 70943859 | 21952 |

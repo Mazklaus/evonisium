@@ -44,3 +44,20 @@ impl Bodies {
         self.asked.clear();
     }
 }
+
+/// Région du globe (incrément G3) calculée en tâche de fond : une seule à la
+/// fois, la dernière demandée.
+#[derive(Default)]
+pub struct RegionSlot {
+    pub done: Arc<Mutex<Option<(String, evo_view::terrain::Region)>>>,
+    pub asked: String,
+    pub triangles: Arc<Mutex<Option<Arc<evo_view::terrain::Triangles>>>>,
+}
+
+impl RegionSlot {
+    pub fn clear(&mut self) {
+        *self.done.lock().unwrap() = None;
+        *self.triangles.lock().unwrap() = None;
+        self.asked.clear();
+    }
+}
