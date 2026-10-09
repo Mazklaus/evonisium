@@ -37,6 +37,10 @@ Options de `run` : `--seed` (graine de la partie), `--level` (grille : 4 donne 2
 
 La même graine redonne exactement la même histoire, quel que soit le nombre de coeurs.
 
+## Contribuer
+
+Les signalements de bugs et les idées sont bienvenus dans les issues : voir [CONTRIBUTING.md](CONTRIBUTING.md), le [code de conduite](CODE_OF_CONDUCT.md) et la [politique de sécurité](SECURITY.md).
+
 ## Licence
 
 Tous droits réservés : voir [LICENSE](LICENSE). Les polices de `client/fonts/` restent sous la SIL Open Font License 1.1.
