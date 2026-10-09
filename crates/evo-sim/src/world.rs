@@ -863,13 +863,19 @@ impl World {
         if std::env::var_os("EVO_DEBUG_O2").is_some() && (self.years / 2e7).floor() > (years / 2e7).floor() {
             let r = &self.planet.reservoirs;
             let b = r.oxygen;
-            let (mut n, mut sum, mut max) = (0.0f64, 0.0f64, 0usize);
+            let (mut n, mut sum, mut silent, mut max) = (0.0f64, 0.0f64, 0.0f64, 0usize);
             for p in self.communities.iter().flatten() {
                 n += p.biomass;
                 sum += p.biomass * p.genome.genes.len() as f64;
+                silent += p.biomass * p.genome.genes.iter().filter(|g| !g.functional).count() as f64;
                 max = max.max(p.genome.genes.len());
             }
-            eprintln!("GENES {:.1} Ma moyenne pondérée {:.1} max {max}", self.years / 1e6, sum / n.max(1e-30));
+            eprintln!(
+                "GENES {:.1} Ma moyenne pondérée {:.1} max {max} inactifs {:.0} %",
+                self.years / 1e6,
+                sum / n.max(1e-30),
+                100.0 * silent / sum.max(1e-30)
+            );
             let pl = &self.planet;
             eprintln!(
                 "TERRES {:.1} Ma terres {:.3} océan {:.3} niveau {:.0} m CO2 {:.0} Pa T {:.1} K bilans C {:.1e} P {:.1e} e {:.1e}",

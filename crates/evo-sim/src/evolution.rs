@@ -734,6 +734,29 @@ pub fn evolve_genotype(
             }
             (count, arising / count as f64, 0.0)
         };
+        // Délétions : la strate des pseudogènes est tirée à part. Une délétion
+        // tombe au hasard, mais seules celles qui n'emportent pas de gène
+        // utile sont viables ; chez les bactéries, les pseudogènes
+        // disparaissent ainsi en quelques millions d'années (Kuo et Ochman,
+        // 2010). Tirée parmi tous les gènes, la délétion d'un pseudogène
+        // n'est presque jamais candidate quand le génome en compte des
+        // milliers.
+        if kind == MutationKind::Deletion {
+            let silent: Vec<usize> = resident.genome.genes.iter().enumerate().filter(|(_, g)| !g.functional).map(|(i, _)| i).collect();
+            if !silent.is_empty() {
+                let i = silent[rng.random_range(0..silent.len())];
+                let change = resident.genome.derive(GenomeChangeCause::SpontaneousMutation(kind), |g| {
+                    let family = g.genes.remove(i).domain.family;
+                    ChangedElement::Removed { index: i as u16, family }
+                });
+                let copies = arising * silent.len() as f64 / resident.genome.genes.len() as f64;
+                if let Some((s, phenotype, rates)) = evaluate(&change, stats) {
+                    if (multiple || best_s(&fixers) < s) && regime.candidate_fixes(s, ne, copies, rng) {
+                        consider(&mut fixers, s, change, phenotype, rates);
+                    }
+                }
+            }
+        }
         for _ in 0..count {
             let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
             // Un marqueur neutre ne change pas le phénotype : neutre, sans

@@ -348,6 +348,9 @@ fn chrono(args: &[String]) {
         let r: f64 = v.parse().expect("durée invalide");
         world.config.evolution.round_years = (r > 0.0).then_some(r);
     }
+    if args.iter().any(|a| a == "--fixation-unique") {
+        world.config.evolution.multiple_fixations = false;
+    }
     eprintln!("lecture : {:.2} s", t0.elapsed().as_secs_f64());
     if args.iter().any(|a| a == "--sizes") {
         let mb = |n: u64| n as f64 / 1e6;
