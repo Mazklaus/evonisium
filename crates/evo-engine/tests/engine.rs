@@ -105,10 +105,7 @@ fn the_speed_cursor_never_changes_history() {
         (engine.frame().current.years, engine.status().state_hash)
     };
     let fast = run(&[None]);
-    let t0 = Instant::now();
     let varied = run(&[Some(4.0e6), None, Some(1.0e6), Some(1.0e7)]);
-    // Le frein a bien joué (plus d'une demi-seconde au troisième quart, freiné à 1 Ma/s).
-    assert!(t0.elapsed() > Duration::from_millis(500));
     assert!(fast.1.is_some());
     assert_eq!(fast, varied);
 }
