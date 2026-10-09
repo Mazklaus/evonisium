@@ -6,6 +6,7 @@
 //! sur l'état exact de la fin du dernier pas. Une réponse arrive donc au plus
 //! un pas après la demande.
 
+use crate::strata::{SedimentSample, Stratum};
 use evo_core::events::Event;
 use evo_planet::{BioGrid, WaterPool};
 use evo_sim::history::{EventView, Sample};
@@ -41,6 +42,11 @@ pub enum Query {
     Lineages { since_years: f64 },
     /// Empreinte de l'état complet (vérification du rejeu).
     StateHash,
+    /// Colonne stratigraphique de la région d'une cellule physique, en
+    /// `layers` tranches au plus.
+    Strata { cell: u32, layers: usize },
+    /// Registre des ordres reçus (branches « avec et sans »).
+    Orders,
 }
 
 /// Détail d'une cellule physique et de sa cellule du vivant.
@@ -162,6 +168,8 @@ pub enum Answer {
     Cell(Option<CellDetail>),
     Lineages(Vec<LineageView>),
     StateHash(u64),
+    Strata(Vec<Stratum>),
+    Orders(Vec<evo_sim::orders::Order>),
     /// La requête n'a pas pu aboutir (base illisible, …).
     Failed(String),
 }
@@ -181,6 +189,7 @@ pub(crate) struct Store {
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, years REAL NOT NULL, interest REAL NOT NULL, data BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS regional (region INTEGER NOT NULL, years REAL NOT NULL, temperature_k REAL, ocean REAL, oxygen REAL, biomass REAL, dominant INTEGER, species INTEGER, PRIMARY KEY (region, years));
+CREATE TABLE IF NOT EXISTS sediments (years REAL PRIMARY KEY, carbonate REAL, organic REAL, iron REAL, o2 REAL, ice REAL);
 CREATE TABLE IF NOT EXISTS species (species INTEGER NOT NULL, years REAL NOT NULL, biomass REAL, cells INTEGER, ecotypes INTEGER, peak INTEGER, PRIMARY KEY (species, years));
 ";
 
@@ -251,6 +260,12 @@ impl Store {
             for s in world.species() {
                 sp.execute(params![s.id, years, s.biomass, s.cells, s.ecotypes, s.peak_bio_cell])?;
             }
+            let r = &world.planet.reservoirs;
+            let g = &world.history.samples[samples - 1];
+            tx.prepare_cached(
+                "INSERT OR REPLACE INTO sediments (years, carbonate, organic, iron, o2, ice) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?
+            .execute(params![years, r.carbonate_c, r.organic_c, r.iron_oxides, g.o2_mixing, g.ice_fraction])?;
             self.stored_samples = samples;
         }
         drop(tx.commit());
@@ -315,6 +330,33 @@ impl Store {
                     .collect(),
             ),
             Query::StateHash => Answer::StateHash(world.state_hash()),
+            Query::Orders => Answer::Orders(world.orders.log()),
+            Query::Strata { cell, layers } => {
+                let Some(region) = self.region_of_physical(world, cell) else { return Ok(Answer::Strata(Vec::new())) };
+                let history = self.regional(region, None)?;
+                let mut st = self.db.prepare_cached("SELECT years, carbonate, organic, iron, o2, ice FROM sediments ORDER BY years")?;
+                let sediments = st
+                    .query_map([], |r| {
+                        Ok(SedimentSample {
+                            years: r.get(0)?,
+                            carbonate_c: r.get(1)?,
+                            organic_c: r.get(2)?,
+                            iron_oxides: r.get(3)?,
+                            o2_mixing: r.get(4)?,
+                            ice_fraction: r.get(5)?,
+                        })
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                // L'iridium d'un impact retombe sur toute la planète.
+                let impacts: Vec<f64> = world
+                    .orders
+                    .applied
+                    .iter()
+                    .filter(|a| matches!(a.order.kind, evo_sim::orders::OrderKind::Intervene(evo_sim::orders::Intervention::Impact { .. })))
+                    .map(|a| a.years)
+                    .collect();
+                Answer::Strata(crate::strata::column(&history, &sediments, &impacts, layers))
+            }
         })
     }
 

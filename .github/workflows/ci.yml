@@ -57,7 +57,7 @@ jobs:
           wc -l empreinte-ubuntu-latest.txt
 
   client-linux:
-    name: Client Godot (Linux) — porte de l'étape 3
+    name: Client Godot (Linux) — portes des étapes 3 et 4
     runs-on: ubuntu-latest
     env:
       GODOT: Godot_v4.6.1-stable_linux.x86_64
@@ -78,6 +78,9 @@ jobs:
         run: ./$GODOT --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$PWD/porte/rejeu-linux
       - name: Partie jouée — créer, ensemencer, intervenir, voir l'oxygène monter
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte --niveau=4 --duree-max=2400 --sortie=$PWD/porte/partie
+      - name: Étape 4 — impact, « avec et sans », réseau, strates, régions, anatomie, comparateur
+        timeout-minutes: 30
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --niveau=4 --sortie=$PWD/porte/etape4
       - uses: actions/upload-artifact@v4
         if: always()
         with:

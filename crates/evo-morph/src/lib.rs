@@ -13,6 +13,7 @@
 // mathématiques de la plateforme y suffisent (voir clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+pub mod body;
 pub mod canvas;
 pub mod microbe;
 

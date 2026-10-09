@@ -16,6 +16,11 @@ const Chronique := preload("res://scripts/ui/chronique.gd")
 const Interventions := preload("res://scripts/ui/interventions.gd")
 const Sauvegarde := preload("res://scripts/ui/sauvegarde.gd")
 const Reglages := preload("res://scripts/ui/reglages.gd")
+const AvecSans := preload("res://scripts/ui/avec_sans.gd")
+const Reseau := preload("res://scripts/ui/reseau.gd")
+const Strates := preload("res://scripts/ui/strates.gd")
+const Anatomie := preload("res://scripts/ui/anatomie.gd")
+const Comparateur := preload("res://scripts/ui/comparateur.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -61,12 +66,13 @@ func setup(params: Dictionary) -> void:
 	inspecteur.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_child(inspecteur)
 	inspecteur.species_requested.connect(open_species)
+	inspecteur.tool_requested.connect(open_tool)
 
 	frise = Frise.new()
 	add_child(frise)
 	frise.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 10)
 	frise.event_clicked.connect(go_to_event)
-	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
+	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
 		var b := Atlas.button(App.t(m[0]), m[2], App.t(m[0]) + ("" if m[1] == "" else " (%s)" % m[1]))
 		b.add_theme_font_size_override("font_size", int(17 * App.text_scale()))
 		frise.menu.add_child(b)
@@ -227,6 +233,18 @@ func open_species(species: int) -> void:
 	_open(f)
 	f.open(species)
 	f.species_requested.connect(open_species)
+	f.anatomy_requested.connect(open_anatomy)
+	f.compare_requested.connect(open_comparator)
+
+func open_anatomy(species: int) -> void:
+	var f = _open(Anatomie.new())
+	f.open(species)
+	f.compare_requested.connect(open_comparator)
+
+func open_comparator(species: int, other := -1) -> void:
+	var f = _open(Comparateur.new())
+	f.open(species, other)
+	f.species_requested.connect(open_species)
 
 func open_tree() -> void:
 	var f = _open(Arbre.new())
@@ -241,6 +259,19 @@ func open_chronicle() -> void:
 func open_interventions() -> void:
 	var f = _open(Interventions.new())
 	f.intervened.connect(func(_k, _m): _flash(App.t("sent")))
+
+func open_with_without() -> void:
+	_open(AvecSans.new())
+
+## Outils d'une cellule ouverts depuis l'inspecteur.
+func open_tool(tool: String, cell: int) -> void:
+	if tool == "reseau":
+		var f = _open(Reseau.new())
+		f.open(cell)
+		f.species_requested.connect(open_species)
+	else:
+		var f = _open(Strates.new())
+		f.open(cell)
 
 func open_save() -> void:
 	_open(Sauvegarde.new())
@@ -279,6 +310,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			open_tree()
 		KEY_I:
 			open_interventions()
+		KEY_A:
+			open_with_without()
 		KEY_F5:
 			open_save()
 		_:
