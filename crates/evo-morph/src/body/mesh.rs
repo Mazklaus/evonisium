@@ -6,6 +6,8 @@
 use super::pattern::PatternTexture;
 use super::plan::BodyPlan;
 use super::shape::{field, place, Bone, Primitive, Shape, V3};
+use crate::canvas::{Canvas, INK};
+use crate::microbe::nice_length;
 
 /// Résolutions des trois niveaux de détail : cellules le long du plus grand
 /// côté du corps.
@@ -345,4 +347,76 @@ pub fn silhouette(plan: &BodyPlan, width: usize, height: usize) -> (Vec<f32>, f3
         }
     }
     (mask, mpp / scale)
+}
+
+/// Planche d'une espèce pour sa fiche (DA Atlas) : le corps de profil au
+/// lavis de son pigment, son motif, les organes internes en transparence
+/// comme sur une préparation éclaircie, le contour à la plume et une barre
+/// d'échelle. Renvoie la longueur de la barre, en µm.
+pub fn plate(plan: &BodyPlan, width: usize, height: usize) -> (Canvas, f32) {
+    let mut cv = Canvas::paper(width, height, plan.seed);
+    let shape: Shape = place(plan);
+    let (scale, unit) = unit_scale(&shape.primitives);
+    let (skin, organs): (Vec<Primitive>, Vec<Primitive>) = unit.into_iter().partition(|p| !p.internal);
+    if skin.is_empty() {
+        return (cv, 1.0);
+    }
+    let (lo, hi) = bounds(&skin);
+    let mpp = ((hi.0 - lo.0) / (width as f32 * 0.7)).max((hi.1 - lo.1) / (height as f32 * 0.62)).max(1e-12);
+    let (cx, cy) = ((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0);
+    let (ox, oy) = (width as f32 / 2.0, height as f32 * 0.45);
+    let texture = PatternTexture::grow(&plan.pattern, plan.seed);
+    // Premier point touché le long de z, ou rien.
+    let hit = |prims: &[Primitive], x: f32, y: f32| -> Option<(usize, f32)> {
+        let mut z = lo.2 - mpp;
+        let mut best = f32::INFINITY;
+        while z <= hi.2 + mpp {
+            let (d, i, _) = field(prims, V3(x, y, z));
+            best = best.min(d);
+            if d < 0.0 {
+                return Some((i, 1.0));
+            }
+            z += d.max(mpp * 0.5);
+        }
+        let m = (0.5 - best / mpp).clamp(0.0, 1.0);
+        (m > 0.0).then_some((usize::MAX, m))
+    };
+    let mut mask = vec![0.0f32; width * height];
+    for py in 0..height {
+        for px in 0..width {
+            let x = cx + (px as f32 + 0.5 - ox) * mpp;
+            let y = cy - (py as f32 + 0.5 - oy) * mpp;
+            let Some((i, m)) = hit(&skin, x, y) else { continue };
+            mask[py * width + px] = m;
+            let base = skin[if i == usize::MAX { 0 } else { i }].colour;
+            let u = (x - lo.0) / (hi.0 - lo.0).max(1e-9);
+            let v = (y - lo.1) / (hi.1 - lo.1).max(1e-9);
+            let t = texture.sample(u, v) * plan.pattern.contrast;
+            let c = [base[0] * (1.0 - 0.45 * t), base[1] * (1.0 - 0.45 * t), base[2] * (1.0 - 0.45 * t)];
+            cv.wash(px, py, c, 0.6 * m);
+            if !organs.is_empty() {
+                if let Some((j, _)) = hit(&organs, x, y).filter(|h| h.0 != usize::MAX) {
+                    cv.wash(px, py, organs[j].colour, 0.35);
+                }
+            }
+        }
+    }
+    for py in 0..height {
+        for px in 0..width {
+            if mask[py * width + px] < 0.5 {
+                continue;
+            }
+            let edge = [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+                let (nx, ny) = (px as isize + dx, py as isize + dy);
+                nx < 0 || ny < 0 || nx as usize >= width || ny as usize >= height || mask[ny as usize * width + nx as usize] < 0.5
+            });
+            if edge {
+                cv.set(px, py, INK, 0.85);
+            }
+        }
+    }
+    let um_per_px = mpp / scale * 1e6;
+    let bar = nice_length(width as f32 * 0.2 * um_per_px);
+    cv.scale_bar(width as f32 * 0.08, height as f32 * 0.88, bar / um_per_px);
+    (cv, bar)
 }

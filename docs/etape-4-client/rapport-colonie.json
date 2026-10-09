@@ -1,0 +1,36 @@
+{
+  "captures": [
+    "15-colonie-fiche",
+    "16-colonie-anatomie",
+    "17-colonie-organes",
+    "18-colonie-comparateur"
+  ],
+  "colonie": 524769,
+  "colonie_comparateur": [
+    "Nom : Oxyphycus iraesoorusensis obscura / Oxyphycus thouterensis minor",
+    "Métabolisme : méthanogenèse, photosynthèse anoxygénique au soufre, photosynthèse oxygénique, photosynthèse anoxygénique au fer, photosynthèse anoxygénique au manganèse / méthanogenèse, photosynthèse oxygénique, photosynthèse anoxygénique au fer, photosynthèse anoxygénique au manganèse",
+    "Pigment : pigmentée / pigmentée",
+    "Statut : stable / stable",
+    "Biomasse : 10¹³ mol C / 3 × 10¹³ mol C",
+    "Aire : 16 % / 56 %",
+    "Âge : 112 Ma / 143 Ma",
+    "Lignées : 20 / 54",
+    "Cellule : procaryote / procaryote",
+    "Cellules du corps : 12 (1 type) / une",
+    "Reproduction : asexuée / asexuée",
+    "Taille : 11 µm / 15 µm",
+    "Symétrie : axiale / axiale",
+    "Revêtement : mucus / paroi cellulaire",
+    "Appendices : 0 / 0",
+    "Types cellulaires : 1 / 1",
+    "Organes internes : membranes photosynthétiques / membranes photosynthétiques, granules de réserve"
+  ],
+  "colonie_date": "an 160 Ma",
+  "colonie_taille": "11 µm",
+  "colonie_triangles": 6592,
+  "colonie_types": 1,
+  "graine": 2026,
+  "monde": "terre",
+  "niveau": 4,
+  "passed": true
+}

@@ -97,6 +97,48 @@ func _g3_only() -> void:
 	await _shot("g3-paysage")
 	_finish(ok)
 
+## Essai des corps simulés : la Terre tourne jusqu'à sa première colonie
+## pluricellulaire, dont on ouvre la fiche, l'anatomie et le comparateur.
+func _colony_only() -> void:
+	var sp := -1
+	var limit := float(opts.get("ma_max", "400")) * 1.0e6
+	App.session.set_speed(1.0e7)
+	await _run_to(float(opts.get("ma_min", "0")) * 1.0e6)
+	while sp < 0 and _years() < limit:
+		await _run_to(_years() + 1.0e7)
+		sp = App.session.most_abundant_complex(false)
+	report["colonie"] = sp
+	report["colonie_date"] = App.session.frame_info().get("date", "")
+	_log("colonie : %d, %s" % [sp, report["colonie_date"]])
+	if sp < 0:
+		_finish(false)
+		return
+	var jeu = _screen()
+	jeu.open_species(sp)
+	await _until(func(): return jeu.fiche.figure.texture != null and jeu.fiche.decor.texture != null, 60.0)
+	await _wait(0.5)
+	await _shot("15-colonie-fiche")
+	jeu.open_anatomy(sp)
+	var body_ok := await _until(func(): return not jeu.fiche.portrait.info.is_empty(), 60.0)
+	if body_ok:
+		report["colonie_triangles"] = jeu.fiche.portrait.info["lods"][0]["indices"].size() / 3
+		report["colonie_taille"] = jeu.fiche.portrait.info["traits"]["size"]
+		report["colonie_types"] = int(jeu.fiche.portrait.info["traits"]["cell_types"])
+	await _wait(1.0)
+	await _shot("16-colonie-anatomie")
+	jeu.fiche.anatomy_button.button_pressed = true
+	await _wait(0.6)
+	await _shot("17-colonie-organes")
+	jeu.open_comparator(sp)
+	var cmp_ok := await _until(func(): return bool(jeu.fiche.data.get("ready", false)), 60.0)
+	await _wait(1.0)
+	var rows := []
+	for r in jeu.fiche.data.get("rows", []):
+		rows.append("%s : %s / %s" % [r["label"], r["a"], r["b"]])
+	report["colonie_comparateur"] = rows
+	await _shot("18-colonie-comparateur")
+	_finish(body_ok and cmp_ok)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
@@ -115,6 +157,9 @@ func _scenario() -> void:
 	App.session.set_speed(1.0e6)
 	if opts.get("seul", "") == "g3":
 		await _g3_only()
+		return
+	if opts.get("seul", "") == "colonie":
+		await _colony_only()
 		return
 	var ma := float(opts["ma"]) * 1.0e6
 	var grown := await _run_to(ma)

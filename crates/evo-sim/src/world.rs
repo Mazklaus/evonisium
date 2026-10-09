@@ -2308,7 +2308,9 @@ mod tests {
         );
         a.step();
         assert!(a.disturbances.killed_biomass > 0.0);
-        assert!(a.disturbances.killed_biomass > 0.05 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
+        // La part tuée dépend de la biomasse prise dans le rayon de destruction
+        // (3 % avec les colonies de l'étape 4, 5 % et plus avant).
+        assert!(a.disturbances.killed_biomass > 0.01 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
         // Le carbone tué reste dans le système ; le CO₂ libéré est inscrit.
         assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9, "bilan");
         assert!(a.total_carbon() > carbon);
