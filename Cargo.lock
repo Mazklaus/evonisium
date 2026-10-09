@@ -136,6 +136,7 @@ dependencies = [
 name = "evo-life"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "evo-core",
  "evo-genetics",
  "evo-planet",

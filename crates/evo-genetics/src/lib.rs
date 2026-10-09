@@ -19,8 +19,8 @@ pub mod mutation;
 pub mod popgen;
 
 pub use genome::{
-    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, ReactionId,
-    GENOME_CHANGE_CAUSE_COUNT,
+    ChangedElement, Domain, DomainFamily, DomainRelation, Gene, Genome, GenomeChange, GenomeChangeCause, Organelle, ReactionId,
+    GENOME_CHANGE_CAUSE_COUNT, REGULATOR_SENSE_NM,
 };
 pub use journal::{GenomeJournal, JournalEntry};
 pub use lineage::{LineageRecord, LineageRegistry};

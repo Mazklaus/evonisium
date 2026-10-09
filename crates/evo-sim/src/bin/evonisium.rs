@@ -125,6 +125,7 @@ fn main() {
         }
         Some("empreinte") => fingerprint(&args),
         Some("chrono") => chrono(&args),
+        Some("complexite") => complexity(&args),
         Some("equivalence") => equivalence(&args),
         Some("bench") => {
             let levels: String = arg(&args, "--levels", "6,7".to_string());
@@ -185,6 +186,110 @@ fn run(args: &[String]) {
         std::fs::write(dir.join("ordres.tsv"), world.orders.to_tsv()).expect("écriture");
         std::fs::write(dir.join("journal-genomes.tsv"), world.journal.to_tsv()).expect("écriture");
         eprintln!("Historique, événements, ordres et journal écrits dans {}", dir.display());
+    }
+}
+
+/// Partie longue qui suit les étapes de la complexité (étape 4) :
+///   evonisium complexite [--world CLÉ] [--seed N] [--level L] [--step-years Y] [--max-years Y] [--every-years Y] [--retention P]
+fn complexity(args: &[String]) {
+    use evo_sim::world::{COMPLEXITY_STAGES, COMPLEXITY_STAGE_COUNT};
+    let key: String = arg(args, "--world", "terre".to_string());
+    let params = PlanetParams::by_key(&key).unwrap_or_else(|| usage());
+    let mut cfg = WorldConfig::with_planet(params, arg(args, "--seed", 2026), arg(args, "--level", 4));
+    cfg.step_years = arg(args, "--step-years", 200_000.0);
+    if let Some(p) = opt(args, "--retention") {
+        cfg.transitions.retention_probability = p.parse().expect("probabilité invalide");
+    }
+    if args.iter().any(|a| a == "--sans-accelerateur") {
+        cfg.evolution.accelerator.enabled = false;
+    }
+    let max_years: f64 = arg(args, "--max-years", 3e9);
+    let every: f64 = arg(args, "--every-years", 50e6);
+    let start = Instant::now();
+    let mut world = World::new(cfg);
+    world.orders.submit(0.0, OrderKind::SeedLife);
+    let mut next = every;
+    let mut seen = [false; COMPLEXITY_STAGE_COUNT];
+    let mut accelerated = false;
+    let mut seen_oxygenic = false;
+    while world.years() < max_years {
+        world.step();
+        if world.progress.complex_accelerator_on != accelerated {
+            accelerated = world.progress.complex_accelerator_on;
+            println!(
+                "  ⚑ accélérateur de la complexité {} : {}",
+                if accelerated { "en marche" } else { "arrêté" },
+                format_years(world.years())
+            );
+        }
+        if let Some(y) = world.progress.stage_years[4].filter(|_| !seen_oxygenic) {
+            seen_oxygenic = true;
+            println!("  ☀ photosynthèse oxygénique : {}", format_years(y));
+        }
+        for (k, done) in seen.iter_mut().enumerate() {
+            if !*done {
+                if let Some(y) = world.progress.complexity_years[k] {
+                    *done = true;
+                    println!("  ★ {} : {}", COMPLEXITY_STAGES[k], format_years(y));
+                }
+            }
+        }
+        if world.years() >= next {
+            next += every;
+            let s = world.summary();
+            let mut euk = 0.0;
+            let mut phago = 0.0;
+            let mut multi = 0.0;
+            let mut total = 0.0;
+            let (mut max_cells, mut max_types, mut max_size) = (1.0f64, 1usize, 1.0f64);
+            let (mut genes, mut max_genes, mut pops, mut dead) = (0usize, 0usize, 0usize, 0usize);
+            for p in world.communities.iter().flatten() {
+                total += p.biomass;
+                genes += p.genome.genes.len();
+                dead += p.genome.genes.iter().filter(|g| !g.functional).count();
+                max_genes = max_genes.max(p.genome.genes.len());
+                pops += 1;
+                if p.phenotype.is_eukaryote() {
+                    euk += p.biomass;
+                }
+                if p.phenotype.is_phagotroph() {
+                    phago += p.biomass;
+                }
+                if p.phenotype.is_multicellular() {
+                    multi += p.biomass;
+                }
+                max_cells = max_cells.max(p.phenotype.cells());
+                max_types = max_types.max(p.phenotype.cell_types());
+                max_size = max_size.max(p.phenotype.cell_size);
+            }
+            let total = total.max(1e-300);
+            println!(
+                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
+                format_years(world.years()),
+                s.globals.o2_mixing,
+                s.globals.mean_temperature_k,
+                100.0 * s.globals.ice_fraction,
+                100.0 * phago / total,
+                100.0 * euk / total,
+                100.0 * multi / total,
+                max_size,
+                max_cells,
+                max_types,
+                genes as f64 / pops.max(1) as f64,
+                max_genes,
+                100.0 * dead as f64 / genes.max(1) as f64,
+                world.config.bio_level,
+                start.elapsed().as_secs_f64()
+            );
+        }
+        if world.progress.complexity_years[6].is_some() && args.iter().any(|a| a == "--stop") {
+            break;
+        }
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    println!("{} simulés en {:.0} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
+    if let Some(path) = opt(args, "--save") {
+        world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
     }
 }
 

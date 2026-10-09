@@ -1020,8 +1020,11 @@ impl EvoSession {
                     .companions
                     .iter()
                     .filter_map(|c| {
-                        let p = detail.populations.iter().filter(|p| p.species == c.0).max_by(|a, b| a.biomass.total_cmp(&b.biomass))?;
-                        let plan = evo_view::anatomy::plan_for_population(p, game_seed);
+                        let p = detail.populations.iter().filter(|p| p.species == c.0).max_by(|a, b| a.biomass.total_cmp(&b.biomass));
+                        let plan = match f.species(c.0) {
+                            Some(sv) => evo_view::anatomy::plan_for_species(sv, p, game_seed)?,
+                            None => evo_view::anatomy::plan_for_population(p?, game_seed),
+                        };
                         let colour = plan.modules[0]
                             .pigments
                             .first()
@@ -1065,11 +1068,20 @@ impl EvoSession {
         let (Some(g), Some(f)) = (&self.game, self.frame()) else { return GString::from(&key) };
         let Some(sv) = f.species(species.max(0) as u32) else { return GString::from(&key) };
         let rx = g.engine.query(Query::Cell { cell: sv.peak_bio_cell });
-        let (signature, game_seed) = (sv.signature, f.planet.seed);
+        let (sv, game_seed) = (sv.clone(), f.planet.seed);
         let (w, h) = (width.clamp(64, 2048) as usize, height.clamp(64, 2048) as usize);
         self.jobs.spawn(key.clone(), species as u64 ^ (f.state.step / 50) << 32, move || {
+            // Eucaryotes et colonies : la planche du corps (palier 2) ;
+            // procaryotes : la figure de microscope du palier 1.
+            let o = sv.organisation;
+            if let Some(body) =
+                (o.eukaryote || o.multicellular).then(|| evo_view::anatomy::plan_for_species(&sv, None, game_seed)).flatten()
+            {
+                let (c, bar) = evo_morph::body::plate(&body, w, h);
+                return Some((c, VarDictionaryLite { bar_um: bar }));
+            }
             let Ok(Answer::Cell(Some(detail))) = rx.recv() else { return None };
-            let p = detail.populations.iter().filter(|p| p.species == signature).max_by(|a, b| a.biomass.total_cmp(&b.biomass))?;
+            let p = detail.populations.iter().filter(|p| p.species == sv.signature).max_by(|a, b| a.biomass.total_cmp(&b.biomass))?;
             let form = evo_morph::form(&species::traits_of(p), game_seed);
             let (c, bar) = evo_morph::figure(&form, w, h);
             Some((c, VarDictionaryLite { bar_um: bar }))

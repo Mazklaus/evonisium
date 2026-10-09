@@ -6,8 +6,9 @@
 //!
 //! [Simplification] Ce type est la lecture qu'en fait le générateur
 //! d'apparence. Le plan simulé appartient au moteur (fil « cellules
-//! complexes ») ; un adaptateur le traduira ici dès qu'il est publié. En
-//! attendant, les microbes passent par [`super::from_microbe`].
+//! complexes », `evo_life::BodyPlan`) ; evo-view le traduit ici. Les
+//! procaryotes passent par [`super::from_microbe`], qui garde leurs formes
+//! du palier 1.
 
 /// Version du format lu par le générateur.
 pub const PLAN_VERSION: u16 = 1;
@@ -68,10 +69,12 @@ pub enum System {
     Photosynthetic,
     /// Réserves (granules, graisses).
     Storage,
+    /// Noyau d'une cellule eucaryote.
+    Nucleus,
 }
 
 impl System {
-    pub const ALL: [System; 8] = [
+    pub const ALL: [System; 9] = [
         System::Digestive,
         System::Circulatory,
         System::Nervous,
@@ -80,6 +83,7 @@ impl System {
         System::Skeletal,
         System::Photosynthetic,
         System::Storage,
+        System::Nucleus,
     ];
 
     /// Couleur conventionnelle des planches d'anatomie, en lavis.
@@ -93,6 +97,8 @@ impl System {
             System::Skeletal => [0.93, 0.91, 0.84],
             System::Photosynthetic => [0.36, 0.55, 0.28],
             System::Storage => [0.62, 0.52, 0.40],
+            // Violet de l'hématoxyline, comme sur les coupes colorées.
+            System::Nucleus => [0.42, 0.36, 0.62],
         }
     }
 
@@ -106,6 +112,7 @@ impl System {
             System::Skeletal => "squelette",
             System::Photosynthetic => "photosynthese",
             System::Storage => "reserves",
+            System::Nucleus => "noyau",
         }
     }
 }

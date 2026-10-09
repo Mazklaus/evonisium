@@ -5,6 +5,7 @@
 
 use super::*;
 use evo_morph::body::{Body, Mesh};
+use evo_sim::history::Organisation;
 use evo_view::anatomy;
 
 fn mesh_dict(m: &Mesh, centre: [f32; 3], scale: f32) -> VarDictionary {
@@ -48,6 +49,31 @@ fn centre_of(body: &Body) -> [f32; 3] {
     }
 }
 
+/// Cellule en clair : procaryote ou eucaryote, et ce qu'elle porte.
+fn cell_text(o: &Organisation, fr: bool) -> String {
+    if !o.eukaryote {
+        return (if fr { "procaryote" } else { "prokaryote" }).into();
+    }
+    let mut parts = vec![if fr { "eucaryote" } else { "eukaryote" }.to_string()];
+    if o.plastids > 0 {
+        parts.push(if fr { format!("{} plaste(s)", o.plastids) } else { format!("{} plastid(s)", o.plastids) });
+    }
+    if o.phagotroph {
+        parts.push((if fr { "phagotrophe" } else { "phagotroph" }).into());
+    }
+    parts.join(", ")
+}
+
+/// Cellules d'un individu, et types cellulaires.
+fn body_text(o: &Organisation, fr: bool) -> String {
+    if o.body_cells <= 1.5 {
+        return (if fr { "une" } else { "one" }).into();
+    }
+    let n = format::number_in(if fr { Lang::Fr } else { Lang::En }, o.body_cells as f64, 0);
+    let types = o.cell_types.max(1);
+    format!("{n} ({types} type{})", if types > 1 { "s" } else { "" })
+}
+
 impl EvoSession {
     /// Plan d'une espèce : sa population la plus abondante dans sa cellule
     /// d'apogée. Lancé en tâche de fond ; la clé sert à le reprendre.
@@ -56,13 +82,18 @@ impl EvoSession {
         let (Some(g), Some(f)) = (&self.game, self.frame()) else { return key };
         let Some(sv) = f.species(species) else { return key };
         let rx = g.engine.query(Query::Cell { cell: sv.peak_bio_cell });
-        let (signature, game_seed) = (sv.signature, f.planet.seed);
+        let (sv, game_seed) = (sv.clone(), f.planet.seed);
         // Le corps ne change qu'avec le génotype : on le refait au plus
         // toutes les 500 étapes.
         self.bodies.spawn(key.clone(), f.state.step / 500, move || {
-            let Ok(Answer::Cell(Some(detail))) = rx.recv() else { return None };
-            let p = detail.populations.iter().filter(|p| p.species == signature).max_by(|a, b| a.biomass.total_cmp(&b.biomass))?;
-            Some(anatomy::plan_for_population(p, game_seed))
+            let detail = match rx.recv() {
+                Ok(Answer::Cell(Some(d))) => Some(d),
+                _ => None,
+            };
+            let p = detail
+                .as_ref()
+                .and_then(|d| d.populations.iter().filter(|p| p.species == sv.signature).max_by(|a, b| a.biomass.total_cmp(&b.biomass)));
+            anatomy::plan_for_species(&sv, p, game_seed)
         });
         key
     }
@@ -180,6 +211,18 @@ impl EvoSession {
         row(if fr { "Aire" } else { "Range" }, s(&ia, "range_share"), s(&ib, "range_share"));
         row(if fr { "Âge" } else { "Age" }, s(&ia, "age"), s(&ib, "age"));
         row(if fr { "Lignées" } else { "Lineages" }, s(&ia, "lineages"), s(&ib, "lineages"));
+        if let (Some(sa), Some(sb)) = (f.species(a), f.species(b)) {
+            let (oa, ob) = (sa.organisation, sb.organisation);
+            row(if fr { "Cellule" } else { "Cell" }, cell_text(&oa, fr), cell_text(&ob, fr));
+            row(if fr { "Cellules du corps" } else { "Body cells" }, body_text(&oa, fr), body_text(&ob, fr));
+            let sex = |o: &Organisation| match (o.sexual, fr) {
+                (true, true) => "sexuée",
+                (true, false) => "sexual",
+                (false, true) => "asexuée",
+                (false, false) => "asexual",
+            };
+            row("Reproduction", sex(&oa).into(), sex(&ob).into());
+        }
         let (ea, eb) = (self.bodies.get(&key_a), self.bodies.get(&key_b));
         d.set("ready", ea.is_some() && eb.is_some());
         if let (Some(ea), Some(eb)) = (&ea, &eb) {
@@ -215,6 +258,19 @@ impl EvoSession {
             None => d.set("ancestor", -1i64),
         }
         d
+    }
+
+    /// Espèce pluricellulaire la plus abondante (ou eucaryote si
+    /// `eukaryote`), -1 s'il n'y en a pas encore.
+    #[func]
+    fn most_abundant_complex(&self, eukaryote: bool) -> i64 {
+        let Some(f) = self.frame() else { return -1 };
+        f.state
+            .species
+            .iter()
+            .filter(|s| s.biomass > 0.0 && if eukaryote { s.organisation.eukaryote } else { s.organisation.multicellular })
+            .max_by(|a, b| a.biomass.total_cmp(&b.biomass).then(b.signature.cmp(&a.signature)))
+            .map_or(-1, |s| s.signature as i64)
     }
 
     /// Espèces vivantes, de la plus abondante à la moins abondante (choix
