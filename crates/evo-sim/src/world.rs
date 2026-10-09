@@ -27,6 +27,7 @@
 //! La même graine et le même registre d'ordres donnent donc la même histoire,
 //! quel que soit le nombre de coeurs.
 
+use crate::disturbance::{self, Barrier, ClimateAnomaly, Disturbances};
 use crate::evolution::{evolve_deme, habitat_class, EvolutionParams, EvolutionStats, Fixation};
 use crate::history::{CellView, ClimateMode, EventView, History, Publication, PublishedState, Sample, SpeciesView};
 use crate::influence::{InfluenceParams, InfluenceReserve, InfluenceView};
@@ -180,6 +181,9 @@ pub struct WorldStats {
     /// Cellules où l'éviction a retiré une population établie (plus que la
     /// biomasse d'un fondateur), et non seulement des arrivants du pas.
     pub established_eviction_cell_steps: u64,
+    /// Parmi elles, celles où la population établie évincée croissait
+    /// encore (r > 0).
+    pub growing_eviction_cell_steps: u64,
     /// Modifications de génome fixées, par cause ([`GenomeChangeCause::index`]).
     pub fixed_changes_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
     /// Cellules passées de l'océan à la terre et inversement.
@@ -319,6 +323,8 @@ pub struct World {
     pub demes: Vec<Vec<u32>>,
     pub deme_index: Vec<u32>,
     pub influence: InfluenceReserve,
+    /// Barrières et anomalies climatiques posées par le joueur (étape 4).
+    pub disturbances: Disturbances,
     /// Zone d'intérêt de la caméra (canal d'observation, hors histoire).
     pub interest: Option<InterestZone>,
     pub chemistry: Vec<WaterChemistry>,
@@ -388,6 +394,7 @@ impl World {
         Self {
             history: History::new(config.history_every_years),
             influence: InfluenceReserve::new(&config.influence),
+            disturbances: Disturbances::default(),
             config,
             planet,
             bio,
@@ -578,7 +585,7 @@ impl World {
                 OrderKind::SeedLife => self.seed_life_with(Origin::Player, Some(event)),
                 OrderKind::Intervene(ref i) => {
                     if self.influence.try_spend(&self.config.influence, i.cost()) {
-                        self.intervene(i);
+                        self.intervene(i, order.id);
                     } else {
                         self.events.push_with(
                             self.years,
@@ -600,7 +607,7 @@ impl World {
     }
 
     /// Applique une intervention déjà payée.
-    fn intervene(&mut self, i: &Intervention) {
+    fn intervene(&mut self, i: &Intervention, order: u64) {
         match *i {
             Intervention::Fertilize { cell, radius_km, moles_p } => {
                 let m = moles_p.max(0.0);
@@ -647,7 +654,88 @@ impl World {
                 };
                 self.flux.exchange(Element::Electrons, ox * m);
             }
+            Intervention::Impact { cell, diameter_km } => self.impact(cell, diameter_km, order),
+            Intervention::Isolate { cell, azimuth_deg, length_km, duration_years, sea } => {
+                let center = self.planet.grid.centers[(cell as usize).min(self.planet.grid.len() - 1)];
+                let half = 0.5 * length_km.max(1.0) * 1e3 / self.planet.params.radius_m;
+                let azimuth = azimuth_deg.to_radians();
+                self.disturbances.barriers.push(Barrier::new(center, azimuth, half, self.years + duration_years.max(0.0), sea, order));
+            }
+            Intervention::ClimatePulse { cell, radius_km, delta_k, rain_factor, duration_years } => {
+                let center = self.planet.grid.centers[(cell as usize).min(self.planet.grid.len() - 1)];
+                self.disturbances.anomalies.push(ClimateAnomaly {
+                    center,
+                    radius: radius_km.max(1.0) * 1e3 / self.planet.params.radius_m,
+                    global: false,
+                    delta_k: delta_k.clamp(-30.0, 30.0),
+                    rain_factor: rain_factor.clamp(0.0, 10.0),
+                    from_years: self.years,
+                    until_years: self.years + duration_years.max(0.0),
+                    order,
+                });
+            }
         }
+    }
+
+    /// Impact météoritique : la vie meurt dans le rayon de dévastation (sa
+    /// matière retourne à l'eau), les carbonates touchés libèrent leur CO₂,
+    /// et les poussières refroidissent la planète le temps de retomber.
+    fn impact(&mut self, cell: u32, diameter_km: f64, order: u64) {
+        let d = diameter_km.max(0.0);
+        if d <= 0.0 {
+            return;
+        }
+        let pc = (cell as usize).min(self.planet.grid.len() - 1);
+        let center = self.planet.grid.centers[pc];
+        let radius = disturbance::kill_radius_m(d) / self.planet.params.radius_m;
+        let cp = self.config.physiology.carbon_to_phosphorus;
+        let mut killed = 0.0;
+        for b in 0..self.communities.len() {
+            let f = disturbance::kill_fraction(disturbance::angle(self.bio.grid.centers[b], center), radius);
+            if f <= 0.0 || self.communities[b].is_empty() {
+                continue;
+            }
+            let v = self.bio.env[b].water_volume_m3;
+            let mut dead = 0.0;
+            for p in &mut self.communities[b] {
+                let x = p.biomass * f;
+                p.biomass -= x;
+                dead += x;
+            }
+            if v > 0.0 {
+                self.chemistry[b][WaterPool::Doc as usize] += dead / v;
+                self.chemistry[b][WaterPool::Po4 as usize] += dead / cp / v;
+            } else {
+                // Sans eau, la matière morte rejoint les sédiments par la
+                // même voie qu'une couche d'eau qui s'assèche.
+                let moles = [0.0; WATER_POOL_COUNT];
+                self.planet.reservoirs.absorb_layer(&moles, dead, dead / cp, &mut self.flux);
+            }
+            killed += dead;
+        }
+        // Cible : plate-forme marine (carbonates), grands fonds ou continent.
+        let target = &self.planet.cells[pc];
+        let carbonate = match (target.is_ocean, target.elevation_m > -1000.0) {
+            (true, true) => 0.8,
+            (true, false) => 0.1,
+            (false, _) => 0.3,
+        };
+        let co2 = disturbance::impact_co2(d, carbonate);
+        if co2 > 0.0 {
+            self.planet.reservoirs.atmosphere[Gas::Co2 as usize] += co2;
+            self.flux.exchange(Element::Carbon, co2);
+        }
+        self.disturbances.anomalies.push(ClimateAnomaly {
+            center,
+            radius: std::f64::consts::PI,
+            global: true,
+            delta_k: -disturbance::impact_cooling_k(d),
+            rain_factor: 0.7,
+            from_years: self.years,
+            until_years: self.years + disturbance::impact_winter_years(d),
+            order,
+        });
+        self.disturbances.killed_biomass += killed;
     }
 
     /// Zone d'intérêt de la caméra (canal d'observation). Ne change jamais
@@ -712,6 +800,7 @@ impl World {
         let t4 = Instant::now();
         self.years = years + dt;
         self.influence.recharge(&self.config.influence, dt);
+        self.disturbances.expire(self.years);
         self.bookkeeping(modified);
         self.stats.steps += 1;
         timings.bookkeeping = t4.elapsed();
@@ -740,6 +829,7 @@ impl World {
         let before: Vec<f64> = self.bio.env.iter().map(|e| e.water_volume_m3).collect();
         let changes = planet.refresh(years);
         self.bio.aggregate(&self.planet.cells);
+        self.disturbances.apply_to(&mut self.bio, years, years + dt);
         if changes.is_empty() {
             return;
         }
@@ -1018,6 +1108,7 @@ impl World {
         let communities = &self.communities;
         let chemistry = &self.chemistry;
         let physio = &cfg.physiology;
+        let disturbances = &self.disturbances;
 
         let winners: Vec<Vec<MigrationWinner>> = (0..communities.len())
             .into_par_iter()
@@ -1031,6 +1122,9 @@ impl World {
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
                 let cond = ctx.conditions(CellContext::photo_biomass(residents));
                 for src in bio.grid.neighbours_of(target) {
+                    if disturbances.blocked(bio.grid.centers[src], bio.grid.centers[target]) {
+                        continue;
+                    }
                     for (i, p) in communities[src].iter().enumerate() {
                         if p.rates.birth <= 0.0 {
                             continue;
@@ -1113,7 +1207,7 @@ impl World {
         let cp = self.config.physiology.carbon_to_phosphorus;
         let envs = &self.bio.env;
         let founder = self.config.founder_biomass;
-        let (removed, saturated, established, occupied) = self
+        let (removed, saturated, established, growing, occupied) = self
             .communities
             .par_iter_mut()
             .zip(self.chemistry.par_iter_mut())
@@ -1121,7 +1215,7 @@ impl World {
             .map(|(c, (pops, chem))| {
                 let occupied = u64::from(!pops.is_empty());
                 if pops.len() <= max {
-                    return (0, 0, 0, occupied);
+                    return (0, 0, 0, 0, occupied);
                 }
                 let guilds: Vec<Option<u32>> = pops.iter().map(|p| p.phenotype.guild_key()).collect();
                 let mut guild: BTreeMap<Option<u32>, usize> = BTreeMap::new();
@@ -1148,6 +1242,7 @@ impl World {
                 let mut i = 0;
                 let mut removed = 0;
                 let mut established = 0;
+                let mut growing = 0;
                 pops.retain(|p| {
                     let k = keep[i];
                     i += 1;
@@ -1156,6 +1251,9 @@ impl World {
                         // a grandi depuis son arrivée.
                         if p.biomass > founder {
                             established = 1;
+                            if p.rates.r > 0.0 {
+                                growing = 1;
+                            }
                         }
                         chem[WaterPool::Doc as usize] += p.biomass / v;
                         chem[WaterPool::Po4 as usize] += p.biomass / cp / v;
@@ -1163,12 +1261,13 @@ impl World {
                     }
                     k
                 });
-                (removed, 1, established, occupied)
+                (removed, 1, established, growing, occupied)
             })
-            .reduce(|| (0, 0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3));
+            .reduce(|| (0, 0, 0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3, a.4 + b.4));
         self.stats.local_extinctions += removed;
         self.stats.saturated_cell_steps += saturated;
         self.stats.established_eviction_cell_steps += established;
+        self.stats.growing_eviction_cell_steps += growing;
         self.stats.occupied_cell_steps += occupied;
     }
 
@@ -1485,6 +1584,7 @@ impl World {
             },
             paused: self.paused,
             focus: self.focus(),
+            disturbances: self.disturbances.clone(),
         });
     }
 
@@ -1631,6 +1731,9 @@ impl World {
         h.u(self.events.events.len() as u64);
         h.u(self.lineages.records.len() as u64);
         h.u(self.journal.total());
+        h.u(self.disturbances.barriers.len() as u64);
+        h.u(self.disturbances.anomalies.len() as u64);
+        h.f(self.disturbances.killed_biomass);
         h.0
     }
 
@@ -1724,6 +1827,7 @@ pub fn population_view(p: &Population) -> PopulationView {
         species: p.signature(),
         biomass: p.biomass as f32,
         growth_per_year: p.rates.r as f32,
+        birth_per_year: p.rates.birth as f32,
         genes: p.genome.genes.len() as u16,
         pigment_rgb: p.phenotype.pigment_nm.map(pigment_colour),
         pigment_nm: p.phenotype.pigment_nm.map(|x| x as f32),
@@ -1982,6 +2086,64 @@ mod tests {
             end.thermal_mismatch_k,
             ancestral
         );
+    }
+
+    #[test]
+    fn impacts_barriers_and_climate_pulses_act_and_replay() {
+        let mut cfg = WorldConfig::new(5, 3);
+        cfg.bio_level = 3;
+        cfg.step_years = 1000.0;
+        cfg.influence.sandbox = true;
+        let mut a = World::new(cfg.clone());
+        a.orders.submit(0.0, OrderKind::SeedLife);
+        for _ in 0..30 {
+            a.step();
+        }
+        // Cellule la plus peuplée : cible de l'impact.
+        let (target, _) = a
+            .communities
+            .iter()
+            .enumerate()
+            .map(|(c, p)| (c, p.iter().map(|x| x.biomass).sum::<f64>()))
+            .max_by(|x, y| x.1.total_cmp(&y.1))
+            .unwrap();
+        let cell = a.bio.children[target][0];
+        let before = a.biomass();
+        let carbon = a.total_carbon();
+        let t = a.years;
+        a.orders.submit(t, OrderKind::Intervene(Intervention::Impact { cell, diameter_km: 10.0 }));
+        a.orders.submit(
+            t,
+            OrderKind::Intervene(Intervention::Isolate { cell, azimuth_deg: 0.0, length_km: 3000.0, duration_years: 50_000.0, sea: true }),
+        );
+        a.orders.submit(
+            t,
+            OrderKind::Intervene(Intervention::ClimatePulse {
+                cell,
+                radius_km: 2000.0,
+                delta_k: 8.0,
+                rain_factor: 0.5,
+                duration_years: 20_000.0,
+            }),
+        );
+        a.step();
+        assert!(a.disturbances.killed_biomass > 0.0);
+        assert!(a.disturbances.killed_biomass > 0.05 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
+        // Le carbone tué reste dans le système ; le CO₂ libéré est inscrit.
+        assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9, "bilan");
+        assert!(a.total_carbon() > carbon);
+        assert_eq!(a.disturbances.barriers.len(), 1);
+        // L'hiver d'impact est fini, la poussée climatique dure encore.
+        assert_eq!(a.disturbances.anomalies.len(), 1);
+        for _ in 0..60 {
+            a.step();
+        }
+        assert!(a.disturbances.is_empty(), "tout expire");
+        let mut b = World::replay(cfg, &a.orders.log());
+        for _ in 0..91 {
+            b.step();
+        }
+        assert_eq!(a.state_hash(), b.state_hash());
     }
 
     #[test]

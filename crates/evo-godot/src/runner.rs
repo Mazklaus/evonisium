@@ -8,10 +8,11 @@
 //! réponses sans jamais attendre (une fois par image, depuis `pump`).
 
 use evo_core::events::{Event, Origin};
-use evo_engine::{Answer, CellDetail, Engine, InterestZone, NewGame, OrderKind, Query, Sample, When};
+use evo_engine::strata::Stratum;
+use evo_engine::{Answer, Branch, BranchSpec, CellDetail, Engine, InterestZone, Intervention, NewGame, OrderKind, Query, Sample, When};
 use evo_view::chronicle::{self, Action, StopRules};
 use evo_view::frame::{LineageFrame, PlanetInfo};
-use evo_view::save::{seeding_of, PlanetSpec, SaveFile, META_SUFFIX};
+use evo_view::save::{seeding_of, PlanetSpec, SaveFile, SavedIntervention, META_SUFFIX};
 use std::collections::VecDeque;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -91,6 +92,28 @@ impl<T: Copy> Pending<T> {
     }
 }
 
+/// Allure d'une branche « avec et sans ».
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BranchPace {
+    /// En même temps que la partie (qui ralentit d'autant).
+    Together,
+    /// Seulement pendant les pauses.
+    Pauses,
+}
+
+/// Une branche « sans » en cours, et ce qu'elle retire.
+pub struct BranchRun {
+    pub branch: Branch,
+    pub pace: BranchPace,
+    /// Intervention retirée.
+    pub without: SavedIntervention,
+    orders_rx: Pending<()>,
+    orders_step: Option<u64>,
+    /// Le registre est arrivé : la branche peut avancer sans prendre
+    /// d'avance sur les ordres qu'elle doit rejouer.
+    has_log: bool,
+}
+
 /// Une partie en cours.
 pub struct Game {
     pub engine: Engine,
@@ -113,6 +136,14 @@ pub struct Game {
     /// Dernier détail de cellule reçu, et le pas où il a été demandé.
     pub cell: Option<(CellDetail, u64)>,
     pub pace: f64,
+    /// Point de sauvegarde d'où la partie a repris (branches).
+    pub branch_of: String,
+    /// Interventions du joueur et leur point de sauvegarde.
+    pub interventions: Vec<SavedIntervention>,
+    pub branch: Option<BranchRun>,
+    /// Dernière colonne stratigraphique reçue : cellule, pas, couches.
+    pub strata: Option<(u32, u64, Vec<Stratum>)>,
+    strata_rx: Pending<(u32, u64)>,
     next_event: u64,
     events_rx: Pending<()>,
     lineages_rx: Pending<u64>,
@@ -120,7 +151,7 @@ pub struct Game {
     history_rx: Pending<()>,
     history_step: Option<u64>,
     cell_rx: Pending<(u32, u64)>,
-    saves: Vec<(String, Receiver<io::Result<()>>)>,
+    pub(crate) saves: Vec<(String, Receiver<io::Result<()>>)>,
 }
 
 impl Game {
@@ -144,6 +175,8 @@ impl Game {
         let engine = Engine::load(path, engine_threads()).map_err(|e| format!("reprise impossible : {e}"))?;
         let sandbox = meta.mode == "bac-a-sable";
         let mut g = Self::wrap(engine, meta.spec, meta.seed, meta.level, meta.seeding, sandbox);
+        g.branch_of = path.to_string_lossy().into_owned();
+        g.interventions = meta.interventions;
         g.pace = g.engine.frame().current.step_years * STEPS_PER_SECOND;
         g.engine.set_throttle(Some(g.pace));
         Ok(g)
@@ -168,6 +201,11 @@ impl Game {
             auto_paused_by: None,
             cell: None,
             pace: DEFAULT_SPEED,
+            branch_of: String::new(),
+            interventions: Vec::new(),
+            branch: None,
+            strata: None,
+            strata_rx: Pending::new((0, 0)),
             next_event: 0,
             events_rx: Pending::new(()),
             lineages_rx: Pending::new(0),
@@ -215,12 +253,57 @@ impl Game {
             steps: f.step,
             years: f.years,
             mode: if self.sandbox { "bac-a-sable" } else { "observateur" }.into(),
+            branch_of: self.branch_of.clone(),
+            interventions: self.interventions.clone(),
         };
         if let Err(e) = std::fs::write(meta_path(Path::new(path)), meta.to_text()) {
             self.notices.push_back(format!("erreur\t{path}\t{e}"));
             return;
         }
         self.saves.push((path.into(), self.engine.save(PathBuf::from(path))));
+    }
+
+    /// Intervention : un point de sauvegarde est écrit juste avant, à
+    /// `save`, puis l'ordre part. Les deux gardent l'ordre de la file du
+    /// moteur : le point de sauvegarde ne connaît pas l'intervention.
+    pub fn intervene(&mut self, i: Intervention, save: &str, save_name: &str) -> u64 {
+        self.save(save, save_name);
+        let label = i.label();
+        let years = self.engine.frame().current.years;
+        let order = self.order(OrderKind::Intervene(i));
+        self.interventions.push(SavedIntervention { order, years, save: save.into(), label });
+        order
+    }
+
+    /// Lance la branche « sans » l'intervention `order` (une seule à la
+    /// fois). Refusé tant que son point de sauvegarde n'est pas écrit.
+    pub fn start_branch(&mut self, order: u64, pace: BranchPace, threads: usize) -> Result<(), String> {
+        let i = self.interventions.iter().find(|i| i.order == order).cloned().ok_or("intervention inconnue")?;
+        if self.saves.iter().any(|(p, _)| *p == i.save) {
+            return Err("point de sauvegarde en cours d'écriture".into());
+        }
+        if !Path::new(&i.save).exists() {
+            return Err(format!("point de sauvegarde introuvable : {}", i.save));
+        }
+        self.branch = None;
+        let target = self.engine.frame().current.years;
+        let spec = BranchSpec { save: PathBuf::from(&i.save), without: vec![order], threads };
+        // Le registre arrive par requête ; la branche démarre avec les
+        // ordres déjà connus du point de sauvegarde et reçoit les autres
+        // dès la première réponse.
+        let branch = Branch::start(spec, Vec::new(), target).map_err(|e| e.to_string())?;
+        branch.set_allowed(false);
+        self.branch = Some(BranchRun { branch, pace, without: i, orders_rx: Pending::new(()), orders_step: None, has_log: false });
+        Ok(())
+    }
+
+    /// Demande la colonne stratigraphique d'une cellule.
+    pub fn request_strata(&mut self, cell: u32, step: u64, layers: usize) {
+        let fresh = self.strata.as_ref().is_some_and(|(c, s, _)| *c == cell && *s == step);
+        let asked = !self.strata_rx.idle() && self.strata_rx.tag == (cell, step);
+        if !fresh && !asked {
+            self.strata_rx.ask(&self.engine, Query::Strata { cell, layers }, (cell, step));
+        }
     }
 
     /// Sauvegardes que le moteur n'a pas fini d'écrire.
@@ -288,6 +371,23 @@ impl Game {
         }
         if let Some((Answer::Cell(Some(d)), (_, at))) = self.cell_rx.take() {
             self.cell = Some((d, at));
+        }
+        if let Some((Answer::Strata(list), (cell, at))) = self.strata_rx.take() {
+            self.strata = Some((cell, at, list));
+        }
+        let status = self.engine.status();
+        if let Some(b) = &mut self.branch {
+            let mut log = None;
+            if let Some((Answer::Orders(list), ())) = b.orders_rx.take() {
+                log = Some(list);
+                b.has_log = true;
+            }
+            if b.orders_rx.idle() && b.orders_step != Some(step) {
+                b.orders_rx.ask(&self.engine, Query::Orders, ());
+                b.orders_step = Some(step);
+            }
+            b.branch.follow(status.years, log);
+            b.branch.set_allowed(b.has_log && (b.pace == BranchPace::Together || status.paused));
         }
         self.saves.retain(|(path, rx)| match rx.try_recv() {
             Ok(r) => {

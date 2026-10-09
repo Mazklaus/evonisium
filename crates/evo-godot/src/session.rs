@@ -6,6 +6,10 @@
 //! transmet au moteur les deux seules choses que le client écrit : des ordres
 //! et la zone d'intérêt.
 
+mod bodies;
+mod region;
+mod tools;
+
 use crate::jobs::Jobs;
 use crate::runner::{Game, Loading};
 use evo_core::events::{Event, EventKind, Origin};
@@ -90,6 +94,8 @@ pub struct EvoSession {
     textures_step: Option<u64>,
     events_polled: usize,
     jobs: Jobs,
+    bodies: crate::bodies::Bodies,
+    region: crate::bodies::RegionSlot,
     /// Biomasse des espèces regardées, pas après pas (statut des fiches).
     watch: HashMap<u32, Vec<f64>>,
     watch_step: u64,
@@ -112,6 +118,8 @@ impl IRefCounted for EvoSession {
             textures_step: None,
             events_polled: 0,
             jobs: Jobs::default(),
+            bodies: Default::default(),
+            region: Default::default(),
             watch: HashMap::new(),
             watch_step: 0,
             bridge_ms: 0.0,
@@ -234,6 +242,8 @@ impl EvoSession {
         self.watch.clear();
         self.focus = Focus::default();
         self.jobs = Jobs::default();
+        self.bodies.clear();
+        self.region.clear();
     }
 
     fn intervention(kind: &str, amount: f64, cell: u32, radius_km: f64) -> Option<Intervention> {
@@ -256,6 +266,14 @@ impl EvoSession {
     /// préréglage.
     #[func]
     fn start(&mut self, preset: GString, seed: i64, level: i64, orbit: f64, water: f64, star_k: f64) -> bool {
+        self.start_game(preset, seed, level, orbit, water, star_k, false)
+    }
+
+    /// Nouvelle partie en mode bac à sable (interventions sans limite
+    /// d'influence) ou observateur.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn start_game(&mut self, preset: GString, seed: i64, level: i64, orbit: f64, water: f64, star_k: f64, sandbox: bool) -> bool {
         let spec = PlanetSpec {
             preset: preset.to_string(),
             orbit_factor: orbit,
@@ -270,7 +288,7 @@ impl EvoSession {
         self.loading = None;
         self.set_grid(level);
         self.reset_view();
-        match Game::start(spec, seed as u64, level, "sources", false) {
+        match Game::start(spec, seed as u64, level, "sources", sandbox) {
             Ok(g) => {
                 self.game = Some(g);
                 true
@@ -307,6 +325,10 @@ impl EvoSession {
             d.set("planet", save.spec.to_params().name.as_str());
             d.set("code", save.spec.code(save.seed, save.level).as_str());
             d.set("steps", save.steps as i64);
+            // Point de sauvegarde dont la partie était repartie : les
+            // sauvegardes forment un arbre de branches.
+            d.set("branch_of", save.branch_of.as_str());
+            d.set("interventions", save.interventions.len() as i64);
         }
         d
     }
@@ -983,13 +1005,33 @@ impl EvoSession {
         let key = format!("decor-{species}");
         let (Some(g), Some(f)) = (&self.game, self.frame()) else { return GString::from(&key) };
         let rx = g.engine.query(Query::SpeciesHabitat { species: species.max(0) as u32 });
+        // Les populations de la cellule d'apogée donnent les silhouettes des
+        // espèces voisines.
+        let rx_cell = f.species(species.max(0) as u32).map(|sv| g.engine.query(Query::Cell { cell: sv.peak_bio_cell }));
         let (w, hh) = (width.clamp(64, 2048) as usize, height.clamp(32, 1024) as usize);
         let game_seed = f.planet.seed;
         self.jobs.spawn(key.clone(), species as u64 ^ (f.state.step / 50) << 32, move || {
             let Ok(Answer::Habitat(Some(eh))) = rx.recv() else { return None };
             let h = evo_view::decor::Habitat::from_engine(&eh, &f);
             let seed = h.decor_seed(game_seed);
-            Some((evo_view::decor::paint(&h, seed, w, hh), VarDictionaryLite::default()))
+            let mut canvas = evo_view::decor::paint(&h, seed, w, hh);
+            if let Some(Ok(Answer::Cell(Some(detail)))) = rx_cell.map(|r| r.recv()) {
+                let plans: Vec<_> = eh
+                    .companions
+                    .iter()
+                    .filter_map(|c| {
+                        let p = detail.populations.iter().filter(|p| p.species == c.0).max_by(|a, b| a.biomass.total_cmp(&b.biomass))?;
+                        let plan = evo_view::anatomy::plan_for_population(p, game_seed);
+                        let colour = plan.modules[0]
+                            .pigments
+                            .first()
+                            .map_or([0.8, 0.7, 0.5], |c| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0]);
+                        Some((plan, colour))
+                    })
+                    .collect();
+                evo_view::decor::paint_neighbours(&mut canvas, &plans, seed);
+            }
+            Some((canvas, VarDictionaryLite::default()))
         });
         GString::from(&key)
     }

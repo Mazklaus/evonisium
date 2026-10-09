@@ -4,6 +4,8 @@ extends "res://scripts/ui/fiche.gd"
 ## vie, tiré de l'environnement simulé, puis les traits en clair.
 
 signal species_requested(species: int)
+signal anatomy_requested(species: int)
+signal compare_requested(species: int)
 
 var species := -1
 var decor: TextureRect
@@ -92,6 +94,8 @@ func open(l: int) -> void:
 	range_button.toggle_mode = true
 	range_button.button_pressed = App.session.focus() == l
 	actions.add_child(range_button)
+	actions.add_child(Atlas.button(App.t("anatomy"), anatomy_requested.emit.bind(l)))
+	actions.add_child(Atlas.button(App.t("compare"), compare_requested.emit.bind(l)))
 	if bool(info["marked"]):
 		var m := Atlas.text(App.t("marked"), 15, true)
 		m.custom_minimum_size.x = 380

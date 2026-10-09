@@ -148,6 +148,7 @@ mod tests {
             species: s.signature,
             biomass: 1.0,
             growth_per_year: 0.0,
+            birth_per_year: 0.0,
             genes: 5,
             pigment_rgb: None,
             pigment_nm: None,

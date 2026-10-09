@@ -10,7 +10,7 @@ use evo_planet::{Gas, PlanetParams};
 use evo_sim::Seeding;
 
 pub const FORMAT: &str = "evonisium-point-de-sauvegarde";
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// Extension de la fiche rangée à côté de l'état sauvegardé.
 pub const META_SUFFIX: &str = ".fiche";
@@ -101,6 +101,24 @@ pub struct SaveFile {
     pub years: f64,
     /// Mode de partie (« observateur », « bac-a-sable »).
     pub mode: String,
+    /// Point de sauvegarde d'où la partie avait repris (chemin), vide pour
+    /// une partie neuve : revenir à un point puis agir autrement crée une
+    /// branche au lieu d'écraser la suite.
+    pub branch_of: String,
+    /// Interventions du joueur et le point de sauvegarde écrit juste avant
+    /// chacune (outil « avec et sans »).
+    pub interventions: Vec<SavedIntervention>,
+}
+
+/// Une intervention passée et son point de sauvegarde.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SavedIntervention {
+    /// Identifiant de l'ordre dans le registre du moteur.
+    pub order: u64,
+    pub years: f64,
+    /// Point de sauvegarde écrit juste avant.
+    pub save: String,
+    pub label: String,
 }
 
 impl SaveFile {
@@ -118,6 +136,18 @@ impl SaveFile {
         s += &format!("ensemencement\t{}\n", self.seeding);
         s += &format!("pas\t{}\n", self.steps);
         s += &format!("annees\t{:e}\n", self.years);
+        if !self.branch_of.is_empty() {
+            s += &format!("branche_de\t{}\n", self.branch_of.replace(['\t', '\n'], " "));
+        }
+        for i in &self.interventions {
+            s += &format!(
+                "intervention\t{}\t{:e}\t{}\t{}\n",
+                i.order,
+                i.years,
+                i.save.replace(['\t', '\n'], " "),
+                i.label.replace(['\t', '\n'], " ")
+            );
+        }
         s
     }
 
@@ -141,6 +171,8 @@ impl SaveFile {
             steps: 0,
             years: 0.0,
             mode: "observateur".into(),
+            branch_of: String::new(),
+            interventions: Vec::new(),
         };
         for line in lines {
             if line.trim().is_empty() {
@@ -160,6 +192,18 @@ impl SaveFile {
                 "ensemencement" => save.seeding = v.into(),
                 "pas" => save.steps = v.parse().map_err(|_| "pas illisible")?,
                 "annees" => save.years = v.parse().map_err(|_| "date illisible")?,
+                "branche_de" => save.branch_of = v.into(),
+                "intervention" => {
+                    let f: Vec<&str> = v.splitn(4, '\t').collect();
+                    if let [order, years, path, label] = f[..] {
+                        save.interventions.push(SavedIntervention {
+                            order: order.parse().map_err(|_| "intervention illisible")?,
+                            years: years.parse().map_err(|_| "intervention illisible")?,
+                            save: path.into(),
+                            label: label.into(),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -214,6 +258,8 @@ mod tests {
             steps: 12,
             years: 1.2e6,
             mode: "observateur".into(),
+            branch_of: "/tmp/avant.evo".into(),
+            interventions: vec![SavedIntervention { order: 4, years: 1e6, save: "/tmp/i.evo".into(), label: "impact".into() }],
         };
         let back = SaveFile::from_text(&save.to_text()).unwrap();
         assert_eq!(back, save);
