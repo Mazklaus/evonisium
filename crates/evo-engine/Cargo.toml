@@ -3,7 +3,8 @@ name = "evo-engine"
 description = "Moteur d'Evonisium vu du client : fil de simulation, file d'ordres, canal d'observation, état publié, requêtes et points de sauvegarde."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 evo-core.workspace = true

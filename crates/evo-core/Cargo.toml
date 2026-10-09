@@ -3,7 +3,8 @@ name = "evo-core"
 description = "Socle commun d'Evonisium : hasard à graine, horloges, événements, registre de flux."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde.workspace = true

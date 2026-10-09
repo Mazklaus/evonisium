@@ -3,7 +3,8 @@ name = "evo-life"
 description = "Organismes et écosystèmes : métabolismes, phénotype, populations microbiennes."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde.workspace = true
