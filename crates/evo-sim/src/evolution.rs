@@ -723,9 +723,6 @@ pub fn evolve_genotype(
                 continue;
             }
             if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, complex_boost, rng) {
-                if std::env::var_os("EVO_DEBUG").is_some() {
-                    eprintln!("endosymbiose {years:.3e} s {s:.3e} copies {:.3e} census {:.3e} taille {:.2} englobe {:.2} proies {:.3e} acc {accelerated}", partner.copies, group.census, resident.phenotype.cell_size, resident.phenotype.engulfment, resident.rates.prey_demand());
-                }
                 let mut change = partner.change;
                 if accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
@@ -745,15 +742,6 @@ pub fn evolve_genotype(
                     }
                 }
             }
-        }
-    }
-    if std::env::var_os("EVO_DEBUG").is_some() {
-        if let Some(b) = best.as_ref().filter(|b| b.phenotype.is_multicellular() && !resident.phenotype.is_multicellular()) {
-            let (o, n) = (&resident.rates, &b.rates);
-            eprintln!(
-                "colonie {years:.3e} s {:.3e} cellules {:.0} adh {:.2} | r {:.3e}->{:.3e} birth {:.3e}->{:.3e} mort {:.3e}->{:.3e} uv {:.3e}->{:.3e} pred {:.3e}->{:.3e} E {:.3e}->{:.3e} maint {:.3e}->{:.3e}",
-                b.s, b.phenotype.cells(), b.phenotype.adhesion, o.r, n.r, o.birth, n.birth, o.mortality, n.mortality, o.uv_mortality, n.uv_mortality, o.predation, n.predation, o.energy_kj, n.energy_kj, resident.phenotype.maintenance_kj, b.phenotype.maintenance_kj
-            );
         }
     }
     best.map(|b| (b.change, b.phenotype, b.rates, b.s))
