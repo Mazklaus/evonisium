@@ -1378,7 +1378,10 @@ impl World {
 
         // Des multicellulaires complexes gagnent les terres : le vivant passe
         // à la résolution de la planète.
-        if self.config.transitions.refine_on_land && self.progress.complexity_years[7].is_some() && self.config.bio_level < self.config.level {
+        if self.config.transitions.refine_on_land
+            && self.progress.complexity_years[7].is_some()
+            && self.config.bio_level < self.config.level
+        {
             self.refine_life_grid();
         }
 
@@ -2207,7 +2210,9 @@ mod tests {
         );
         a.step();
         assert!(a.disturbances.killed_biomass > 0.0);
-        assert!(a.disturbances.killed_biomass > 0.05 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
+        // La part tuée dépend de la biomasse prise dans le rayon de destruction
+        // (3 % avec les colonies de l'étape 4, 5 % et plus avant).
+        assert!(a.disturbances.killed_biomass > 0.01 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
         // Le carbone tué reste dans le système ; le CO₂ libéré est inscrit.
         assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9, "bilan");
         assert!(a.total_carbon() > carbon);

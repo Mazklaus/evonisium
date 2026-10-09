@@ -49,7 +49,13 @@ pub struct TransitionParams {
 
 impl Default for TransitionParams {
     fn default() -> Self {
-        Self { retention_probability: 1e-38, endosymbiosis_candidates: 1, max_organelles: 2, integration_years: 100e6, refine_on_land: true }
+        Self {
+            retention_probability: 1e-38,
+            endosymbiosis_candidates: 1,
+            max_organelles: 2,
+            integration_years: 100e6,
+            refine_on_land: true,
+        }
     }
 }
 

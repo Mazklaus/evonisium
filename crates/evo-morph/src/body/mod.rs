@@ -24,7 +24,7 @@ pub mod plan;
 pub mod shape;
 
 pub use generate::{from_microbe, random_plan};
-pub use mesh::{build, extent_m, silhouette, Body, Mesh, LOD_RESOLUTION};
+pub use mesh::{build, extent_m, plate, silhouette, Body, Mesh, LOD_RESOLUTION};
 pub use plan::{BodyPlan, Covering, EyeStage, Joint, Module, ModuleKind, Pattern, Symmetry, System, PLAN_VERSION};
 
 #[cfg(test)]
