@@ -36,7 +36,7 @@ fn opt(args: &[String], name: &str) -> Option<String> {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
+        "Usage :\n  evonisium run   [--world CLÉ] [--seed N] [--level L] [--steps S] [--step-years Y] [--every K] [--out DOSSIER]\n  evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER] [--hold-years Y] [--round-years Y] [--innovation P] [--eviction biomasse|invasion] [--pas-fixe]\n  evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]\n  evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]\nMondes : {}",
         PlanetParams::KEYS.join(", ")
     );
     std::process::exit(2)
@@ -70,6 +70,13 @@ fn main() {
                 worlds: opt(&args, "--worlds").map(|w| w.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default(),
                 out_dir: opt(&args, "--data").map(Into::into),
                 round_years: opt(&args, "--round-years").map(|v| v.parse().expect("durée invalide")),
+                innovation_probability: opt(&args, "--innovation").map(|v| v.parse().expect("probabilité invalide")),
+                eviction: opt(&args, "--eviction").map(|v| match v.as_str() {
+                    "biomasse" => evo_sim::Eviction::Biomass,
+                    "invasion" => evo_sim::Eviction::InvasionFitness,
+                    _ => usage(),
+                }),
+                fixed_step: args.iter().any(|a| a == "--pas-fixe"),
             };
             // Rapport assemblé à partir des résultats déjà enregistrés, monde
             // par monde (les parties longues tournent séparément).
@@ -160,6 +167,16 @@ fn run(args: &[String]) {
         }
     }
     let elapsed = start.elapsed().as_secs_f64();
+    let st = &world.stats;
+    println!(
+        "Innovations : {} apparues ({} par l'accélérateur), {} évaluées ; tunnel : {} essais, {} réussites ; {} évaluations génétiques",
+        st.innovations_drawn,
+        st.innovations_accelerated,
+        st.innovations_evaluated,
+        st.tunnel_attempts,
+        st.tunnel_successes,
+        st.genetic_evaluations
+    );
     println!("{} simulés en {:.1} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
     if let Some(dir) = opt(args, "--out") {
         let dir = std::path::PathBuf::from(dir);

@@ -292,45 +292,41 @@ pub fn substep_with(
         if het < 1.0 {
             carbon_phi = carbon_phi.min(factor[WaterPool::Dic as usize]);
         }
-        let births = potential * energy_ratio.min(1.0) * carbon_phi;
-        let scale = if potential > 0.0 { births / potential } else { 0.0 };
-        // Pouvoir réducteur des autotrophes chimiques, au prorata du carbone
-        // qu'ils fixent : sans lui, pas de fixation.
-        let fix_phi = |r: &crate::metabolism::Reaction| {
-            r.fixation.iter().filter(|&&(_, k)| k < 0.0).map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min)
-        };
-        let mut scale = scale;
-        for r in REACTIONS.iter().filter(|r| !r.is_light() && !r.fixation.is_empty()) {
-            if p.rates.fixation_share(r.id as usize) > 0.0 {
-                scale = scale.min(fix_phi(r).max(0.0) + (1.0 - p.rates.fixation_share(r.id as usize)) * (1.0 - fix_phi(r)).max(0.0));
-            }
-        }
-        let births = potential * scale;
-        for r in REACTIONS.iter().filter(|r| !r.is_light() && !r.fixation.is_empty()) {
-            // La part du carbone qui demande ce réducteur ne dépasse pas ce
-            // que le réducteur disponible permet ; le reste de la croissance
-            // vient des autres voies.
+        let scale = energy_ratio.min(1.0) * carbon_phi;
+        // Chaque voie autotrophe fixe sa part du carbone, et pas plus que son
+        // donneur d'électrons ne le permet (pouvoir réducteur des autotrophes
+        // chimiques, donneur des voies lumineuses) : la biomasse fabriquée
+        // porte exactement les électrons consommés.
+        let mut births = potential * het * scale;
+        for r in REACTIONS.iter() {
             let share = p.rates.fixation_share(r.id as usize);
-            let fixed = (births * share).min(potential * share * fix_phi(r).max(0.0));
+            if share <= 0.0 || r.heterotrophic {
+                continue;
+            }
+            let reductant = if r.is_light() {
+                if p.rates.reaction[r.id as usize] <= 0.0 {
+                    continue;
+                }
+                phi_of(r)
+            } else {
+                r.fixation.iter().filter(|&&(_, k)| k < 0.0).map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min)
+            };
+            let fixed = potential * share * scale.min(reductant.max(0.0));
             if fixed <= 0.0 {
                 continue;
             }
-            for &(pool, k) in r.fixation {
-                chem[pool as usize] += fixed * k / volume;
-            }
-        }
-        // Stoichiométrie des voies lumineuses, au prorata du carbone fixé.
-        for r in REACTIONS.iter().filter(|r| r.is_light()) {
-            if p.rates.reaction[r.id as usize] <= 0.0 {
-                continue;
-            }
-            let fixed = potential * p.rates.fixation_share(r.id as usize) * scale.min(phi_of(r));
-            for &(pool, k) in r.inputs {
+            births += fixed;
+            chem[WaterPool::Dic as usize] -= fixed / volume;
+            // Voie lumineuse : son donneur et ses produits ; voie chimique : le
+            // réducteur de la fixation (coefficients négatifs : consommés).
+            type Flows = &'static [(WaterPool, f64)];
+            let (inputs, outputs): (Flows, Flows) = if r.is_light() { (r.inputs, r.outputs) } else { (&[], r.fixation) };
+            for &(pool, k) in inputs {
                 chem[pool as usize] -= fixed * k / volume;
             }
-            for &(pool, k) in r.outputs {
+            for &(pool, k) in outputs {
                 chem[pool as usize] += fixed * k / volume;
-                if pool == WaterPool::O2 {
+                if r.is_light() && pool == WaterPool::O2 {
                     out.oxygen += fixed * k;
                 }
             }
@@ -343,7 +339,7 @@ pub fn substep_with(
             let digested = p.rates.prey_uptake * b * digest_phi;
             let aerobic = p.rates.prey_uptake * b * prey_got * p.rates.prey_aerobic_share * o2_phi;
             let anaerobic = digested - aerobic;
-            let incorporated = births * p.rates.prey_share;
+            let incorporated = potential * p.rates.prey_share * scale;
             let rest = (carbon - digested - incorporated).max(0.0);
             chem[WaterPool::O2 as usize] -= aerobic / volume;
             chem[WaterPool::Dic as usize] += (aerobic + 0.5 * anaerobic) / volume;
@@ -351,8 +347,7 @@ pub fn substep_with(
             chem[WaterPool::Doc as usize] += rest / volume;
             debug_assert!(digested + incorporated <= carbon * (1.0 + 1e-9) + 1e-12, "proies : {digested} + {incorporated} > {carbon}");
         }
-        chem[WaterPool::Doc as usize] -= births * doc_share / volume;
-        chem[WaterPool::Dic as usize] -= births * (1.0 - het) / volume;
+        chem[WaterPool::Doc as usize] -= potential * doc_share * scale / volume;
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
         let sinking = deaths * physio.sinking_share;
         out.sinking_carbon += sinking;

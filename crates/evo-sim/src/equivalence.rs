@@ -82,6 +82,8 @@ pub fn run_one(opts: &EquivalenceOptions, seed: u64, step_years: f64) -> Equival
     let start = Instant::now();
     let mut cfg = WorldConfig::with_planet(params, seed, opts.level);
     cfg.step_years = step_years;
+    // Comparaison de pas fixes : sans allongement aux périodes calmes.
+    cfg.adaptive_step = None;
     if let Some(r) = opts.round_years {
         cfg.evolution.round_years = (r > 0.0).then_some(r);
     }
