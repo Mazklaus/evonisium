@@ -3,7 +3,8 @@ name = "evo-genetics"
 description = "Génétique et évolution : génome à domaines, mutations, génétique des populations."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde.workspace = true
