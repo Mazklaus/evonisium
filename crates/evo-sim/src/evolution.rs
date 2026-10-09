@@ -565,6 +565,28 @@ pub fn evolve_genotype(
         // les mutations innovantes.
         let boost = if is_innovative(kind) { boost.max(complex_boost) } else { boost };
         let arising = supply * u * generations * cfg.mutation.weights[k] / weight_total;
+        // Une copie qui diverge vers une famille de structure ou de
+        // régulation (cytosquelette, adhésion, signal, régulateur, méiose)
+        // n'invente pas de chimie : des homologues existent chez les
+        // procaryotes (FtsZ et MreB pour l'actine et la tubuline, systèmes à
+        // deux composants, recombinases). C'est une mutation courante,
+        // sans la probabilité d'innovation des voies nouvelles.
+        if kind == MutationKind::DuplicationDivergence {
+            let count = evo.candidates_per_kind[k] * group.candidate_factor();
+            for _ in 0..count {
+                let change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
+                if !matches!(change.element, ChangedElement::Inserted { family, .. } if family.is_cellular()) {
+                    continue;
+                }
+                let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
+                if best.as_ref().is_some_and(|b| b.s >= s) {
+                    continue;
+                }
+                if regime.candidate_fixes(s, ne, arising / count as f64, rng) {
+                    consider(&mut best, s, change, phenotype, rates);
+                }
+            }
+        }
         let (count, copies, accelerated) = if is_innovative(kind) {
             let lambda = arising * evo.innovation_probability;
             let natural = poisson(lambda, rng);
