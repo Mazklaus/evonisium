@@ -170,7 +170,6 @@ pub struct PlanetParams {
     /// surface : on prend l'écart de la température moyenne, amorti.
     /// C'est le thermostat d'un monde sans terres émergées. [Simplification
     /// signalée]
-    #[serde(default = "default_seafloor_activation")]
     pub seafloor_weathering_activation_k: f64,
     /// Phosphore libéré par mole de CO₂ consommée par l'altération.
     pub weathering_phosphorus_ratio: f64,
@@ -180,7 +179,6 @@ pub struct PlanetParams {
     /// partie (Wheat et coll., 1996). Sans elle, un monde sans terres
     /// émergées n'a plus aucune source de phosphore et l'apatite le vide.
     /// [Simplification signalée]
-    #[serde(default)]
     pub seafloor_phosphorus_share: f64,
     /// Part du carbone organique exporté qui est enfoui dans les sédiments.
     pub organic_burial_efficiency: f64,
@@ -538,12 +536,6 @@ impl PlanetParams {
     pub fn internal_heat(&self, years: f64) -> f64 {
         (-years / (self.internal_heat_decay_gyr * 1e9)).dexp()
     }
-}
-
-/// Sauvegardes antérieures : altération des fonds insensible à la
-/// température.
-fn default_seafloor_activation() -> f64 {
-    f64::INFINITY
 }
 
 #[cfg(test)]

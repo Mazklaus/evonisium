@@ -98,7 +98,6 @@ pub struct EvolutionParams {
     /// l'offre n'est pas saturée) sont réunis en un génome, s'ils touchent
     /// des gènes distincts et si leur réunion vaut au moins le meilleur seul.
     /// Sans cela, seul le meilleur se fixe à chaque tour.
-    #[serde(default)]
     pub multiple_fixations: bool,
 }
 
@@ -113,7 +112,7 @@ impl Default for EvolutionParams {
             hgt_candidates: 1,
             ne_per_m2: 2e-3,
             accelerator: AcceleratorParams::default(),
-            round_years: Some(100_000.0),
+            round_years: Some(300_000.0),
             multiple_fixations: true,
         }
     }
