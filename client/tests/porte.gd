@@ -302,7 +302,7 @@ func _replay_scenario() -> void:
 	var err: String = App.session.load_save(App.save_path("porte-rejeu"))
 	var loaded: Array = []
 	if err == "":
-		await _until(func(): return App.session.loading_progress().y < 0.0 and App.session.state_hash().size() == 2 and int(App.session.state_hash()[0]) >= steps, 600.0)
+		await _until(func(): return App.session.loading_progress().y < 0.0 and App.session.state_hash().size() == 2 and _years() >= steps * 1.0e5 - 1.0, 600.0)
 		loaded = App.session.state_hash()
 	_log("rechargée : %s" % str(loaded))
 	report["empreintes"] = {"chemin_1": hashes[0], "chemin_2": hashes[1], "sauvegarde_rechargee": loaded}
@@ -310,13 +310,17 @@ func _replay_scenario() -> void:
 	report["identiques"] = same
 	_finish(same)
 
+func _years() -> float:
+	return float(App.session.frame_info().get("years", 0.0))
+
 func _run_path(path: int, steps: int) -> Array:
 	App.session.start(opts["monde"], int(opts["graine"]), int(opts["niveau"]), 1.0, 1.0, 0.0)
 	await _until(func(): return App.session.has_frame(), 120.0)
 	App.session.set_rules_profile("aucun")
 	App.session.set_seeding("sources")
 	App.session.seed_life()
-	# Pas de 100 ka : la pause tombe à la fin du pas visé.
+	# Pas demandé de 100 ka (le moteur l'allonge aux périodes calmes) : la
+	# pause tombe à la fin du pas qui atteint la date visée.
 	App.session.set_speed(1.0e6)
 	App.session.intervene("phosphate", 1.0e14, 0, 1500.0)
 	App.session.pause_at(steps * 1.0e5)
@@ -326,7 +330,7 @@ func _run_path(path: int, steps: int) -> Array:
 	var t := 0.0
 	var done := func():
 		var h: Array = App.session.state_hash()
-		return h.size() == 2 and int(h[0]) >= steps
+		return h.size() == 2 and _years() >= steps * 1.0e5 - 1.0
 	while not done.call():
 		t += get_process_delta_time()
 		var dir := Vector3(cos(t), 0.2, sin(t)) if path == 0 else Vector3(0.1 * cos(3.0 * t), 1.0, 0.1 * sin(3.0 * t))
