@@ -285,6 +285,7 @@ fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver
         let t0 = Instant::now();
         let was_paused = world.paused;
         let steps = world.stats.steps;
+        let before = world.years();
         pool.install(|| world.step());
         if world.stats.steps == steps {
             // Pas en pause : seuls les ordres dus ont été appliqués.
@@ -295,7 +296,7 @@ fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver
         }
         *shared.frame.write().unwrap_or_else(|e| e.into_inner()) = frame_of(&world);
         let elapsed = t0.elapsed().as_secs_f64();
-        let advanced = if world.stats.steps > steps { world.config.step_years } else { 0.0 };
+        let advanced = if world.stats.steps > steps { world.years() - before } else { 0.0 };
         if advanced > 0.0 {
             let inst = advanced / elapsed.max(1e-6);
             speed = if speed == 0.0 || was_paused { inst } else { 0.8 * speed + 0.2 * inst };

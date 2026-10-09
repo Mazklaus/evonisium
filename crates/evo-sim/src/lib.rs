@@ -19,4 +19,4 @@ pub use history::{CellView, ClimateMode, EventView, History, PublishedState, Sam
 pub use influence::{InfluenceParams, InfluenceReserve, InfluenceView};
 pub use observation::{Focus, InterestZone};
 pub use orders::{Intervention, Order, OrderKind, OrderQueue};
-pub use world::{Seeding, Summary, World, WorldConfig};
+pub use world::{AdaptiveStep, Eviction, Seeding, Summary, World, WorldConfig};

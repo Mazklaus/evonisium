@@ -76,6 +76,8 @@ fn a_player_creates_seeds_intervenes_queries_and_saves() {
     let Answer::StateHash(h) = resumed.query(Query::StateHash).recv().unwrap() else { panic!() };
     assert_eq!(Some(h), hash);
     let Answer::SpeciesHistory(again) = resumed.query(Query::SpeciesHistory { species }).recv().unwrap() else { panic!() };
-    assert_eq!(again, hist[..again.len()].to_vec());
+    // Le moteur a pu avancer entre la requête et la pause : préfixe commun.
+    let n = again.len().min(hist.len());
+    assert_eq!(again[..n], hist[..n]);
     let _ = std::fs::remove_dir_all(dir);
 }

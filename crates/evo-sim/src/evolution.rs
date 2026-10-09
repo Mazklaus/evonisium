@@ -38,12 +38,15 @@ use crate::world::WorldConfig;
 use evo_core::rng::{rng_for, Stream};
 use evo_genetics::popgen::fixation_probability;
 use evo_genetics::{
-    mutate, mutate_with_kind, transfer_gene, tunnel_probability, ChangedElement, Genome, GenomeChange, GenomeChangeCause, MutationKind,
-    OriginFixation, GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS, MUTATION_KIND_COUNT,
+    mutate, mutate_with_kind, poisson, transfer_gene, tunnel_probability, ChangedElement, Genome, GenomeChange, GenomeChangeCause,
+    MutationKind, OriginFixation, GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS, MUTATION_KIND_COUNT,
 };
 use evo_life::community::{CellContext, Population};
+use evo_life::growth::growth_rates_with;
 use evo_life::metabolism::photosynthesis_stage;
-use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
+use evo_life::metabolism::{ANOXYGENIC_CENTRES, REACTION_COUNT};
+use evo_life::phenotype::{thermal_factor, Capacities, Enzyme};
+use evo_life::{selection_coefficient, GrowthRates, Phenotype, Physiology};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
 use rand::Rng;
@@ -52,21 +55,35 @@ use std::sync::Arc;
 /// Réglages de l'évolution.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvolutionParams {
-    /// Candidats évalués par classe de mutation (ordre de [`MUTATION_KINDS`]).
+    /// Candidats évalués par tour, par classe de mutation (ordre de
+    /// [`MUTATION_KINDS`]). Pour les classes courantes, l'offre de mutants
+    /// est immense (de l'ordre de 10¹² par génotype et par tour) : chaque
+    /// candidat en représente une part égale. Pour les classes innovantes
+    /// (de novo, duplication suivie de divergence), c'est le nombre au plus
+    /// de mutants innovants évalués quand le tirage en donne davantage.
     pub candidates_per_kind: [usize; MUTATION_KIND_COUNT],
-    /// Tunnel stochastique : tenté pour les premiers mutants qui ne se fixent
-    /// pas et dont le coefficient de sélection dépasse ce seuil (un mutant
-    /// très délétère disparaît avant de porter quoi que ce soit).
+    /// Probabilité qu'une naissance de gène (de novo) ou qu'une copie
+    /// divergente porte une fonction nouvelle utilisable. C'est la
+    /// difficulté des voies nouvelles : une spécificité nouvelle demande
+    /// plusieurs changements précis, que le génome à un domaine par gène
+    /// résume en une mutation. Calibrée sur la chronologie terrestre
+    /// (docs/etape-4-chronologie.md). [Simplification signalée]
+    pub innovation_probability: f64,
+    /// Tunnel stochastique (Weissman et coll., 2009) : tenté pour les
+    /// mutants innovants qui ne se fixent pas seuls, quand leur coefficient
+    /// de sélection dépasse ce seuil. Le taux de franchissement est calculé
+    /// analytiquement et le nombre de franchissements tiré selon une loi de
+    /// Poisson.
     pub tunnel: bool,
     pub tunnel_min_selection: f64,
-    /// Tentatives de tunnel au plus par génotype et par pas (les premiers
-    /// candidats) ; au-delà, chaque essai est pondéré par
-    /// (candidats / essais) pour ne pas biaiser le taux de franchissement.
-    pub tunnel_attempts_per_genotype: usize,
     /// Transferts horizontaux reçus par génome et par génération, et
     /// candidats évalués par population et par pas.
     pub hgt_rate: f64,
     pub hgt_candidates: usize,
+    /// Effectif efficace au plus par m² d'eau habitée : l'offre de mutants
+    /// d'un génotype suit l'aire qu'il occupe, quelle que soit la finesse de
+    /// la grille (2·10⁻³ : 10⁸ par cellule du vivant de 50 000 km²).
+    pub ne_per_m2: f64,
     pub accelerator: AcceleratorParams,
     /// Durée au plus d'un tour « apparition puis fixation », années : un pas
     /// plus long enchaîne plusieurs tours, pour que le nombre de
@@ -79,16 +96,23 @@ pub struct EvolutionParams {
 impl Default for EvolutionParams {
     fn default() -> Self {
         Self {
-            candidates_per_kind: [4, 1, 1, 1, 1, 1, 2],
+            candidates_per_kind: [4, 1, 1, 1, 1, 2, 2],
+            innovation_probability: 1e-13,
             tunnel: true,
             tunnel_min_selection: -0.05,
-            tunnel_attempts_per_genotype: 2,
             hgt_rate: 1e-7,
             hgt_candidates: 1,
+            ne_per_m2: 2e-3,
             accelerator: AcceleratorParams::default(),
             round_years: Some(100_000.0),
         }
     }
+}
+
+/// Classe innovante : naissance d'un gène, ou copie qui diverge vers une
+/// famille apparentée.
+pub fn is_innovative(kind: MutationKind) -> bool {
+    matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence)
 }
 
 /// Accélérateur de l'émergence assistée (décision du 7 octobre 2026 : actif
@@ -106,7 +130,7 @@ pub struct AcceleratorParams {
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 300e6, boost: 100.0 }
+        Self { enabled: true, patience_years: 600e6, boost: 100.0 }
     }
 }
 
@@ -117,10 +141,11 @@ pub struct EvolutionStats {
     pub genetic_evaluations: u64,
     pub tunnel_attempts: u64,
     pub tunnel_successes: u64,
-    /// Génotypes avec au moins un candidat au tunnel, et ceux qui en avaient
-    /// plus que la borne d'essais.
-    pub tunnel_genotypes: u64,
-    pub tunnel_capped: u64,
+    /// Mutants innovants apparus (tirage de Poisson), dont ceux que
+    /// l'accélérateur a ajoutés, et ceux qui ont été évalués.
+    pub innovations_drawn: u64,
+    pub innovations_accelerated: u64,
+    pub innovations_evaluated: u64,
     pub fixed_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
 }
 
@@ -130,8 +155,9 @@ impl EvolutionStats {
         self.genetic_evaluations += o.genetic_evaluations;
         self.tunnel_attempts += o.tunnel_attempts;
         self.tunnel_successes += o.tunnel_successes;
-        self.tunnel_genotypes += o.tunnel_genotypes;
-        self.tunnel_capped += o.tunnel_capped;
+        self.innovations_drawn += o.innovations_drawn;
+        self.innovations_accelerated += o.innovations_accelerated;
+        self.innovations_evaluated += o.innovations_evaluated;
         for (a, b) in self.fixed_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -144,6 +170,81 @@ struct Best {
     change: GenomeChange,
     phenotype: Phenotype,
     rates: GrowthRates,
+}
+
+/// Sommes des capacités et des affinités des enzymes d'un phénotype à une
+/// température, par voie, avant normalisation (mêmes opérations, dans le
+/// même ordre, que [`Phenotype::capacities`]). Celles du résident sont
+/// calculées une fois par génotype et par cellule jugée ; celles d'un mutant
+/// s'en déduisent en retirant les enzymes qu'il a perdues ou changées et en
+/// ajoutant les siennes.
+#[derive(Clone, Copy, Debug)]
+pub struct RawCapacities {
+    cap: [f64; REACTION_COUNT],
+    aff: [f64; REACTION_COUNT],
+    count: [u32; REACTION_COUNT],
+}
+
+impl RawCapacities {
+    pub fn of(enzymes: &[Enzyme], t: f64, physio: &Physiology) -> Self {
+        let mut raw = Self { cap: [0.0; REACTION_COUNT], aff: [0.0; REACTION_COUNT], count: [0; REACTION_COUNT] };
+        for e in enzymes {
+            raw.add(e, t, physio, 1.0);
+        }
+        raw
+    }
+
+    fn add(&mut self, e: &Enzyme, t: f64, physio: &Physiology, sign: f64) {
+        let r = e.reaction as usize;
+        let c = e.efficiency * thermal_factor(t, e.t_opt_k, e.t_width_k, physio);
+        self.cap[r] += sign * c;
+        self.aff[r] += sign * c * e.affinity;
+        if sign > 0.0 {
+            self.count[r] += 1;
+        } else {
+            self.count[r] -= 1;
+        }
+    }
+
+    /// Capacités d'un mutant dont les enzymes sont `mutant`, le résident
+    /// (dont `self` est la somme) ayant `resident`. Les enzymes communes en
+    /// tête et en queue de liste ne sont pas recalculées.
+    pub fn mutant(&self, resident: &[Enzyme], mutant: &[Enzyme], t: f64, physio: &Physiology) -> Capacities {
+        let mut head = 0;
+        while head < resident.len() && head < mutant.len() && resident[head] == mutant[head] {
+            head += 1;
+        }
+        let mut tail = 0;
+        while tail < resident.len() - head
+            && tail < mutant.len() - head
+            && resident[resident.len() - 1 - tail] == mutant[mutant.len() - 1 - tail]
+        {
+            tail += 1;
+        }
+        let mut raw = *self;
+        for e in &resident[head..resident.len() - tail] {
+            raw.add(e, t, physio, -1.0);
+        }
+        for e in &mutant[head..mutant.len() - tail] {
+            raw.add(e, t, physio, 1.0);
+        }
+        raw.finish()
+    }
+
+    /// Capacités normalisées, comme [`Phenotype::capacities`].
+    pub fn finish(&self) -> Capacities {
+        let mut cap = self.cap;
+        let mut affinity = [1.0; REACTION_COUNT];
+        for r in 0..REACTION_COUNT {
+            if self.count[r] > 0 && cap[r] > 0.0 {
+                affinity[r] = self.aff[r] / cap[r];
+            } else {
+                cap[r] = 0.0;
+            }
+        }
+        let partner = ANOXYGENIC_CENTRES.iter().map(|&r| cap[r as usize].min(1.0)).fold(0.0, f64::max);
+        Capacities { cap, affinity, partner }
+    }
 }
 
 /// Tire le sort d'un candidat : fixation ordinaire, ou, si l'accélérateur
@@ -183,7 +284,8 @@ pub struct GenotypeGroup {
     pub habitat: i64,
     /// Cellule du vivant et indice de la population la plus abondante.
     pub rep: (usize, usize),
-    /// Offre de mutants : somme des effectifs efficaces de chaque cellule.
+    /// Offre de mutants : somme des effectifs efficaces de chaque cellule
+    /// (chacun plafonné selon l'aire d'eau de la cellule).
     pub supply_ne: f64,
     /// Effectif total du groupe.
     pub census: f64,
@@ -219,7 +321,7 @@ pub fn genotype_groups(cells: &[u32], communities: &[Vec<Population>], envs: &[C
         for (i, p) in communities[c].iter().enumerate() {
             let key = (Arc::as_ptr(&p.genome) as usize, habitat);
             let census = p.census(physio);
-            let ne = cfg.regime.effective_size(census);
+            let ne = census.min(cfg.evolution.ne_per_m2 * envs[c].water_area_m2).max(1.0);
             match keys.iter().position(|&k| k == key) {
                 Some(g) => {
                     let grp = &mut groups[g];
@@ -284,23 +386,26 @@ pub fn evolve_genotype(
     }
     // Conditions des cellules où le mutant est jugé (la représentative
     // d'abord).
-    let judged: Vec<(usize, usize, f64, evo_life::Conditions)> = group
+    let judged: Vec<(usize, usize, f64, evo_life::Conditions, RawCapacities)> = group
         .members
         .iter()
         .map(|&(c, j, b)| {
             let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-            (c, j, b, ctx.conditions(CellContext::photo_biomass(&communities[c])))
+            let cnd = ctx.conditions(CellContext::photo_biomass(&communities[c]));
+            (c, j, b, cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
         })
         .collect();
     let weight: f64 = judged.iter().map(|j| j.2).sum::<f64>().max(f64::MIN_POSITIVE);
     let chem = &chemistry[rc];
-    let cond = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| j.3).unwrap_or_else(|| {
+    let (cond, base) = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| (j.3, j.4)).unwrap_or_else(|| {
         let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-        ctx.conditions(CellContext::photo_biomass(pops))
+        let cnd = ctx.conditions(CellContext::photo_biomass(pops));
+        (cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
     });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
     let boost = if accelerator_on { evo.accelerator.boost } else { 1.0 };
+    let regime = &cfg.regime;
     let generations = dt / resident.rates.generation_time(physio);
     let ne = cfg.regime.effective_size(group.census);
     let supply = group.supply_ne.max(ne);
@@ -317,7 +422,14 @@ pub fn evolve_genotype(
         if phenotype == *resident.phenotype {
             return Some((0.0, phenotype, resident.rates));
         }
-        let rates = growth_rates(&phenotype, &cond, chem, physio);
+        // Capacités du mutant à partir de celles du résident, mises en cache
+        // par génotype et par cellule : seules les enzymes qui diffèrent sont
+        // recalculées.
+        let rates_in = |cnd: &evo_life::Conditions, base: &RawCapacities, chem: &WaterChemistry| {
+            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype.enzymes, cnd.temperature_k, physio);
+            growth_rates_with(&phenotype, &caps, cnd, chem, physio)
+        };
+        let rates = rates_in(&cond, &base, chem);
         // Un mutant de guilde nouvelle est jugé contre la population de
         // cette guilde si elle existe déjà dans la cellule.
         let against = |pops: &[Population], own: &Population, rates: &GrowthRates| {
@@ -336,8 +448,8 @@ pub fn evolve_genotype(
         // son coefficient de sélection est la moyenne, pondérée par la
         // biomasse, de ceux des cellules où il est jugé.
         let mut s = 0.0;
-        for &(c, j, b, ref cnd) in &judged {
-            let r = if (c, j) == (rc, i) { rates } else { growth_rates(&phenotype, cnd, &chemistry[c], physio) };
+        for &(c, j, b, ref cnd, ref raw) in &judged {
+            let r = if (c, j) == (rc, i) { rates } else { rates_in(cnd, raw, &chemistry[c]) };
             s += b * against(&communities[c], &communities[c][j], &r);
         }
         Some((s / weight, phenotype, rates))
@@ -355,53 +467,61 @@ pub fn evolve_genotype(
         }
     };
 
-    // Candidats au tunnel : ceux qui ne se fixent pas seuls mais sont assez
-    // proches de la neutralité. Seuls les premiers (borne par génotype et
-    // par pas) sont tentés ; chaque essai compte alors pour
-    // (candidats / essais), ce qui garde le taux de franchissement sans biais.
+    // Mutants des classes courantes : l'offre est immense, chaque candidat
+    // représente une part égale des mutants de sa classe. Mutants innovants :
+    // leur nombre est tiré selon une loi de Poisson (apparition × probabilité
+    // d'une fonction nouvelle), et chacun est évalué tant qu'ils restent peu
+    // nombreux. Ceux que l'accélérateur ajoute sont tirés à part.
     let mut tunnel_pending: Vec<(GenomeChange, f64, f64)> = Vec::new();
-    let mut tunnel_eligible = 0usize;
     for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
-        let count = evo.candidates_per_kind[k] * group.candidate_factor();
-        if count == 0 {
-            continue;
-        }
-        let innovative = matches!(kind, MutationKind::DeNovo | MutationKind::DuplicationDivergence);
-        let kind_boost = if innovative { boost } else { 1.0 };
-        let copies = supply * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
+        let arising = supply * u * generations * cfg.mutation.weights[k] / weight_total;
+        let (count, copies, accelerated) = if is_innovative(kind) {
+            let lambda = arising * evo.innovation_probability;
+            let natural = poisson(lambda, rng);
+            let extra = if boost > 1.0 { poisson(lambda * (boost - 1.0), rng) } else { 0 };
+            let n = natural + extra;
+            stats.innovations_drawn += n;
+            stats.innovations_accelerated += extra;
+            if n == 0 {
+                continue;
+            }
+            let count = (n as usize).min(evo.candidates_per_kind[k].max(1));
+            stats.innovations_evaluated += count as u64;
+            (count, n as f64 / count as f64, extra as f64 / n as f64)
+        } else {
+            let count = evo.candidates_per_kind[k] * group.candidate_factor();
+            if count == 0 {
+                continue;
+            }
+            (count, arising / count as f64, 0.0)
+        };
         for _ in 0..count {
             let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
-            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            // Un marqueur neutre ne change pas le phénotype : neutre, sans
+            // le reconstruire.
+            let judged = if kind == MutationKind::NeutralMarker {
+                Some((0.0, (*resident.phenotype).clone(), resident.rates))
+            } else {
+                evaluate(&change.genome, stats)
+            };
+            let Some((s, phenotype, rates)) = judged else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
                 continue;
             }
-            match fixes(&cfg.regime, s, ne, copies, kind_boost, rng) {
-                Some(accelerated) => {
-                    if accelerated {
-                        change.cause = GenomeChangeCause::Accelerator;
-                    }
-                    consider(&mut best, s, change, phenotype, rates);
+            if regime.candidate_fixes(s, ne, copies, rng) {
+                if accelerated > 0.0 && rng.random::<f64>() < accelerated {
+                    change.cause = GenomeChangeCause::Accelerator;
                 }
-                None if evo.tunnel && s > evo.tunnel_min_selection => {
-                    tunnel_eligible += 1;
-                    if tunnel_pending.len() < evo.tunnel_attempts_per_genotype {
-                        tunnel_pending.push((change, s, copies));
-                    }
-                }
-                None => {}
+                consider(&mut best, s, change, phenotype, rates);
+            } else if is_innovative(kind) && evo.tunnel && s > evo.tunnel_min_selection {
+                tunnel_pending.push((change, s, copies));
             }
         }
     }
-    if tunnel_eligible > 0 {
-        stats.tunnel_genotypes += 1;
-        if tunnel_eligible > tunnel_pending.len() {
-            stats.tunnel_capped += 1;
-        }
-    }
-    let tunnel_weight = if tunnel_pending.is_empty() { 1.0 } else { tunnel_eligible as f64 / tunnel_pending.len() as f64 };
     for (change, s, copies) in tunnel_pending {
-        // Tunnel stochastique : la lignée du premier mutant, tant qu'elle
-        // survit, produit des doubles mutants.
+        // Tunnel stochastique : la lignée du mutant innovant, tant qu'elle
+        // survit, produit des doubles mutants ; la seconde mutation est tirée
+        // parmi toutes les classes, et représente sa classe.
         let second = mutate(&change.genome, &cfg.mutation, rng);
         let GenomeChangeCause::SpontaneousMutation(kind2) = second.cause else { continue };
         stats.tunnel_attempts += 1;
@@ -424,11 +544,17 @@ pub fn evolve_genotype(
         if s2 <= 0.0 || best.as_ref().is_some_and(|b| b.s >= s2) {
             continue;
         }
+        // Taux de la seconde mutation : celui de sa classe, une classe
+        // innovante ne donnant une fonction nouvelle qu'avec sa probabilité.
         let k2 = MUTATION_KINDS.iter().position(|&x| x == kind2).unwrap_or(0);
-        let mu2 = u * cfg.mutation.weights[k2] / weight_total;
+        let innovation = if is_innovative(kind2) { evo.innovation_probability } else { 1.0 };
+        let mu2 = u * cfg.mutation.weights[k2] / weight_total * innovation;
         let p2 = fixation_probability(s2, ne, 1.0 / ne);
+        // Probabilité qu'une lignée intermédiaire franchisse la vallée
+        // (Weissman et coll., 2009), puis nombre de franchissements parmi les
+        // `copies` lignées, selon une loi de Poisson : au moins un suffit.
         let p1 = tunnel_probability((-s).max(0.0), mu2, p2);
-        if rng.random::<f64>() < OriginFixation::any_fixes(p1, copies * tunnel_weight) {
+        if poisson(copies * p1, rng) > 0 {
             stats.tunnel_successes += 1;
             let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
             consider(&mut best, s2, double, phenotype2, rates2);
@@ -511,4 +637,52 @@ pub fn evolve_deme(
         }
     }
     (out, stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use evo_core::rng::{rng_for, Stream};
+    use evo_genetics::{Domain, DomainFamily, Gene, MutationParams};
+    use evo_life::metabolism::{domain_relations, ANOXYGENIC_PHOTOSYNTHESIS, METHANOGENESIS, PHOTOFERROTROPHY};
+
+    /// Les capacités d'un mutant déduites de celles du résident sont celles
+    /// d'un calcul complet, aux arrondis près, pour toutes les classes de
+    /// mutations ; celles du résident le sont exactement.
+    #[test]
+    fn cached_capacities_match_a_full_computation() {
+        let physio = Physiology::default();
+        let gene = |family, efficiency, t_opt_k| Gene {
+            domain: Domain { family, efficiency, affinity: 1.3, t_opt_k, t_width_k: 9.0, absorption_nm: 450.0 },
+            functional: true,
+        };
+        let genome = Genome {
+            genes: vec![
+                gene(DomainFamily::Catalytic(METHANOGENESIS), 1.0, 300.0),
+                gene(DomainFamily::Cytochrome, 0.4, 300.0),
+                gene(DomainFamily::Catalytic(PHOTOFERROTROPHY), 0.3, 296.0),
+                gene(DomainFamily::Pigment, 0.5, 300.0),
+                gene(DomainFamily::Catalytic(ANOXYGENIC_PHOTOSYNTHESIS), 0.2, 305.0),
+                gene(DomainFamily::Catalytic(METHANOGENESIS), 0.6, 290.0),
+            ],
+            marker: [0; evo_genetics::genome::MARKER_LEN],
+        };
+        let params = MutationParams { weights: [1.0; MUTATION_KIND_COUNT], relations: domain_relations(), ..Default::default() };
+        let resident = Phenotype::from_genome(&genome, &physio);
+        let t = 297.0;
+        let base = RawCapacities::of(&resident.enzymes, t, &physio);
+        assert_eq!(base.finish(), resident.capacities(t, &physio));
+        let mut rng = rng_for(9, Stream::Validation, &[]);
+        for _ in 0..2000 {
+            let m = mutate(&genome, &params, &mut rng);
+            let mutant = Phenotype::from_genome(&m.genome, &physio);
+            let fast = base.mutant(&resident.enzymes, &mutant.enzymes, t, &physio);
+            let full = mutant.capacities(t, &physio);
+            for r in 0..REACTION_COUNT {
+                assert!((fast.cap[r] - full.cap[r]).abs() < 1e-12, "capacité {r} : {} contre {}", fast.cap[r], full.cap[r]);
+                assert!((fast.affinity[r] - full.affinity[r]).abs() < 1e-9, "affinité {r}");
+            }
+            assert!((fast.partner - full.partner).abs() < 1e-12);
+        }
+    }
 }

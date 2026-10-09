@@ -45,6 +45,13 @@ pub struct GateOptions {
     /// Durée d'un tour d'évolution, si elle diffère de celle par défaut
     /// (voir `EvolutionParams::round_years` ; 0 : un tour par pas).
     pub round_years: Option<f64>,
+    /// Probabilité d'innovation, si elle diffère de celle par défaut (voir
+    /// `EvolutionParams::innovation_probability`).
+    pub innovation_probability: Option<f64>,
+    /// Ordre d'éviction sous le plafond, s'il diffère de celui par défaut.
+    pub eviction: Option<crate::world::Eviction>,
+    /// Pas fixe : sans allongement aux périodes calmes.
+    pub fixed_step: bool,
 }
 
 impl Default for GateOptions {
@@ -59,6 +66,9 @@ impl Default for GateOptions {
             worlds: Vec::new(),
             out_dir: None,
             round_years: None,
+            innovation_probability: None,
+            eviction: None,
+            fixed_step: false,
         }
     }
 }
@@ -99,21 +109,27 @@ pub struct WorldResult {
     /// Correction des électrons sur les flux extrapolés, relative à la
     /// production photosynthétique d'O₂ (voir `close_electrons`).
     pub redox_correction: f64,
+    /// Pouvoir oxydant déplacé par les prélèvements freinés, relatif à la
+    /// production photosynthétique d'O₂.
+    pub redox_throttled: f64,
+    /// Part de ce pouvoir oxydant qu'aucun flux n'a pu reprendre, même unité.
+    pub redox_unpaired: f64,
     /// Part des cellules du vivant peuplées qui dépassaient le plafond de
     /// populations avant éviction : sur toute la partie, et sur ses 100
     /// derniers pas (monde mûr).
     pub saturated_share: f64,
     pub saturated_share_late: f64,
-    /// Même part, en ne comptant que les cellules qui ont perdu une
-    /// population établie (règle de Vision : revue au-delà de 1 %).
+    /// Part des cellules peuplées qui ont perdu une population établie (plus
+    /// grande qu'un fondateur), sur la partie et sur ses 100 derniers pas.
     pub established_share: f64,
     pub established_share_late: f64,
-    /// Même part, en ne comptant que les populations établies qui
-    /// croissaient encore.
+    /// Même part sur les 100 derniers pas, en ne comptant que les
+    /// populations établies qui croissaient encore.
     pub growing_share_late: f64,
-    /// Part des génotypes candidats au tunnel dont les candidats dépassaient
-    /// la borne d'essais, et essais et réussites du tunnel.
-    pub tunnel_capped_share: f64,
+    /// Mutants innovants apparus et ajoutés par l'accélérateur, essais et
+    /// réussites du tunnel.
+    pub innovations_drawn: u64,
+    pub innovations_accelerated: u64,
     pub tunnel_attempts: u64,
     pub tunnel_successes: u64,
     pub oxygen_budget: evo_planet::geochem::OxygenBudget,
@@ -150,6 +166,15 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     cfg.step_years = opts.step_years;
     if let Some(r) = opts.round_years {
         cfg.evolution.round_years = (r > 0.0).then_some(r);
+    }
+    if let Some(p) = opts.innovation_probability {
+        cfg.evolution.innovation_probability = p;
+    }
+    if let Some(e) = opts.eviction {
+        cfg.eviction = e;
+    }
+    if opts.fixed_step {
+        cfg.adaptive_step = None;
     }
     let mut world = World::new(cfg);
     world.seed_life();
@@ -259,12 +284,15 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
         lake_biomass: summary.lake_biomass,
         lake_cells: summary.lake_cells,
         redox_correction: world.stats.redox_correction / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
+        redox_throttled: world.stats.redox_throttled / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
+        redox_unpaired: world.stats.redox_unpaired / world.planet.reservoirs.oxygen.photosynthesis.max(1.0),
         saturated_share: world.stats.saturated_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
         saturated_share_late: late.iter().map(|l| l.1).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
         established_share: world.stats.established_eviction_cell_steps as f64 / world.stats.occupied_cell_steps.max(1) as f64,
         established_share_late: late.iter().map(|l| l.2).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
         growing_share_late: late.iter().map(|l| l.3).sum::<u64>() as f64 / late.iter().map(|l| l.0).sum::<u64>().max(1) as f64,
-        tunnel_capped_share: world.stats.tunnel_capped as f64 / world.stats.tunnel_genotypes.max(1) as f64,
+        innovations_drawn: world.stats.innovations_drawn,
+        innovations_accelerated: world.stats.innovations_accelerated,
         tunnel_attempts: world.stats.tunnel_attempts,
         tunnel_successes: world.stats.tunnel_successes,
         oxygen_budget: budget,
@@ -310,13 +338,14 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let world_passed = |k: &str| results.iter().any(|r| r.key == k && r.passed);
     let passed_worlds = keys.iter().filter(|k| world_passed(k)).count();
     let desert_only = keys.iter().all(|k| world_passed(k) || *k == "desert");
-    let _ = writeln!(out, "# Porte de l'étape 3 : l'oxygène s'accumule sur les six mondes à la résolution normale\n");
+    let _ = writeln!(out, "# Porte de l'oxygène (étapes 3 et 4) : l'oxygène s'accumule sur les six mondes\n");
     let _ = writeln!(
         out,
-        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas de {}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
+        "Rapport produit par `evonisium porte`. Grille de niveau {} ({} cellules physiques, vie un niveau en dessous), pas demandé de {}{}, au plus {} par partie, {}, graines essayées dans l'ordre {:?} jusqu'à la première qui franchit la porte. Critère : la fraction d'O₂ de l'air dépasse {:.0e} et s'y maintient {} ; l'O₂ vient de la photosynthèse oxygénique apparue par évolution ; carbone, phosphore et électrons conservés à 10⁻⁶ près ; la partie se rejoue à l'identique depuis sa graine et ses ordres, avec une caméra qui bouge dans l'une et pas dans l'autre.\n",
         opts.level,
         results.first().map_or(0, |r| r.cells),
         format_years(opts.step_years),
+        if opts.fixed_step { " (fixe)" } else { " (allongé jusqu'à 3 fois aux périodes calmes)" },
         format_years(opts.max_years),
         match opts.round_years.map_or(crate::evolution::EvolutionParams::default().round_years, |r| (r > 0.0).then_some(r)) {
             Some(r) => format!("un tour d'évolution « apparition puis fixation » par tranche de {} du pas", format_years(r)),
@@ -339,7 +368,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "Dates de première apparition sur la planète, depuis le dépôt de la cellule minimale.\n");
     let _ = writeln!(
         out,
-        "| Monde | Graine | {} | {} | {} | {} | Rhodopsine | Origine de l'étape oxygénique |\n|---|---|---|---|---|---|---|---|",
+        "| Monde | Graine | {} | {} | {} | {} | Rhodopsine | Origine de l'étape oxygénique |\n|---|---|---|---|---|---|---|---|---|---|",
         PHOTOSYNTHESIS_STAGES[1], PHOTOSYNTHESIS_STAGES[2], PHOTOSYNTHESIS_STAGES[3], PHOTOSYNTHESIS_STAGES[4]
     );
     for r in results {
@@ -364,7 +393,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Durée simulée | O₂ > 10⁻⁶ | O₂ > seuil | O₂ final | O₂ final (PAL) | O₂ maximal | CO₂ final | Température | Glace | Océan | Eaux douces colonisées | Biomasse des eaux douces | Verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Durée simulée | O₂ > 10⁻⁶ | O₂ > seuil | O₂ final | O₂ final (PAL) | O₂ maximal | CO₂ final | Température | Glace | Océan | Eaux douces colonisées | Biomasse des eaux douces | Verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let s = &r.final_sample;
@@ -396,7 +425,7 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Photosynthèse (brut) | Libéré vers l'air | Repris en surface | Respiration profonde | Gaz réduits (H₂) | Méthane | Fer et manganèse | Plancher océanique | Roches exposées | Sulfure |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Photosynthèse (brut) | Libéré vers l'air | Repris en surface | Respiration profonde | Gaz réduits (H₂) | Méthane | Fer et manganèse | Plancher océanique | Roches exposées | Sulfure |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let b = &r.oxygen_budget;
@@ -421,16 +450,16 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Aide de l'accélérateur, bilans, rejeu et vitesse\n");
     let _ = writeln!(
         out,
-        "« Électrons corrigés » : écart du bilan des électrons des flux de surface prolongés sur chaque pas, corrigé avant leur application et inscrit au registre, en part de la production photosynthétique d'O₂ de la partie. « Bilan électrons » : écart du registre de flux, qui doit rester nul. La vitesse est celle de la partie entière, sur la machine de mesure.\n"
+        "« Écart des électrons » : écart entre le pouvoir oxydant des flux de surface prolongés sur chaque pas et celui de leurs sources hydrothermales, en part de la production photosynthétique d'O₂ de la partie ; il n'est pas corrigé et ne vient que des arrondis. « Électrons freinés » : pouvoir oxydant déplacé quand une boîte vide freine un prélèvement des couches (ce qu'il alimentait est freiné avec lui), même unité ; « non repris » : la part qu'aucun flux de la couche n'a pu reprendre. « Bilan électrons » : écart du registre de flux, qui doit rester nul. La vitesse est celle de la partie entière, sur la machine de mesure.\n"
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Bilan électrons | Électrons corrigés | Rejeu identique | Calcul | Vitesse |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Pas avec accélérateur | Modifications fixées grâce à lui | Modifications fixées par cause | Bilan carbone | Bilan phosphore | Bilan électrons | Écart des électrons | Électrons freinés | Non repris | Rejeu identique | Calcul | Vitesse |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {} | {:.1e} | {:.1e} | {:.1e} | {:.1} % | {} | {:.0} s sur {} fils | {} par seconde |",
+            "| {} | {} | {} | {} | {} | {:.1e} | {:.1e} | {:.1e} | {:.1e} | {:.1} % | {:.2} % | {} | {:.0} s sur {} fils | {} par seconde |",
             r.name,
             r.seed,
             r.accelerator_steps,
@@ -439,7 +468,9 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
             r.carbon_error,
             r.phosphorus_error,
             r.electron_error,
-            100.0 * r.redox_correction,
+            r.redox_correction,
+            100.0 * r.redox_throttled,
+            100.0 * r.redox_unpaired,
             if r.replay_ok { "oui" } else { "non" },
             r.seconds,
             r.threads,
@@ -450,17 +481,16 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
     let _ = writeln!(out, "\n## Garde-fous du plafond de populations et du tunnel\n");
     let _ = writeln!(
         out,
-        "Plafond de populations par cellule du vivant : on évince d'abord la moins abondante, jamais la dernière d'une guilde (voie principale). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, presque toujours à cause d'arrivants du pas. « Saturées » : part des cellules qui ont perdu une population établie (plus que la biomasse d'un fondateur) ; au-delà de 2 % sur les 100 derniers pas (monde mûr), la règle est à revoir. Tunnel : au plus {} essais par génotype et par pas, chacun pondéré par (candidats / essais) quand la borne est atteinte ; « borne atteinte » : part des génotypes candidats au tunnel qui avaient plus de candidats que d'essais.\n",
-        crate::evolution::EvolutionParams::default().tunnel_attempts_per_genotype
+        "Plafond de populations par cellule du vivant : jamais la dernière d'une guilde (voie principale) ; parmi les autres, on évince d'abord la moins abondante (règle par défaut), ou, avec `--eviction invasion`, la plus basse fitness d'invasion (taux de croissance dans la communauté résidente). « Dépassent le plafond » : part des cellules peuplées qui dépassaient le plafond avant éviction, sur toute la partie et sur ses 100 derniers pas. « Saturées » : part des cellules peuplées qui ont perdu une population établie (plus que la biomasse d'un fondateur), même découpage (au-delà de 2 % sur monde mûr, la règle est à revoir) ; « dont en croissance » : celles dont la population évincée croissait encore. Innovations : mutants innovants (de novo, duplication suivie de divergence) apparus sur la partie, tirés selon une loi de Poisson, dont ceux que l'accélérateur a ajoutés. Tunnel : essais (un par mutant innovant qui ne se fixe pas seul) et réussites, au taux de Weissman et coll. (2009) tiré selon une loi de Poisson.\n"
     );
     let _ = writeln!(
         out,
-        "| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | dont population encore en croissance | Borne du tunnel atteinte | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|---|---|---|"
+        "| Monde | Graine | Dépassent le plafond (partie) | Dépassent le plafond (100 derniers pas) | Saturées (partie) | Saturées (100 derniers pas) | dont en croissance | Innovations apparues | dont accélérateur | Essais du tunnel | Réussites |\n|---|---|---|---|---|---|---|---|---|---|---|"
     );
     for r in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {:.1} % | {:.1} % | {:.2} % | {:.2} % | {:.2} % | {:.1} % | {} | {} |",
+            "| {} | {} | {:.1} % | {:.1} % | {:.2} % | {:.2} % | {:.2} % | {} | {} | {} | {} |",
             r.name,
             r.seed,
             100.0 * r.saturated_share,
@@ -468,7 +498,8 @@ pub fn format_gate(opts: &GateOptions, results: &[WorldResult]) -> String {
             100.0 * r.established_share,
             100.0 * r.established_share_late,
             100.0 * r.growing_share_late,
-            100.0 * r.tunnel_capped_share,
+            r.innovations_drawn,
+            r.innovations_accelerated,
             r.tunnel_attempts,
             r.tunnel_successes
         );
