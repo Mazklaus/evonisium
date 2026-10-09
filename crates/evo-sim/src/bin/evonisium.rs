@@ -4,7 +4,7 @@
 //!   evonisium porte [--worlds terre,ocean,...] [--seeds 2026,7,42] [--save-results DOSSIER] [--assemble DOSSIER] [--level L] [--step-years Y] [--max-years Y] [--out FICHIER] [--data DOSSIER]
 //!   evonisium bench [--levels 6,7] [--steps S] [--out FICHIER]
 //!   evonisium empreinte [--world CLÉ] [--seed N] [--level L] [--steps S]
-//!   evonisium equivalence [--world CLÉ] [--seeds 2026,7,42] [--level L] [--steps-years 100000,200000] [--years Y] [--save-results DOSSIER] [--assemble DOSSIER] [--out FICHIER]
+//!   evonisium equivalence [--world CLÉ] [--seeds 2026,7,42] [--level L] [--steps-years 100000,200000] [--years Y] [--round-years Y] [--fixation-unique] [--save-results DOSSIER] [--assemble DOSSIER] [--out FICHIER]
 //!
 //! Mondes : terre, ocean, desert, super-terre, petite, sans-lune.
 
@@ -470,6 +470,7 @@ fn equivalence(args: &[String]) {
         years: arg(args, "--years", d.years),
         oxygen_threshold: arg(args, "--threshold", d.oxygen_threshold),
         round_years: opt(args, "--round-years").map(|v| v.parse().expect("durée invalide")),
+        single_fixation: args.iter().any(|a| a == "--fixation-unique"),
     };
     let dir = opt(args, "--save-results").or_else(|| opt(args, "--assemble"));
     let path =

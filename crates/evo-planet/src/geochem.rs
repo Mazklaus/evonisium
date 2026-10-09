@@ -272,8 +272,8 @@ impl GlobalReservoirs {
 
     /// Applique des échanges de surface `moles` (sortie des cellules
     /// positive), sur une durée `years`, et renvoie les moles de carbone
-    /// organique exporté et d'H₂S dégazé.
-    fn apply_surface(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT], deep_oxic: f64) -> (f64, f64) {
+    /// organique exporté, enfoui, et d'H₂S dégazé.
+    fn apply_surface(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT], deep_oxic: f64) -> (f64, f64, f64) {
         for (i, &m) in moles.iter().enumerate() {
             let pool = crate::pools::WATER_POOLS[i];
             if let Some(r) = self.counterpart(pool) {
@@ -289,8 +289,8 @@ impl GlobalReservoirs {
         // Les oxydes qui sédimentent piègent du phosphate de l'océan profond.
         self.scavenge_phosphorus(params, moles[WaterPool::FeOx as usize].max(0.0));
         let export = moles[WaterPool::Doc as usize];
-        self.remineralise(params, export, deep_oxic);
-        (export, moles[WaterPool::H2s as usize])
+        let buried = self.remineralise(params, export, deep_oxic);
+        (export, buried, moles[WaterPool::H2s as usize])
     }
 
     fn scavenge_phosphorus(&mut self, params: &PlanetParams, iron_oxides: f64) {
@@ -301,15 +301,19 @@ impl GlobalReservoirs {
 
     /// Devenir du carbone organique exporté : une part est enfouie (avec son
     /// phosphore), le reste est reminéralisé, par l'O₂ s'il y en a, sinon par
-    /// méthanogenèse (moitié CH₄, moitié CO₂).
-    fn remineralise(&mut self, params: &PlanetParams, export: f64, deep_oxic: f64) {
+    /// méthanogenèse (moitié CH₄, moitié CO₂). L'enfouissement emporte du
+    /// phosphore au rapport C/P des sédiments : quand l'océan profond n'en a
+    /// plus, la matière organique est reminéralisée au lieu d'être enfouie.
+    /// Renvoie le carbone enfoui.
+    fn remineralise(&mut self, params: &PlanetParams, export: f64, deep_oxic: f64) -> f64 {
         if export <= 0.0 {
             // Import net de carbone organique : impossible à cette échelle.
-            return;
+            return 0.0;
         }
-        let buried = export * params.burial_efficiency(deep_oxic);
+        let cp = params.burial_carbon_to_phosphorus(deep_oxic);
+        let buried = (export * params.burial_efficiency(deep_oxic)).min(self.deep_po4.max(0.0) * cp);
         self.organic_c += buried;
-        let p = (buried / params.burial_carbon_to_phosphorus(deep_oxic)).min(self.deep_po4);
+        let p = buried / cp;
         self.deep_po4 -= p;
         self.sediment_p += p;
         let rest = export - buried;
@@ -320,6 +324,7 @@ impl GlobalReservoirs {
         let anaerobic = rest - aerobic;
         self.atmosphere[Gas::Co2 as usize] += aerobic + 0.5 * anaerobic;
         self.atmosphere[Gas::Ch4 as usize] += 0.5 * anaerobic;
+        buried
     }
 
     /// Reçoit le contenu d'une couche d'eau qui disparaît (cellule devenue
@@ -371,7 +376,7 @@ impl GlobalReservoirs {
         flux: &mut FluxRegistry,
     ) {
         let deep_oxic = self.deep_oxic(params, ctx, moles[WaterPool::Doc as usize] / years.max(1e-12));
-        let (_, h2s) = self.apply_surface(params, moles, deep_oxic);
+        let (_, _, h2s) = self.apply_surface(params, moles, deep_oxic);
         // Le sulfure dégazé quitte le système suivi ; il y reprend de l'O₂
         // en s'oxydant (puits « sulfure »).
         flux.exchange(Element::Electrons, 2.0 * h2s);
@@ -484,10 +489,10 @@ impl GlobalReservoirs {
             let surface_ox: f64 = moles.iter().enumerate().map(|(i, m)| m * crate::pools::WATER_POOLS[i].oxidant_equivalents()).sum();
             flux.exchange(Element::Electrons, surface_ox);
             acc.surface_redox += surface_ox;
-            let (export, h2s) = self.apply_surface(params, &moles, deep_oxic);
+            let (export, buried, h2s) = self.apply_surface(params, &moles, deep_oxic);
             flux.exchange(Element::Electrons, 2.0 * h2s);
             acc.organic_export += export;
-            acc.organic_burial += export.max(0.0) * params.burial_efficiency(deep_oxic);
+            acc.organic_burial += buried;
 
             // 2. Chimie rapide de l'atmosphère (juste après les apports de surface,
             //    pour que les puits lents voient l'O₂ qui reste) : titrage H₂-O₂, oxydation et photolyse
@@ -538,12 +543,16 @@ impl GlobalReservoirs {
                 * ctx.land_area_m2
                 * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
                 * co2_factor.dpowf(params.weathering_co2_exponent);
-            let seafloor = params.seafloor_weathering_share * params.outgassing_co2 * ctx.activity * co2_factor.dpowf(0.23);
+            let seafloor = params.seafloor_weathering_share
+                * params.outgassing_co2
+                * ctx.activity
+                * co2_factor.dpowf(0.23)
+                * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.seafloor_weathering_activation_k).dexp();
             let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize]);
             self.atmosphere[Gas::Co2 as usize] -= w;
             self.carbonate_c += w;
             acc.weathering_co2 += w;
-            let p_in = land * h * params.weathering_phosphorus_ratio;
+            let p_in = (land + params.seafloor_phosphorus_share * seafloor) * h * params.weathering_phosphorus_ratio;
             self.deep_po4 += p_in;
             flux.exchange(Element::Phosphorus, p_in);
             // Phosphore authigène (apatite, fluorapatite carbonatée) : puits

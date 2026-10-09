@@ -229,7 +229,9 @@ impl Planet {
                 water_area_m2: water_area,
                 flushing_per_year: if ocean { 0.0 } else { lw.flushing_per_year },
                 rain_mm_yr: display[c].rain_mm_yr as f64,
-                temperature_k: cl.temperature_k,
+                // Refuge sous la glace : une source hydrothermale garde une eau
+                // tiède autour d'elle quand la mer gèle en surface.
+                temperature_k: if is_vent && cl.ice { cl.temperature_k.max(p.vent_refuge_temperature_k) } else { cl.temperature_k },
                 seasonal_amplitude_k: 40.0 * self.climate.obliquity_rad.dsin() * lat.dsin().abs() * if ocean { 0.3 } else { 1.0 },
                 light_par_w_m2: light,
                 uv_w_m2: uv,

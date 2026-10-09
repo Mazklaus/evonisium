@@ -24,6 +24,9 @@ pub struct EquivalenceOptions {
     /// Durée d'un tour d'évolution, si elle diffère de celle par défaut
     /// (voir `EvolutionParams::round_years` ; 0 : un tour par pas).
     pub round_years: Option<f64>,
+    /// Un seul changement fixé par tour et par génotype (le meilleur), comme
+    /// à l'étape 3, au lieu des fixations multiples.
+    pub single_fixation: bool,
 }
 
 impl Default for EquivalenceOptions {
@@ -36,6 +39,7 @@ impl Default for EquivalenceOptions {
             years: 150e6,
             oxygen_threshold: 1e-4,
             round_years: None,
+            single_fixation: false,
         }
     }
 }
@@ -87,6 +91,7 @@ pub fn run_one(opts: &EquivalenceOptions, seed: u64, step_years: f64) -> Equival
     if let Some(r) = opts.round_years {
         cfg.evolution.round_years = (r > 0.0).then_some(r);
     }
+    cfg.evolution.multiple_fixations = !opts.single_fixation;
     let mut world = World::new(cfg);
     world.seed_life();
     let (mut trace, mut reached) = (None, None);
