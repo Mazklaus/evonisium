@@ -175,7 +175,7 @@ impl WorldConfig {
             founder_biomass: 100.0,
             light_biomass_per_m2: 0.1,
             max_populations_per_cell: 8,
-            eviction: Eviction::InvasionFitness,
+            eviction: Eviction::Biomass,
             seeding: Seeding::Vents,
             seed_biomass: 1e4,
             history_every_years: 1e6,

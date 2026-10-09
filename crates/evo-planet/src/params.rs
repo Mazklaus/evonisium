@@ -188,10 +188,23 @@ pub struct PlanetParams {
     /// phosphore y est rendu à l'eau au lieu d'être enfoui (Van Cappellen et
     /// Ingall, 1994 ; environ 4 000 contre 250 sous un océan oxygéné).
     pub anoxic_burial_carbon_to_phosphorus: f64,
-    /// Oxydation des roches réduites exposées (sulfures, fer, kérogène),
-    /// mol d'O₂·m⁻²·an⁻¹ à la fraction d'O₂ de référence, et exposant de la
-    /// loi en puissance (0,5 dans les modèles de type COPSE).
-    pub oxidative_weathering_per_m2: f64,
+    /// Temps de séjour du phosphore dissous face à l'enfouissement authigène
+    /// (apatite), ans. Sur Terre, ce puits retire environ la moitié du
+    /// phosphore réactif enfoui (Ruttenberg, 1993) ; le temps de séjour total
+    /// du phosphore océanique est de 20 000 à 50 000 ans.
+    pub apatite_burial_years: f64,
+    /// Oxydation des roches réduites exposées (kérogène, sulfures, fer),
+    /// mol d'O₂ par mole de CO₂ consommée par l'altération des silicates des
+    /// terres, à la fraction d'O₂ de référence, et exposant de la loi en
+    /// puissance (0,5 dans les modèles de type COPSE). Les deux viennent de
+    /// la même érosion : rapportée à l'altération plutôt qu'à la surface des
+    /// terres, l'oxydation suit l'apport de phosphore qui nourrit
+    /// l'enfouissement, même sur un monde presque sans terres. Sur la Terre
+    /// actuelle, l'oxydation du kérogène et de la pyrite consomme environ
+    /// 1,3·10¹³ mol d'O₂ par an, deux à trois fois le CO₂ consommé par les
+    /// silicates des terres ; 3 garde l'O₂ sous 200 % PAL au niveau 4
+    /// (rapport de l'étape 4).
+    pub oxidative_weathering_per_weathered_c: f64,
     pub oxidative_weathering_reference: f64,
     pub oxidative_weathering_exponent: f64,
     /// Temps de résidence du fer et du manganèse dans un océan profond
@@ -320,8 +333,9 @@ impl PlanetParams {
             deep_ventilation_years: 1000.0,
             anoxia_steepness: 4.0,
             anoxic_burial_carbon_to_phosphorus: 4000.0,
+            apatite_burial_years: 100_000.0,
             // Environ 7·10¹² mol d'O₂ par an sur les terres actuelles.
-            oxidative_weathering_per_m2: 0.05,
+            oxidative_weathering_per_weathered_c: 3.0,
             oxidative_weathering_reference: 0.21,
             oxidative_weathering_exponent: 0.5,
             deep_metal_residence_years: 2.0e5,

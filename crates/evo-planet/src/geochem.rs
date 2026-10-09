@@ -546,12 +546,17 @@ impl GlobalReservoirs {
             let p_in = land * h * params.weathering_phosphorus_ratio;
             self.deep_po4 += p_in;
             flux.exchange(Element::Phosphorus, p_in);
+            // Phosphore authigène (apatite, fluorapatite carbonatée) : puits
+            // indépendant de l'oxygène, proportionnel au stock dissous.
+            let apatite = self.deep_po4.max(0.0) * (1.0 - (-h / params.apatite_burial_years).dexp());
+            self.deep_po4 -= apatite;
+            self.sediment_p += apatite;
 
             // 5. Puits d'oxygène lents.
             let f_o2 = self.mixing_ratio(Gas::O2);
             let o2 = self.atmosphere[Gas::O2 as usize];
-            let ow = (params.oxidative_weathering_per_m2
-                * ctx.land_area_m2
+            let ow = (params.oxidative_weathering_per_weathered_c
+                * land
                 * (f_o2.max(0.0) / params.oxidative_weathering_reference).dpowf(params.oxidative_weathering_exponent)
                 * h)
                 .min(o2);

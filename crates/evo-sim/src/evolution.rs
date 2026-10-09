@@ -97,7 +97,7 @@ impl Default for EvolutionParams {
     fn default() -> Self {
         Self {
             candidates_per_kind: [4, 1, 1, 1, 1, 2, 2],
-            innovation_probability: 1e-15,
+            innovation_probability: 1e-13,
             tunnel: true,
             tunnel_min_selection: -0.05,
             hgt_rate: 1e-7,
@@ -130,7 +130,7 @@ pub struct AcceleratorParams {
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 300e6, boost: 100.0 }
+        Self { enabled: true, patience_years: 600e6, boost: 100.0 }
     }
 }
 
