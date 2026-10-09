@@ -122,6 +122,11 @@ pub struct Physiology {
     /// Portée du morphogène émis par la surface, en cellules, pour une
     /// portée de récepteur moyenne.
     pub morphogen_reach_cells: f64,
+    /// Part de la membrane d'une cellule collée à ses voisines, qui ne
+    /// puise plus dans l'eau : filament, feuillet, boule.
+    pub contact_filament: f64,
+    pub contact_sheet: f64,
+    pub contact_sphere: f64,
 }
 
 impl Default for Physiology {
@@ -170,6 +175,9 @@ impl Default for Physiology {
             max_body_zones: 4,
             diffusion_cells: 1.5,
             morphogen_reach_cells: 1.0,
+            contact_filament: 0.3,
+            contact_sheet: 0.5,
+            contact_sphere: 0.5,
         }
     }
 }

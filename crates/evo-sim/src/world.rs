@@ -1301,13 +1301,13 @@ impl World {
         }
         // Une colonie existante qui gagne la terre ferme ne passe pas par
         // une fixation : on la cherche parmi les populations des terres.
-        if self.progress.complexity_years[7].is_none() && self.progress.complexity_years[4].is_some() && reached[7].is_none() {
+        if self.progress.complexity_years[7].is_none() && self.progress.complexity_years[6].is_some() && reached[7].is_none() {
             'land: for (c, pops) in self.communities.iter().enumerate() {
                 if self.bio.env[c].is_ocean {
                     continue;
                 }
                 for (i, p) in pops.iter().enumerate() {
-                    if p.phenotype.is_multicellular() {
+                    if complexity_bits(&p.phenotype, true) & (1 << 7) != 0 {
                         reached[7] = Some((c, i, GenomeChangeCause::SpontaneousMutation(evo_genetics::MutationKind::Point)));
                         break 'land;
                     }
@@ -1499,7 +1499,10 @@ impl World {
     }
 
     pub fn species(&self) -> Vec<SpeciesView> {
-        let mut map: BTreeMap<u32, (SpeciesView, f64, Vec<usize>, Option<&Population>)> = BTreeMap::new();
+        // Vue, biomasse de la population la plus abondante, génotypes vus
+        // (adresses), et cette population.
+        type Entry<'a> = (SpeciesView, f64, Vec<usize>, Option<&'a Population>);
+        let mut map: BTreeMap<u32, Entry> = BTreeMap::new();
         for (b, pops) in self.communities.iter().enumerate() {
             for p in pops {
                 let sig = p.signature();

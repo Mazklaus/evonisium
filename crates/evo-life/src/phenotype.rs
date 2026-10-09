@@ -36,7 +36,7 @@
 use crate::growth::Physiology;
 use crate::metabolism::{EnergySource, ANOXYGENIC_CENTRES, FERMENTATION, REACTIONS, REACTION_COUNT};
 use evo_core::math::Det;
-use evo_genetics::{DomainFamily, Gene, Genome, ReactionId, REGULATOR_SENSE_NM};
+use evo_genetics::{ChangedElement, DomainFamily, Gene, Genome, ReactionId, REGULATOR_SENSE_NM};
 use std::sync::Arc;
 
 /// Bits d'organisation ajoutés à la signature au-dessus des voies : un
@@ -261,94 +261,254 @@ fn organisation(genome: &Genome) -> Organisation {
     o
 }
 
-impl Phenotype {
-    pub fn from_genome(genome: &Genome, physio: &Physiology) -> Self {
+/// Échelle des sommes en virgule fixe : l'addition d'entiers est exacte et
+/// associative, si bien qu'une somme mise à jour gène par gène (construction
+/// incrémentale) est identique au bit près à la somme recalculée.
+const FIXED: f64 = (1u64 << 40) as f64;
+
+#[inline]
+fn fx(x: f64) -> i128 {
+    (x * FIXED) as i128
+}
+
+#[inline]
+fn fl(v: i128) -> f64 {
+    v as f64 / FIXED
+}
+
+/// Sommes d'une cellule sur ses gènes exprimés (organites compris).
+#[derive(Clone, Debug, Default)]
+pub struct CellSums {
+    reaction_eff: [i128; REACTION_COUNT],
+    reaction_aff: [i128; REACTION_COUNT],
+    pigment: i128,
+    pigment_capture: i128,
+    pigment_nm: i128,
+    cytochrome: i128,
+    rhodopsin: i128,
+    rhodopsin_capture: i128,
+    wox: i128,
+    defense: i128,
+    repair: i128,
+    /// Structure, adhésion, signal, régulation, méiose (somme des carrés).
+    cellular: i128,
+    expressed: i64,
+}
+
+impl CellSums {
+    /// Ajoute (`sign` = 1) ou retire (`sign` = −1) la part d'un gène exprimé.
+    fn add(&mut self, gene: &Gene, membrane: f64, physio: &Physiology, sign: i128) {
+        let d = gene.domain;
+        self.expressed += sign as i64;
+        match d.family {
+            DomainFamily::Catalytic(r) if (r as usize) < REACTION_COUNT => {
+                self.reaction_eff[r as usize] += sign * fx(d.efficiency);
+                self.reaction_aff[r as usize] += sign * fx(d.efficiency * d.affinity);
+            }
+            DomainFamily::Catalytic(_) => {}
+            DomainFamily::Pigment => {
+                self.pigment += sign * fx(d.efficiency);
+                self.pigment_capture += sign * fx(d.efficiency * physio.spectrum.match_at(d.absorption_nm));
+                self.pigment_nm += sign * fx(d.efficiency * d.absorption_nm);
+            }
+            DomainFamily::Cytochrome => self.cytochrome += sign * fx(d.efficiency),
+            DomainFamily::Rhodopsin => {
+                self.rhodopsin += sign * fx(d.efficiency);
+                // Pompe de la membrane de l'hôte : elle rend moins dans une
+                // grande cellule.
+                self.rhodopsin_capture += sign * fx(d.efficiency * membrane * physio.spectrum.match_at(d.absorption_nm));
+            }
+            DomainFamily::WaterOxidation => self.wox += sign * fx(d.efficiency),
+            DomainFamily::OxidativeDefense => self.defense += sign * fx(d.efficiency),
+            // La réparation agit sur le taux de mutation ; ici seul son coût compte.
+            DomainFamily::Repair => self.repair += sign * fx(d.efficiency),
+            f if f.is_cellular() => self.cellular += sign * fx(d.efficiency * d.efficiency),
+            _ => {}
+        }
+    }
+
+    fn of(genome: &Genome, mask: Option<&[bool]>, cell_size: f64, physio: &Physiology) -> Self {
+        let mut sums = Self::default();
+        let membrane = 1.0 / cell_size;
+        for (gene, _) in expressed(genome, mask) {
+            sums.add(gene, membrane, physio, 1);
+        }
+        sums
+    }
+}
+
+/// Gènes exprimés d'une cellule, ceux de l'hôte selon `mask` puis ceux de ses
+/// organites (vrai : porté par un organite).
+fn expressed<'a>(genome: &'a Genome, mask: Option<&'a [bool]>) -> impl Iterator<Item = (&'a Gene, bool)> + 'a {
+    let host = genome.genes.iter().enumerate().filter(move |(i, g)| g.functional && mask.is_none_or(|m| m[*i])).map(|(_, g)| (g, false));
+    host.chain(genome.organelle_genes().map(|g| (g, true)))
+}
+
+/// Ce qui ne dépend que de l'organisation du génome : taille de la cellule,
+/// développement (zones, jeux de gènes exprimés) et sommes de chaque type
+/// cellulaire. Une mutation ponctuelle d'un gène métabolique, de lumière ou
+/// de défense ne change que les sommes des types qui l'expriment : le
+/// phénotype du mutant se construit à partir de celui du résident
+/// (« construction incrémentale », document d'architecture, étape 4).
+#[derive(Clone, Debug)]
+pub struct Basis {
+    org: Organisation,
+    cell_size: f64,
+    /// Colonie : forme, nombre de cellules et zones (dont le type de
+    /// chacune).
+    colony: Option<(Shape, f64, Vec<Zone>)>,
+    /// Jeu de gènes exprimés de chaque type (`None` : tous).
+    masks: Vec<Option<Vec<bool>>>,
+    sums: Vec<CellSums>,
+}
+
+impl Basis {
+    pub fn new(genome: &Genome, physio: &Physiology) -> Self {
         let org = organisation(genome);
         let cell_size = (1.0 + physio.cytoskeleton_size * org.cytoskeleton).min(physio.max_cell_size);
         let regulated_by = genome.regulated_by();
         let has_regulators = regulated_by.iter().any(Option::is_some);
         let signal = (org.signalling > 0.0).then_some(org.signalling.min(1.0));
-        let clonal = org.adhesion >= physio.clonal_adhesion;
-        if !clonal {
+        let (colony, masks) = if org.adhesion >= physio.clonal_adhesion {
+            let (shape, cells, zones, masks) = develop(genome, &regulated_by, &org, signal, physio);
+            (Some((shape, cells, zones)), masks.into_iter().map(Some).collect())
+        } else {
             // Cellule seule : le morphogène est son propre signal.
-            let mask = if has_regulators { Some(expression_mask(genome, &regulated_by, signal)) } else { None };
-            let mut p = Self::cell(genome, mask.as_deref(), &org, cell_size, physio);
+            let mask = has_regulators.then(|| expression_mask(genome, &regulated_by, signal));
+            (None, vec![mask])
+        };
+        let sums = masks.iter().map(|m| CellSums::of(genome, m.as_deref(), cell_size, physio)).collect();
+        Self { org, cell_size, colony, masks, sums }
+    }
+
+    /// Base du génome `genome`, issu de `resident` (de base `self`) par le
+    /// changement `element` ; `None` quand le changement touche
+    /// l'organisation (il faut alors tout reconstruire).
+    pub fn derive(&self, resident: &Genome, genome: &Genome, element: ChangedElement, physio: &Physiology) -> Option<Self> {
+        let ChangedElement::Gene { index, .. } = element else { return None };
+        let i = index as usize;
+        if genome.genes.len() != resident.genes.len() || genome.organelles.len() != resident.organelles.len() {
+            return None;
+        }
+        let (old, new) = (&resident.genes[i], &genome.genes[i]);
+        // Un gène qui change d'organisation, de régulation ou de
+        // fonctionnalité peut changer le développement et les types.
+        let plain = |g: &Gene| !g.domain.family.is_cellular() && g.functional;
+        if !plain(old) || !plain(new) {
+            return None;
+        }
+        let mut basis = self.clone();
+        let membrane = 1.0 / basis.cell_size;
+        for (mask, sums) in basis.masks.iter().zip(basis.sums.iter_mut()) {
+            if mask.as_ref().is_none_or(|m| m[i]) {
+                sums.add(old, membrane, physio, -1);
+                sums.add(new, membrane, physio, 1);
+            }
+        }
+        Some(basis)
+    }
+}
+
+/// Développement d'une colonie clonale : nombre de cellules, forme, zones,
+/// morphogène, puis un jeu de gènes exprimés par type cellulaire.
+fn develop(
+    genome: &Genome,
+    regulated_by: &[Option<u16>],
+    org: &Organisation,
+    signal: Option<f64>,
+    physio: &Physiology,
+) -> (Shape, f64, Vec<Zone>, Vec<Vec<bool>>) {
+    let doublings = 1.0 + physio.colony_doublings * (org.adhesion - physio.clonal_adhesion).min(1.0);
+    let cells = doublings.dexp2().min(physio.max_colony_cells);
+    let shape = if org.adhesion_nm < 500.0 {
+        Shape::Filament
+    } else if org.adhesion_nm > 800.0 {
+        Shape::Sheet
+    } else {
+        Shape::Sphere
+    };
+    // Géométrie : couches de cellules de la surface vers le centre
+    // (poids, profondeur).
+    let mut layout: Vec<(f64, f64)> = Vec::new();
+    match shape {
+        Shape::Filament => layout.push((1.0, 0.0)),
+        Shape::Sheet => {
+            if cells >= 4.0 {
+                layout.push((0.5, 0.0));
+                layout.push((0.5, 1.0));
+            } else {
+                layout.push((1.0, 0.0));
+            }
+        }
+        Shape::Sphere => {
+            // Rayon en cellules d'une boule de `cells` cellules.
+            let radius = 0.62 * cells.dcbrt();
+            let zones = (radius.ceil() as usize).clamp(1, physio.max_body_zones);
+            let step = radius / zones as f64;
+            for k in 0..zones {
+                let outer = radius - k as f64 * step;
+                let inner = (outer - step).max(0.0);
+                let weight = (outer * outer * outer - inner * inner * inner) / (radius * radius * radius);
+                layout.push((weight, k as f64 * step));
+            }
+        }
+    }
+    // Les cellules collées puisent moins dans l'eau : le coût premier de la
+    // vie en colonie.
+    let contact = match shape {
+        Shape::Filament => physio.contact_filament,
+        Shape::Sheet => physio.contact_sheet,
+        Shape::Sphere => physio.contact_sphere,
+    };
+    let reach = physio.morphogen_reach_cells * (0.5 + org.signalling_reach);
+    let mut zones: Vec<Zone> = Vec::with_capacity(layout.len());
+    let mut masks: Vec<Vec<bool>> = Vec::new();
+    for &(weight, depth) in &layout {
+        let light = (-depth / physio.diffusion_cells).dexp();
+        let access = light * (1.0 - contact);
+        // Morphogène émis par la surface, qui décroît vers l'intérieur.
+        let m = signal.map(|s| s * (-depth / reach).dexp());
+        let mask = expression_mask(genome, regulated_by, m);
+        let cell_type = match masks.iter().position(|x| *x == mask) {
+            Some(t) => t,
+            None => {
+                masks.push(mask);
+                masks.len() - 1
+            }
+        };
+        zones.push(Zone { weight, depth_cells: depth, access, light, morphogen: m.unwrap_or(0.0), cell_type: cell_type as u8 });
+    }
+    (shape, cells, zones, masks)
+}
+
+impl Phenotype {
+    pub fn from_genome(genome: &Genome, physio: &Physiology) -> Self {
+        Self::assemble(genome, &Basis::new(genome, physio), physio)
+    }
+
+    /// Phénotype d'un génome à partir de sa base.
+    pub fn assemble(genome: &Genome, basis: &Basis, physio: &Physiology) -> Self {
+        let org = &basis.org;
+        let cell_size = basis.cell_size;
+        let Some((shape, cells, zones)) = &basis.colony else {
+            let mut p = Self::cell(genome, basis.masks[0].as_deref(), &basis.sums[0], org, cell_size, physio);
             // Agrégats : l'adhésion sous le seuil de la colonie colle les
             // cellules en amas lâches, que les prédateurs avalent moins bien.
             p.body_size = cell_size * (1.0 + physio.aggregate_size * org.adhesion);
             return p;
-        }
-        Self::develop(genome, &regulated_by, &org, cell_size, signal, physio)
-    }
-
-    /// Développement d'une colonie clonale : nombre de cellules, forme,
-    /// zones, morphogène, puis un type cellulaire par jeu de gènes exprimés.
-    fn develop(
-        genome: &Genome,
-        regulated_by: &[Option<u16>],
-        org: &Organisation,
-        cell_size: f64,
-        signal: Option<f64>,
-        physio: &Physiology,
-    ) -> Self {
-        let doublings = 1.0 + physio.colony_doublings * (org.adhesion - physio.clonal_adhesion).min(1.0);
-        let cells = doublings.dexp2().min(physio.max_colony_cells);
-        let shape = if org.adhesion_nm < 500.0 {
-            Shape::Filament
-        } else if org.adhesion_nm > 800.0 {
-            Shape::Sheet
-        } else {
-            Shape::Sphere
         };
-        // Géométrie : couches de cellules de la surface vers le centre.
-        let mut layout: Vec<(f64, f64, f64)> = Vec::new(); // (poids, profondeur, lumière en plus de l'accès)
-        match shape {
-            Shape::Filament => layout.push((1.0, 0.0, 1.0)),
-            Shape::Sheet => {
-                if cells >= 4.0 {
-                    layout.push((0.5, 0.0, 1.0));
-                    layout.push((0.5, 1.0, 1.0));
-                } else {
-                    layout.push((1.0, 0.0, 1.0));
-                }
-            }
-            Shape::Sphere => {
-                // Rayon en cellules d'une boule de `cells` cellules.
-                let radius = 0.62 * cells.dcbrt();
-                let zones = (radius.ceil() as usize).clamp(1, physio.max_body_zones);
-                let step = radius / zones as f64;
-                for k in 0..zones {
-                    let outer = radius - k as f64 * step;
-                    let inner = (outer - step).max(0.0);
-                    let weight = (outer * outer * outer - inner * inner * inner) / (radius * radius * radius);
-                    layout.push((weight, k as f64 * step, 1.0));
-                }
-            }
-        }
-        let reach = physio.morphogen_reach_cells * (0.5 + org.signalling_reach);
-        let mut zones: Vec<Zone> = Vec::with_capacity(layout.len());
-        let mut masks: Vec<Vec<bool>> = Vec::new();
-        for &(weight, depth, _) in &layout {
-            let access = (-depth / physio.diffusion_cells).dexp();
-            // Morphogène émis par la surface, qui décroît vers l'intérieur.
-            let m = signal.map(|s| s * (-depth / reach).dexp());
-            let mask = expression_mask(genome, regulated_by, m);
-            let cell_type = match masks.iter().position(|x| *x == mask) {
-                Some(t) => t,
-                None => {
-                    masks.push(mask);
-                    masks.len() - 1
-                }
-            };
-            zones.push(Zone { weight, depth_cells: depth, access, light: access, morphogen: m.unwrap_or(0.0), cell_type: cell_type as u8 });
-        }
-        let types: Vec<Arc<Phenotype>> = masks.iter().map(|m| Arc::new(Self::cell(genome, Some(m), org, cell_size, physio))).collect();
+        let types: Vec<Arc<Phenotype>> = basis
+            .masks
+            .iter()
+            .zip(&basis.sums)
+            .map(|(m, sums)| Arc::new(Self::cell(genome, m.as_deref(), sums, org, cell_size, physio)))
+            .collect();
         // Le phénotype de l'organisme : celui de la surface, avec la
         // signature de tous les types, l'entretien moyen et le corps.
         let mut top = (*types[zones[0].cell_type as usize]).clone();
         let mut signature = MULTICELLULAR;
         let mut maintenance = 0.0;
-        for z in &zones {
+        for z in zones {
             let t = &types[z.cell_type as usize];
             signature |= t.signature;
             maintenance += z.weight * t.maintenance_kj;
@@ -361,76 +521,50 @@ impl Phenotype {
             _ => cells.dcbrt(),
         };
         top.body_size = cell_size * colony;
-        top.body = Some(Arc::new(Body { cells, shape, clonal: true, zones, types, expression: masks }));
+        let expression = basis.masks.iter().map(|m| m.clone().unwrap_or_default()).collect();
+        top.body = Some(Arc::new(Body { cells: *cells, shape: *shape, clonal: true, zones: zones.clone(), types, expression }));
         top
     }
 
     /// Phénotype d'une cellule qui exprime les gènes de `mask` (tous les
-    /// gènes fonctionnels si `None`) et ceux de ses organites.
-    fn cell(genome: &Genome, mask: Option<&[bool]>, org: &Organisation, cell_size: f64, physio: &Physiology) -> Self {
-        let mut enzymes = Vec::with_capacity(genome.genes.len());
-        // Totaux par voie et par famille : le coût est convexe sur le total,
-        // pour qu'une duplication ne rende pas une protéine moins chère.
-        let mut reaction_eff = [0.0; REACTION_COUNT];
-        let mut reaction_aff = [0.0; REACTION_COUNT];
-        let (mut pigment, mut pigment_capture, mut pigment_nm_sum) = (0.0, 0.0, 0.0);
-        let (mut cytochrome, mut rhodopsin, mut rhodopsin_capture, mut wox, mut defense, mut repair) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-        // Structure, adhésion, signal, régulation, méiose.
-        let mut cellular = 0.0;
-        let volume = cell_size * cell_size * cell_size;
-        let gene_count = genome.genes.len() + genome.organelles.iter().map(|o| o.genes.len()).sum::<usize>();
-        // Une copie du génome par cellule : son coût par mole de biomasse
-        // baisse avec le volume de la cellule (énergie par gène).
-        let mut maintenance = physio.base_maintenance_kj + physio.genome_cost_kj * gene_count as f64 / volume;
-        let membrane = 1.0 / cell_size;
-        let mut expressed = 0u32;
-        let host = genome.genes.iter().enumerate().filter(|(i, g)| g.functional && mask.is_none_or(|m| m[*i])).map(|(_, g)| (g, false));
-        let inside = genome.organelle_genes().map(|g| (g, true));
-        for (gene, internal) in host.chain(inside) {
-            let d = gene.domain;
-            expressed += 1;
-            maintenance += physio.expression_cost_kj;
-            match d.family {
-                DomainFamily::Catalytic(r) if (r as usize) < REACTION_COUNT => {
-                    reaction_eff[r as usize] += d.efficiency;
-                    reaction_aff[r as usize] += d.efficiency * d.affinity;
-                    enzymes.push(Enzyme {
+    /// gènes fonctionnels si `None`) et ceux de ses organites, de sommes
+    /// `sums`.
+    fn cell(genome: &Genome, mask: Option<&[bool]>, sums: &CellSums, org: &Organisation, cell_size: f64, physio: &Physiology) -> Self {
+        let enzymes: Vec<Enzyme> = expressed(genome, mask)
+            .filter_map(|(gene, internal)| {
+                let d = gene.domain;
+                match d.family {
+                    DomainFamily::Catalytic(r) if (r as usize) < REACTION_COUNT => Some(Enzyme {
                         reaction: r,
                         efficiency: d.efficiency,
                         affinity: d.affinity,
                         t_opt_k: d.t_opt_k,
                         t_width_k: d.t_width_k,
                         internal,
-                    });
+                    }),
+                    _ => None,
                 }
-                DomainFamily::Catalytic(_) => {}
-                DomainFamily::Pigment => {
-                    pigment += d.efficiency;
-                    pigment_capture += d.efficiency * physio.spectrum.match_at(d.absorption_nm);
-                    pigment_nm_sum += d.efficiency * d.absorption_nm;
-                }
-                DomainFamily::Cytochrome => cytochrome += d.efficiency,
-                DomainFamily::Rhodopsin => {
-                    rhodopsin += d.efficiency;
-                    // Pompe de la membrane de l'hôte : elle rend moins dans une
-                    // grande cellule.
-                    rhodopsin_capture += d.efficiency * membrane * physio.spectrum.match_at(d.absorption_nm);
-                }
-                DomainFamily::WaterOxidation => wox += d.efficiency,
-                DomainFamily::OxidativeDefense => defense += d.efficiency,
-                // La réparation agit sur le taux de mutation ; ici seul son coût compte.
-                DomainFamily::Repair => repair += d.efficiency,
-                f if f.is_cellular() => cellular += d.efficiency * d.efficiency,
-                _ => {}
-            }
-        }
+            })
+            .collect();
+        let reaction_eff: [f64; REACTION_COUNT] = std::array::from_fn(|r| fl(sums.reaction_eff[r]));
+        let (pigment, pigment_capture, pigment_nm_sum) = (fl(sums.pigment), fl(sums.pigment_capture), fl(sums.pigment_nm));
+        let (cytochrome, rhodopsin, rhodopsin_capture) = (fl(sums.cytochrome), fl(sums.rhodopsin), fl(sums.rhodopsin_capture));
+        let (wox, defense, repair, cellular) = (fl(sums.wox), fl(sums.defense), fl(sums.repair), fl(sums.cellular));
+        let expressed = sums.expressed as u32;
+        let volume = cell_size * cell_size * cell_size;
+        let gene_count = genome.genes.len() + genome.organelles.iter().map(|o| o.genes.len()).sum::<usize>();
+        // Une copie du génome par cellule : son coût par mole de biomasse
+        // baisse avec le volume de la cellule (énergie par gène).
+        let mut maintenance = physio.base_maintenance_kj + physio.genome_cost_kj * gene_count as f64 / volume;
+        maintenance += physio.expression_cost_kj * expressed as f64;
+        // Totaux par voie et par famille : le coût est convexe sur le total,
+        // pour qu'une duplication ne rende pas une protéine moins chère.
         // Le signal règle l'expression sur le besoin : les protéines des voies
         // coûtent moins cher (document Organismes, « Capteurs moléculaires »).
         let regulation = 1.0 - physio.signalling_saving * org.signalling.min(1.0);
-        for r in 0..REACTION_COUNT {
-            let e = reaction_eff[r];
+        for (&e, &aff) in reaction_eff.iter().zip(&sums.reaction_aff) {
             if e > 0.0 {
-                let a = reaction_aff[r] / e;
+                let a = fl(aff) / e;
                 maintenance += regulation * physio.gene_cost_kj * (e * e + 0.25 * a * a);
             }
         }
@@ -661,6 +795,50 @@ mod tests {
         assert!(pe.capacities(300.0, &physio).digest_respiration > 0.9);
         // Le génome coûte moins par mole de biomasse dans une grande cellule.
         assert!(pe.organelles == 1 && pe.signature & EUKARYOTE != 0);
+    }
+
+    #[test]
+    fn incremental_build_matches_full_build_bit_for_bit() {
+        use evo_genetics::{mutate_with_kind, MutationKind, MutationParams, MUTATION_KINDS};
+        use rand::{Rng, SeedableRng};
+        use DomainFamily::*;
+        let physio = Physiology::default();
+        let params = MutationParams::default();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let mut genome = Genome::new(
+            vec![
+                gene(Catalytic(FERMENTATION), 0.7, 0.8, 500.0),
+                gene(Signalling, 0.6, 1.0, 500.0),
+                gene(Adhesion, 0.9, 1.0, 600.0),
+                gene(Regulator, 1.0, 0.4, 500.0),
+                gene(Pigment, 0.5, 1.0, 650.0),
+                gene(Catalytic(ANOXYGENIC_PHOTOSYNTHESIS), 0.8, 1.0, 500.0),
+                gene(Rhodopsin, 0.3, 1.0, 550.0),
+                gene(Cytochrome, 0.4, 1.0, 500.0),
+            ],
+            [0; 32],
+        );
+        genome.organelles.push(Organelle {
+            genes: vec![gene(Catalytic(AEROBIC_RESPIRATION), 0.6, 1.0, 500.0)],
+            origin_lineage: 1,
+            acquired_years: 0.0,
+        });
+        let mut incremental = 0;
+        for _ in 0..3000 {
+            let basis = Basis::new(&genome, &physio);
+            let kind =
+                if rng.random::<f64>() < 0.8 { MutationKind::Point } else { MUTATION_KINDS[rng.random_range(0..MUTATION_KINDS.len())] };
+            let change = mutate_with_kind(&genome, kind, &params, &mut rng);
+            let full = Phenotype::from_genome(&change.genome, &physio);
+            if let Some(b) = basis.derive(&genome, &change.genome, change.element, &physio) {
+                incremental += 1;
+                assert_eq!(Phenotype::assemble(&change.genome, &b, &physio), full);
+            }
+            if change.genome.genes.len() < 40 {
+                genome = change.genome;
+            }
+        }
+        assert!(incremental > 500, "{incremental} constructions incrémentales");
     }
 
     #[test]

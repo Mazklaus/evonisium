@@ -28,7 +28,7 @@ fn main() {
     let mut tried = 0;
     let mut best: Vec<(f64, f64)> = vec![(f64::MIN, 0.0); 6];
     let cytos = [0.0, 0.05, 0.1, 0.2, 0.4, 0.8];
-    let mut wins = vec![0usize; 6];
+    let mut wins = [0usize; 6];
     for c in 0..world.communities.len() {
         let pops = &world.communities[c];
         if pops.is_empty() {

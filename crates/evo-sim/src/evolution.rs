@@ -44,7 +44,7 @@ use evo_genetics::{
 };
 use evo_life::community::{CellContext, Population};
 use evo_life::metabolism::photosynthesis_stage;
-use evo_life::phenotype::PATHWAY_MASK;
+use evo_life::phenotype::{Basis, PATHWAY_MASK};
 use evo_life::{growth_rates, selection_coefficient, GrowthRates, Phenotype};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
@@ -354,8 +354,28 @@ pub fn evolve_genotype(
         }
         Some((s / weight, phenotype, rates))
     };
-    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
-        let phenotype = Phenotype::from_genome(genome, physio);
+    // Construction incrémentale : la base du résident sert à tous ses
+    // mutants ponctuels.
+    let basis = Basis::new(&resident.genome, physio);
+    let evaluate = |change: &GenomeChange, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
+        let genome = &change.genome;
+        let unchanged = match change.element {
+            ChangedElement::Marker { .. } => true,
+            ChangedElement::Gene { index, .. } => {
+                genome.genes.len() == resident.genome.genes.len()
+                    && !genome.genes[index as usize].functional
+                    && !resident.genome.genes[index as usize].functional
+            }
+            _ => false,
+        };
+        let phenotype = if unchanged {
+            (*resident.phenotype).clone()
+        } else {
+            match basis.derive(&resident.genome, genome, change.element, physio) {
+                Some(b) => Phenotype::assemble(genome, &b, physio),
+                None => Phenotype::from_genome(genome, physio),
+            }
+        };
         stats.genetic_evaluations += 1;
         judge(phenotype)
     };
@@ -390,7 +410,7 @@ pub fn evolve_genotype(
         let copies = supply * u * generations * cfg.mutation.weights[k] / weight_total / count as f64;
         for _ in 0..count {
             let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
-            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
                 if sexual && kind == MutationKind::Point && fixes(&cfg.regime, s, ne, copies, kind_boost, rng).is_some() {
                     beneficial.push(change);
@@ -479,7 +499,7 @@ pub fn evolve_genotype(
             }
             let gene = genes[rng.random_range(0..genes.len())];
             let mut change = transfer_gene(&resident.genome, gene, GenomeChangeCause::HorizontalTransfer);
-            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) {
                 continue;
             }
@@ -499,11 +519,14 @@ pub fn evolve_genotype(
         // pas de la résolution de la grille.
         let partners = transitions::engulfed_partners(resident, i, pops, group.census, dt, years, cfg, rng);
         for partner in partners {
-            let Some((s, phenotype, rates)) = evaluate(&partner.change.genome, stats) else { continue };
+            let Some((s, phenotype, rates)) = evaluate(&partner.change, stats) else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) {
                 continue;
             }
             if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, complex_boost, rng) {
+                if std::env::var_os("EVO_DEBUG").is_some() {
+                    eprintln!("endosymbiose {years:.3e} s {s:.3e} copies {:.3e} census {:.3e} taille {:.2} englobe {:.2} proies {:.3e} acc {accelerated}", partner.copies, group.census, resident.phenotype.cell_size, resident.phenotype.engulfment, resident.rates.prey_demand());
+                }
                 let mut change = partner.change;
                 if accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
@@ -516,13 +539,22 @@ pub fn evolve_genotype(
     if sexual && !beneficial.is_empty() {
         if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
             if let Some(change) = transitions::recombine(&resident.genome, &b.change, &beneficial) {
-                if let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) {
+                if let Some((s, phenotype, rates)) = evaluate(&change, stats) {
                     if s > b.s {
                         stats.recombinations += 1;
                         best = Some(Best { s, change, phenotype, rates });
                     }
                 }
             }
+        }
+    }
+    if std::env::var_os("EVO_DEBUG").is_some() {
+        if let Some(b) = best.as_ref().filter(|b| b.phenotype.is_multicellular() && !resident.phenotype.is_multicellular()) {
+            let (o, n) = (&resident.rates, &b.rates);
+            eprintln!(
+                "colonie {years:.3e} s {:.3e} cellules {:.0} adh {:.2} | r {:.3e}->{:.3e} birth {:.3e}->{:.3e} mort {:.3e}->{:.3e} uv {:.3e}->{:.3e} pred {:.3e}->{:.3e} E {:.3e}->{:.3e} maint {:.3e}->{:.3e}",
+                b.s, b.phenotype.cells(), b.phenotype.adhesion, o.r, n.r, o.birth, n.birth, o.mortality, n.mortality, o.uv_mortality, n.uv_mortality, o.predation, n.predation, o.energy_kj, n.energy_kj, resident.phenotype.maintenance_kj, b.phenotype.maintenance_kj
+            );
         }
     }
     best.map(|b| (b.change, b.phenotype, b.rates, b.s))
