@@ -15,6 +15,8 @@ uniform sampler2D data0 : filter_nearest;
 uniform sampler2D data1 : filter_nearest;
 uniform sampler2D data2 : filter_nearest;
 uniform sampler2D data3 : filter_nearest;
+// Comparaison « avec et sans » (étape 4, voir evo-view/src/compare.rs).
+uniform sampler2D data4 : filter_nearest;
 uniform sampler2D prev0 : filter_nearest;
 uniform sampler2D prev2 : filter_nearest;
 uniform sampler2D palette : filter_linear, repeat_disable;
@@ -49,6 +51,13 @@ uniform vec3 hover_pos = vec3(0.0);
 uniform float hover_radius = 0.0;
 uniform float ink_strength = 1.0;
 uniform bool show_focus = true;
+// Incrément G3 : le maillage d'une région subdivisée porte l'altitude fine
+// de chaque sommet (UV.x, m) ; le globe s'efface sous la calotte qu'elle
+// couvre (direction, cosinus du rayon ; 2 : pas de région).
+instance uniform float regional = 0.0;
+uniform vec4 region_cap = vec4(0.0, 1.0, 0.0, 2.0);
+// Fondu des hachures de pente : 0 au globe entier, 1 aux paysages.
+uniform float landscape = 0.0;
 // Sources hydrothermales cerclées de vermillon (écran d'ensemencement).
 
 const vec3 PAPER = vec3(0.925, 0.886, 0.788);
@@ -71,6 +80,7 @@ varying float v_ocean;
 varying float v_focus;
 varying flat float v_cat;
 varying vec3 v_world_n;
+varying vec3 v_grad;
 
 vec3 to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
@@ -128,6 +138,7 @@ void vertex() {
 	vec4 p0 = fetch(prev0, uv);
 	vec4 p2 = fetch(prev2, uv);
 	vec4 d3 = fetch(data3, uv);
+	vec4 d4 = layer_tex == 4 ? fetch(data4, uv) : vec4(0.0);
 	vec3 dir = normalize(VERTEX);
 	// Glissement des plaques : la position courante, reculée de la part du
 	// pas qui n'est pas encore jouée, le long de la vitesse de la plaque
@@ -138,17 +149,33 @@ void vertex() {
 		float k = 0.01 * step_myr * 1.0e6 * (1.0 - blend) / radius_m;
 		dir = normalize(dir - (east * d3.r + north * d3.g) * k);
 	}
-	v_height = d0.r;
+	v_height = regional > 0.5 ? UV.x : d0.r;
 	v_temp = mix(p0.g, d0.g, blend);
 	v_bio = mix(p0.b, d0.b, blend);
 	v_ice = mix(p2.b, d2.b, blend);
+	if (regional > 0.5) {
+		// Région : les données des trois cellules qui entourent le sommet,
+		// pondérées, plutôt que celles de la seule plus proche.
+		vec3 w = CUSTOM1.xyz;
+		vec4 d0b = fetch(data0, CUSTOM0.xy);
+		vec4 d0c = fetch(data0, CUSTOM0.zw);
+		vec4 p0b = fetch(prev0, CUSTOM0.xy);
+		vec4 p0c = fetch(prev0, CUSTOM0.zw);
+		vec4 d2b = fetch(data2, CUSTOM0.xy);
+		vec4 d2c = fetch(data2, CUSTOM0.zw);
+		vec4 p2b = fetch(prev2, CUSTOM0.xy);
+		vec4 p2c = fetch(prev2, CUSTOM0.zw);
+		v_temp = w.x * v_temp + w.y * mix(p0b.g, d0b.g, blend) + w.z * mix(p0c.g, d0c.g, blend);
+		v_bio = w.x * v_bio + w.y * mix(p0b.b, d0b.b, blend) + w.z * mix(p0c.b, d0c.b, blend);
+		v_ice = w.x * v_ice + w.y * mix(p2b.b, d2b.b, blend) + w.z * mix(p2c.b, d2c.b, blend);
+	}
 	v_share = d2.a;
 	v_pig = d1.rgb;
 	int flags = int(d1.a + 0.5);
 	v_ocean = float((flags & 1) != 0);
 	v_pig_w = float((flags & 4) != 0);
 	v_focus = float((flags & 16) != 0);
-	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : d3));
+	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : (layer_tex == 3 ? d3 : d4)));
 	float raw = channel(lt, layer_channel);
 	if (layer_transform == 1) {
 		raw = log(max(raw, 1e-30)) / log(10.0);
@@ -157,18 +184,22 @@ void vertex() {
 	v_cat = channel(layer_tex == 2 ? d2 : d1, layer_channel);
 	v_dir = dir;
 	VERTEX = dir * (1.0 + relief_scale * max(v_height, 0.0));
+	v_grad = regional > 0.5 ? CUSTOM2.xyz : vec3(0.0);
 	v_world_n = normalize((MODEL_MATRIX * vec4(dir, 0.0)).xyz);
 }
 
 void fragment() {
 	vec3 n = normalize(v_dir);
+	if (regional < 0.5 && dot(n, region_cap.xyz) > region_cap.w) {
+		discard;
+	}
 	// Grain du papier (une octave suffit) et taches du lavis.
 	float grain = noise3(n * 180.0);
 	float bloom = fbm(n * 22.0 + 3.1);
 	// Le trait de côte suit la hauteur, troublée d'un bruit de quelques
 	// centaines de mètres : des rivages dessinés à main levée plutôt que les
 	// arêtes de la grille. Ce n'est qu'un dessin : l'inspecteur dit le vrai.
-	float height = v_height + (fbm(n * 64.0 + 7.3) - 0.5) * 700.0;
+	float height = v_height + (fbm(n * 64.0 + 7.3) - 0.5) * 700.0 * (1.0 - regional);
 	vec3 col = PAPER * (0.96 + 0.06 * grain);
 	// La mer est là où la surface est sous le niveau de la mer : le même
 	// critère que le trait de côte.
@@ -187,7 +218,8 @@ void fragment() {
 		col *= mix(vec3(1.0), v_pig, 0.45 * cover);
 	}
 	// Glace : papier laissé blanc, bleuté.
-	col = mix(col, ICE * (0.97 + 0.03 * grain), smoothstep(0.35, 0.65, v_ice));
+	float ice_edge = v_ice + regional * (fbm(n * 260.0) - 0.5) * 0.4;
+	col = mix(col, ICE * (0.97 + 0.03 * grain), smoothstep(0.35, 0.65, ice_edge));
 	// La lumière de l'étoile teinte le lavis (naine rouge plus chaude).
 	col *= mix(vec3(1.0), star_tint, 0.18);
 	// Calque de données en lavis sous l'encre.
@@ -212,6 +244,30 @@ void fragment() {
 	float ndl = dot(normalize(v_world_n), normalize(light_dir));
 	col *= 0.9 + 0.1 * clamp(ndl, 0.0, 1.0);
 	float ink = 0.0;
+	// Paysages (G3) : ombrage des versants depuis la normale de la facette,
+	// hachures d'encre dans les ombres, plus serrées sur les pentes fortes.
+	if (regional > 0.5) {
+		// Normale lissée du relief exagéré : la sphère inclinée par le
+		// gradient de l'altitude.
+		vec3 g = v_grad - n * dot(v_grad, n);
+		vec3 fn = normalize(n - relief_scale * g);
+		// Estompage de cartographe : lumière du nord-ouest à 45°, dans le
+		// repère local du sol.
+		vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), n) + vec3(1e-5, 0.0, 0.0));
+		vec3 north = cross(n, east);
+		vec3 sun = normalize(n + 0.75 * (north - east));
+		float lam = dot(fn, sun);
+		float flat_lam = dot(n, sun);
+		// Pour le contour d'encre : la normale du relief, pas celle de la
+		// sphère.
+		NORMAL = normalize((VIEW_MATRIX * vec4(fn, 0.0)).xyz);
+		float land = 1.0 - ocean;
+		col *= mix(1.0, clamp(0.2 + 0.92 * lam / flat_lam, 0.5, 1.15), landscape * land);
+		float shadow = clamp((flat_lam - 0.12 - lam) * 3.0, 0.0, 1.0) * land * landscape;
+		float h1 = step(fract((FRAGCOORD.x + FRAGCOORD.y) / 5.0), 0.12 + 0.3 * shadow);
+		float h2 = step(fract((FRAGCOORD.x - FRAGCOORD.y) / 5.0), 0.25 * shadow) * step(0.6, shadow);
+		ink = max(ink, 0.5 * max(h1, h2) * smoothstep(0.05, 0.4, shadow));
+	}
 	// Isobathes tous les 1 000 m, courbes de niveau tous les 1 000 m.
 	if (show_isolines) {
 		ink = max(ink, 0.35 * isoline(depth / 1000.0, 0.8) * ocean * step(200.0, depth));

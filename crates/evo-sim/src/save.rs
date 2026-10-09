@@ -9,6 +9,7 @@
 //! par dème. Ce qui se recalcule exactement n'est pas écrit : grilles,
 //! phénotypes, conditions des cellules du vivant, état publié.
 
+use crate::disturbance::Disturbances;
 use crate::history::{History, Publication};
 use crate::influence::InfluenceReserve;
 use crate::orders::OrderQueue;
@@ -31,7 +32,7 @@ use std::sync::Arc;
 /// Signature des fichiers de sauvegarde.
 pub const MAGIC: &[u8; 9] = b"EVONISIUM";
 /// Version du format ; une sauvegarde d'une autre version est refusée.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize)]
 struct SavedPopulation {
@@ -84,6 +85,7 @@ struct SaveState<'a> {
     stats: WorldStats,
     influence: InfluenceReserve,
     published_events: usize,
+    disturbances: Cow<'a, Disturbances>,
 }
 
 fn invalid(msg: impl Into<String>) -> io::Error {
@@ -152,6 +154,7 @@ impl World {
             previous_rates: self.previous_rates(),
             stats: self.stats,
             influence: self.influence,
+            disturbances: Cow::Borrowed(&self.disturbances),
             published_events: self.published_events(),
         };
         out.write_all(MAGIC)?;
@@ -230,6 +233,9 @@ impl World {
         world.set_previous_rates(s.previous_rates);
         world.stats = s.stats;
         world.influence = s.influence;
+        world.disturbances = s.disturbances.into_owned();
+        let (t0, dt) = (world.years, world.config.step_years);
+        world.disturbances.apply_to(&mut world.bio, t0 - dt, t0);
         world.set_published_events(s.published_events);
         world.publication = Publication::default();
         world.republish();

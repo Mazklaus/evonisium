@@ -24,6 +24,9 @@ pub struct PopulationView {
     pub biomass: f32,
     /// Taux de croissance net, an⁻¹.
     pub growth_per_year: f32,
+    /// Taux de production brut (naissances), an⁻¹ : biomasse × ce taux
+    /// donne la production de la population (réseau trophique).
+    pub birth_per_year: f32,
     pub genes: u16,
     pub pigment_rgb: Option<[u8; 3]>,
     /// Longueur d'onde d'absorption du pigment, nm.

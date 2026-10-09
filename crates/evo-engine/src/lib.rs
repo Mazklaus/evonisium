@@ -22,10 +22,13 @@
 //! de calcul (6 par défaut : le document Vision en réserve 2 sur 8 à
 //! l'affichage).
 
+pub mod branch;
 mod engine;
 mod geometry;
 mod query;
+pub mod strata;
 
+pub use branch::{Branch, BranchSpec, BranchStatus};
 pub use engine::{Engine, EngineStatus, Frame, NewGame, When};
 pub use geometry::GridGeometry;
 pub use query::{Answer, CellDetail, Habitat, LineageView, Query, RegionSample, SpeciesSample};

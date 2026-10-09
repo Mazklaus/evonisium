@@ -238,6 +238,8 @@ pub struct PublishedState {
     pub paused: bool,
     /// Détail de la zone d'intérêt de la caméra.
     pub focus: Focus,
+    /// Barrières et anomalies climatiques en cours (étape 4).
+    pub disturbances: crate::disturbance::Disturbances,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
