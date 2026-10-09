@@ -5,13 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+# Une nouvelle poussée annule la vérification en cours de la même branche.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   check:
     name: Format, lint et tests de validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -26,10 +32,12 @@ jobs:
 
   empreinte:
     name: Rejeu identique (${{ matrix.os }})
+    # macOS coûte dix fois plus de minutes : seulement sur main.
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-24.04", "windows-latest", "macos-latest"]') || fromJSON('["ubuntu-24.04", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -45,20 +53,22 @@ jobs:
   rejeu:
     name: Mêmes empreintes sur Linux, Windows et macOS
     needs: empreinte
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: empreinte-*
           merge-multiple: true
       - run: |
-          diff empreinte-ubuntu-latest.txt empreinte-windows-latest.txt
-          diff empreinte-ubuntu-latest.txt empreinte-macos-latest.txt
-          wc -l empreinte-ubuntu-latest.txt
+          diff empreinte-ubuntu-24.04.txt empreinte-windows-latest.txt
+          if [ -f empreinte-macos-latest.txt ]; then diff empreinte-ubuntu-24.04.txt empreinte-macos-latest.txt; fi
+          wc -l empreinte-ubuntu-24.04.txt
 
   client-linux:
     name: Client Godot (Linux) — portes des étapes 3 et 4
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     env:
       GODOT: Godot_v4.6.1-stable_linux.x86_64
     steps:
@@ -76,7 +86,10 @@ jobs:
         run: ./$GODOT --headless --path client --import || true
       - name: Rejeu — deux chemins de caméra, un point de sauvegarde
         run: ./$GODOT --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$PWD/porte/rejeu-linux
+      # La partie jusqu'à l'oxygène dure une demi-heure : seulement sur main.
       - name: Partie jouée — créer, ensemencer, intervenir, voir l'oxygène monter
+        if: github.event_name == 'push'
+        timeout-minutes: 45
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte --niveau=4 --duree-max=2400 --sortie=$PWD/porte/partie
       - name: Étape 4 — impact, « avec et sans », réseau, strates, régions, anatomie, comparateur
         timeout-minutes: 30
@@ -90,6 +103,7 @@ jobs:
   client-windows:
     name: Client Godot (Windows) — rejeu
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -115,10 +129,12 @@ jobs:
   client-rejeu-identique:
     name: Rejeu identique sous Linux et Windows
     needs: [client-linux, client-windows]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: porte-client-*
           path: porte
       - name: Comparer les empreintes
         run: |
