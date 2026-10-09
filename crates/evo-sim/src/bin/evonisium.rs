@@ -216,7 +216,11 @@ fn complexity(args: &[String]) {
         world.step();
         if world.progress.complex_accelerator_on != accelerated {
             accelerated = world.progress.complex_accelerator_on;
-            println!("  ⚑ accélérateur de la complexité {} : {}", if accelerated { "en marche" } else { "arrêté" }, format_years(world.years()));
+            println!(
+                "  ⚑ accélérateur de la complexité {} : {}",
+                if accelerated { "en marche" } else { "arrêté" },
+                format_years(world.years())
+            );
         }
         if let Some(y) = world.progress.stage_years[4].filter(|_| !seen_oxygenic) {
             seen_oxygenic = true;

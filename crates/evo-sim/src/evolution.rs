@@ -131,11 +131,24 @@ pub struct AcceleratorParams {
     /// oxygénique) avant d'agir sur les transitions de l'étape 4 : rétentions
     /// d'endosymbiotes et mutations innovantes plus fréquentes.
     pub complexity_patience_years: f64,
+    /// Quand l'accélérateur de la complexité agit, son effet sur les
+    /// rétentions d'endosymbiotes est multiplié par 10 à chaque durée
+    /// écoulée sans nouvelle étape, années.
+    pub complexity_escalation_years: f64,
+    /// Plafond de cet effet sur les rétentions.
+    pub complexity_max_boost: f64,
 }
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 600e6, boost: 100.0, complexity_patience_years: 1.0e9 }
+        Self {
+            enabled: true,
+            patience_years: 600e6,
+            boost: 100.0,
+            complexity_patience_years: 1.0e9,
+            complexity_escalation_years: 100e6,
+            complexity_max_boost: 1e12,
+        }
     }
 }
 
@@ -429,7 +442,7 @@ pub fn evolve_genotype(
     group: &GenotypeGroup,
     rng: &mut impl Rng,
     accelerator_on: bool,
-    complex_accelerator_on: bool,
+    complex_boost: f64,
     stats: &mut EvolutionStats,
 ) -> Option<(GenomeChange, Phenotype, GrowthRates, f64)> {
     let physio = &cfg.physiology;
@@ -461,7 +474,10 @@ pub fn evolve_genotype(
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
     let boost = if accelerator_on { evo.accelerator.boost } else { 1.0 };
-    let complex_boost = if complex_accelerator_on { evo.accelerator.boost } else { 1.0 };
+    // Les rétentions d'endosymbiotes reçoivent l'effet entier (qui croît
+    // tant que la complexité stagne) ; les mutations, celui de l'accélérateur.
+    let retention_boost = complex_boost;
+    let complex_boost = complex_boost.min(evo.accelerator.boost);
     let regime = &cfg.regime;
     let generations = dt / resident.rates.generation_time(physio);
     let ne = cfg.regime.effective_size(group.census);
@@ -727,7 +743,7 @@ pub fn evolve_genotype(
             if best.as_ref().is_some_and(|b| b.s >= s) {
                 continue;
             }
-            if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, complex_boost, rng) {
+            if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, retention_boost, rng) {
                 let mut change = partner.change;
                 if accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
@@ -768,7 +784,7 @@ pub fn evolve_deme(
     step_index: u64,
     round: u64,
     accelerator_on: bool,
-    complex_accelerator_on: bool,
+    complex_boost: f64,
 ) -> (Vec<Fixation>, EvolutionStats) {
     let mut stats = EvolutionStats::default();
     let mut out = Vec::new();
@@ -780,19 +796,9 @@ pub fn evolve_deme(
         } else {
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
         };
-        if let Some((change, phenotype, rates, selection)) = evolve_genotype(
-            communities,
-            chemistry,
-            envs,
-            cfg,
-            dt,
-            years,
-            &group,
-            &mut rng,
-            accelerator_on,
-            complex_accelerator_on,
-            &mut stats,
-        ) {
+        if let Some((change, phenotype, rates, selection)) =
+            evolve_genotype(communities, chemistry, envs, cfg, dt, years, &group, &mut rng, accelerator_on, complex_boost, &mut stats)
+        {
             let GenomeChange { genome, cause, element } = change;
             out.push(Fixation {
                 habitat: group.habitat,

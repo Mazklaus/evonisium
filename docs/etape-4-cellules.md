@@ -30,18 +30,29 @@ Niveau 4, pas de 200 ka (allongé jusqu'à trois fois aux périodes calmes), 3 G
 |---|---|---|---|---|---|---|
 | Super-Terre | 2026 | 15,6 Ma | 35,4 Ma | 584 Ma | 624 Ma | non (2,5 Ga) |
 | Sans lune | 2026 | tôt | 40,2 Ma | 2,17 Ga | 2,18 Ga | non (3 Ga) |
-| Terre | 2026, 7, 42, 3 | 13 à 24 Ma | 36 à 880 Ma | aucune en 3 Ga | aucune | non |
+| Monde océan | 2026 | 29,4 Ma | 76,8 Ma | 855 Ma | non | non (vie éteinte vers 2,5 Ga) |
+| Monde désertique | 2026 | 27,6 Ma | 47,4 Ma | aucune en 3 Ga (accélérateur dès 1,63 Ga) | non | non |
+| Terre | 7 | 20,4 Ma | 51,0 Ma | 1,50 Ga, avec l'accélérateur | non | non |
+| Terre | 2026 | 13,2 Ma | 39,0 Ma | aucune en 3 Ga (accélérateur dès 1,61 Ga) | non | non |
 
-Le monde sans lune a tourné avant la correction des proies (voir plus bas) ; les autres après.
+Sans lune a tourné avant la correction des proies, océan et désert avant l'accélérateur gradué, la Terre avec. Sans accélérateur, la Terre n'a fait aucun eucaryote en 3 Ga sur quatre graines (2026, 7, 42, 3).
+
+**Porte de l'étape 4 non franchie.** Les eucaryotes apparaissent seuls sur trois mondes de la vague 1 (super-Terre, sans lune, océan), à des dates dans la fenêtre sauf super-Terre (un peu tôt) ; les multicellulaires eucaryotes à deux types sur deux (super-Terre, sans lune). Sur Terre, l'eucaryote ne vient qu'avec l'accélérateur et sur une graine sur deux, et aucun multicellulaire eucaryote différencié n'apparaît.
 
 ## Limites connues
 
-- **Terre.** Aucun eucaryote en 3 Ga sur quatre graines. Après la photosynthèse oxygénique, l'O₂ retombe vers zéro et y reste ; le rapport du calibrage montre la Terre à 229 K sous 100 % de glace à 392 Ma. Le fil calibrage traite la sortie de la boule de neige (refuges chauds sous la glace, CO₂ volcanique) ; la date des eucaryotes terrestres sera à remesurer après.
+- **Terre.** Sans aide, aucun eucaryote en 3 Ga sur quatre graines. Ce n'est pas le climat : sur la graine 2026, la glace ne couvre tout qu'autour de 700 Ma, puis l'O₂ tient entre 0,5 et 0,7 et la température monte de 275 à 319 K entre 1 et 1,5 Ga. C'est le nombre d'hôtes : à 1,3 Ga, la sonde (`examples/sonde.rs`) trouve 34 populations phagotrophes sur 3 066 hétérotrophes, 28 partenaires candidats dont 3 avantageux, et 7×10⁻¹⁰ fixation attendue par tour, soit moins d'une chance sur cent mille par milliard d'années. La super-Terre et le monde océan, plus grands ou plus productifs, nourrissent assez de phagotrophes. D'où l'accélérateur gradué ci-dessous.
 - **Vallée de taille.** Un petit cytosquelette (taille 1,3 à 2,2) est désavantagé (s ≈ −0,15 sur un monde mûr) : la membrane perd plus que ce que les proies rapportent. Seules les grandes cellules (taille 3,4 et plus) envahissent, et seulement dans les cellules riches en proies. C'est une vallée réelle (l'eucaryogenèse est un événement unique), mais elle rend la phagotrophie durable rare.
+- **Persistance.** Là où l'eucaryote apparaît, il reste minoritaire et recule souvent : 7 % de la biomasse sur super-Terre à 750 Ma puis 1 à 6 % ; 1 % sur le monde océan à 1 Ga puis 0 % ; sur Terre (graine 7) il disparaît en moins de 250 Ma, avant une glaciation totale vers 2 Ga. Les phagotrophes restent sous 1 % de la biomasse sur Terre. C'est la prochaine cible : rendre le mode de vie phagotrophe et la cellule eucaryote durables, plutôt que d'accélérer encore leur apparition.
+- **Climat des longues parties (au fil calibrage).** Terre graine 2026 : 364 K et O₂ en baisse à 3 Ga ; monde océan : vie éteinte vers 2,5 Ga ; Terre graine 7 : glaciation totale vers 2 Ga.
 - **Dates.** Super-Terre fait ses eucaryotes un peu trop tôt (584 Ma pour une fenêtre qui commence à 667 Ma), sans lune dans la fenêtre. Multicellulaires eucaryotes à deux types : quelques dizaines de Ma après les eucaryotes, soit une transition plus rapide que sur Terre. Le plaste précède la mitochondrie (premier organite dans un monde encore anoxique).
 - **Sortie des eaux.** Aucun eucaryote multicellulaire complexe n'a encore gagné les terres en 3 Ga : le passage au niveau 6 est testé (bilans, poursuite de la partie) mais n'a pas eu lieu dans une partie longue.
 - **Vitesse.** Ère microbienne : 1,0 à 2,0 Ma/s sur 2 fils au niveau 4. Ère des colonies (90 % de la biomasse en colonies sur super-Terre) : 150 à 360 ka/s sur 2 fils, partagés avec d'autres parties. La mesure finale au niveau 6 sur 6 cœurs revient au fil calibrage (décision de Vision).
-- **Sauvegardes.** Génome, phénotype, configuration et statistiques ont changé : le format de sauvegarde est à monter à la fusion.
+- **Sauvegardes.** Génome, phénotype, configuration et statistiques ont changé : le format de sauvegarde passe à 5.
+
+## Accélérateur de la complexité
+
+Décision de l'utilisateur (2026-10-07) : émergence assistée, accélérateurs seulement quand l'évolution stagne. Après 1 Ga sans nouvelle étape de la complexité depuis la photosynthèse oxygénique (ou depuis la dernière étape franchie), l'accélérateur multiplie par 100 les mutations innovantes et les copies divergentes vers les familles de structure. Sur les rétentions d'endosymbiotes, son effet est décuplé tous les 100 Ma tant qu'aucune étape nouvelle n'apparaît, jusqu'à 10¹² ([Simplification] accélération déclarée ; les fixations qu'il produit portent la cause « accélérateur » et l'événement de mise en marche est publié). Il s'arrête à la première étape nouvelle.
 
 ## Corrections faites en route
 

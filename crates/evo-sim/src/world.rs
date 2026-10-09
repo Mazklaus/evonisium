@@ -1096,7 +1096,7 @@ impl World {
     fn evolution_phase(&mut self, years: f64, dt: f64, step_index: u64, round: u64) -> Vec<(usize, usize, GenomeChangeCause)> {
         let cfg = &self.config;
         let accelerator = self.progress.accelerator_on;
-        let complex = self.progress.complex_accelerator_on;
+        let complex = self.complexity_boost(years);
         let (communities, chemistry, envs) = (&self.communities, &self.chemistry, &self.bio.env);
         let results: Vec<(Vec<Fixation>, EvolutionStats)> = self
             .demes
@@ -1534,6 +1534,24 @@ impl World {
         for (k, e) in [Element::Carbon, Element::Phosphorus, Element::Electrons].into_iter().enumerate() {
             self.flux.exchange(e, after[k] - before[k]);
         }
+    }
+
+    /// Effet de l'accélérateur de la complexité au moment `years` : 1 quand
+    /// il n'agit pas ; sinon son multiplicateur, décuplé à chaque
+    /// `complexity_escalation_years` passées depuis sa mise en marche, au plus
+    /// `complexity_max_boost`. [Simplification] Accélération déclarée : sur
+    /// les petits mondes, les hôtes phagotrophes sont trop peu nombreux pour
+    /// garder un endosymbiote dans des délais terrestres.
+    fn complexity_boost(&self, years: f64) -> f64 {
+        let acc = &self.config.evolution.accelerator;
+        if !self.progress.complex_accelerator_on {
+            return 1.0;
+        }
+        let Some(oxygenic) = self.progress.stage_years[4] else { return acc.boost };
+        let since = self.progress.complexity_since_years.unwrap_or(oxygenic).max(oxygenic);
+        let running = (years - since - acc.complexity_patience_years).max(0.0);
+        let escalation = 10f64.dpowf(running / acc.complexity_escalation_years.max(1.0));
+        (acc.boost * escalation).min(acc.complexity_max_boost.max(acc.boost))
     }
 
     /// Étapes de la complexité : première apparition sur la planète, et
