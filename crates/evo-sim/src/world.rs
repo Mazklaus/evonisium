@@ -1376,10 +1376,64 @@ impl World {
             self.events.push(years, None, EventKind::Snowball { ice_fraction: ice, starts: false });
         }
 
+        // Des multicellulaires complexes gagnent les terres : le vivant passe
+        // à la résolution de la planète.
+        if self.config.transitions.refine_on_land && self.progress.complexity_years[7].is_some() && self.config.bio_level < self.config.level {
+            self.refine_life_grid();
+        }
+
         if self.history.due(years) {
             self.record_history();
         }
         self.publish();
+    }
+
+    /// Passe la grille du vivant à la résolution de la grille physique
+    /// (document d'architecture : vivant au niveau 6 quand les
+    /// multicellulaires colonisent les terres). Chaque cellule fine reçoit la
+    /// chimie de sa cellule grossière (des concentrations) et une part de ses
+    /// populations au prorata de son volume d'eau. Les grilles sont
+    /// emboîtées : une cellule grossière garde son numéro, si bien que les
+    /// événements passés restent bien placés.
+    pub fn refine_life_grid(&mut self) {
+        let level = self.config.level;
+        if self.config.bio_level >= level {
+            return;
+        }
+        let before = [self.total_carbon(), self.total_phosphorus(), self.total_electrons()];
+        let mut bio = BioGrid::new(&self.planet.grid, level);
+        bio.aggregate(&self.planet.cells);
+        let old_of: Vec<usize> = bio.children.iter().map(|kids| self.bio.parent[kids[0] as usize] as usize).collect();
+        self.chemistry = old_of.iter().map(|&o| self.chemistry[o]).collect();
+        self.communities = old_of
+            .iter()
+            .enumerate()
+            .map(|(c, &o)| {
+                let volume = self.bio.env[o].water_volume_m3;
+                let share = if volume > 0.0 { bio.env[c].water_volume_m3 / volume } else { 0.0 };
+                if share <= 0.0 {
+                    return Vec::new();
+                }
+                self.communities[o]
+                    .iter()
+                    .map(|p| {
+                        let mut q = p.clone();
+                        q.biomass *= share;
+                        q
+                    })
+                    .collect()
+            })
+            .collect();
+        self.bio = bio;
+        self.config.bio_level = level;
+        let deme_level = self.config.deme_level.unwrap_or(level.saturating_sub(1)).min(level);
+        let deme_grid = BioGrid::new(&self.bio.grid, deme_level);
+        (self.demes, self.deme_index) = (deme_grid.children, deme_grid.parent);
+        // Les arrondis du partage sont portés au bilan comme un échange.
+        let after = [self.total_carbon(), self.total_phosphorus(), self.total_electrons()];
+        for (k, e) in [Element::Carbon, Element::Phosphorus, Element::Electrons].into_iter().enumerate() {
+            self.flux.exchange(e, after[k] - before[k]);
+        }
     }
 
     /// Étapes de la complexité : première apparition sur la planète, et
@@ -1999,6 +2053,31 @@ mod tests {
         let mut w = World::new(cfg);
         w.seed_life();
         w
+    }
+
+    #[test]
+    fn refining_the_life_grid_keeps_mass_and_life() {
+        let mut cfg = WorldConfig::new(11, 4);
+        cfg.bio_level = 3;
+        cfg.step_years = 1000.0;
+        let mut w = World::new(cfg);
+        w.seed_life();
+        for _ in 0..20 {
+            w.step();
+        }
+        let biomass = w.biomass();
+        let coarse = w.bio.len();
+        w.refine_life_grid();
+        assert_eq!(w.config.bio_level, 4);
+        assert!(w.bio.len() > 3 * coarse);
+        assert_eq!(w.communities.len(), w.bio.len());
+        assert!((w.biomass() - biomass).abs() <= 1e-9 * biomass);
+        for _ in 0..10 {
+            w.step();
+        }
+        assert!(w.carbon_balance_error() < 1e-9, "carbone {}", w.carbon_balance_error());
+        assert!(w.phosphorus_balance_error() < 1e-9);
+        assert!(w.biomass() > 0.0);
     }
 
     #[test]

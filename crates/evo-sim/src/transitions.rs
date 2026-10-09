@@ -42,11 +42,14 @@ pub struct TransitionParams {
     pub max_organelles: usize,
     /// Durée sur laquelle un endosymbiote devient un organite dépendant, ans.
     pub integration_years: f64,
+    /// Passer le vivant à la résolution de la planète quand des
+    /// multicellulaires complexes gagnent les terres.
+    pub refine_on_land: bool,
 }
 
 impl Default for TransitionParams {
     fn default() -> Self {
-        Self { retention_probability: 3e-29, endosymbiosis_candidates: 1, max_organelles: 2, integration_years: 100e6 }
+        Self { retention_probability: 1e-38, endosymbiosis_candidates: 1, max_organelles: 2, integration_years: 100e6, refine_on_land: true }
     }
 }
 
