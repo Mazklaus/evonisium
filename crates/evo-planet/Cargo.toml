@@ -3,7 +3,8 @@ name = "evo-planet"
 description = "Planète et environnement : paramètres, grille géodésique, vecteur d'environnement."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde.workspace = true
