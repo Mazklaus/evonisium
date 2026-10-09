@@ -71,6 +71,11 @@ pub struct EvolutionParams {
     /// résume en une mutation. Calibrée sur la chronologie terrestre
     /// (docs/etape-4-chronologie.md). [Simplification signalée]
     pub innovation_probability: f64,
+    /// Probabilité qu'une duplication suivie de divergence donne un gène de
+    /// structure ou de régulation fonctionnel (cytosquelette, adhésion,
+    /// signal, régulateur, méiose). [Simplification] calée sur la
+    /// chronologie terrestre des premières colonies.
+    pub structural_probability: f64,
     /// Tunnel stochastique (Weissman et coll., 2009) : tenté pour les
     /// mutants innovants qui ne se fixent pas seuls, quand leur coefficient
     /// de sélection dépasse ce seuil. Le taux de franchissement est calculé
@@ -107,6 +112,7 @@ impl Default for EvolutionParams {
         Self {
             candidates_per_kind: [4, 1, 1, 1, 1, 2, 2, 1],
             innovation_probability: 1e-13,
+            structural_probability: 1e-13,
             tunnel: true,
             tunnel_min_selection: -0.05,
             hgt_rate: 1e-7,
@@ -691,25 +697,30 @@ pub fn evolve_genotype(
         // régulation (cytosquelette, adhésion, signal, régulateur, méiose)
         // n'invente pas de chimie : des homologues existent chez les
         // procaryotes (FtsZ et MreB pour l'actine et la tubuline, systèmes à
-        // deux composants, recombinases). C'est une mutation courante,
-        // sans la probabilité d'innovation des voies nouvelles.
+        // deux composants, recombinases). Elle a sa propre probabilité
+        // (`structural_probability`), bien plus forte que celle des voies
+        // nouvelles ; ces copies sont tirées selon une loi de Poisson et le
+        // génome n'est copié que pour elles.
         if kind == MutationKind::DuplicationDivergence {
-            let count = evo.candidates_per_kind[k] * group.candidate_factor();
+            let lambda = arising * evo.structural_probability;
+            let natural = poisson(lambda, rng);
+            let extra = if complex_boost > 1.0 { poisson(lambda * (complex_boost - 1.0), rng) } else { 0 };
+            let n = natural + extra;
+            let count = (n as usize).min(evo.candidates_per_kind[k].max(1) * group.candidate_factor());
             for _ in 0..count {
-                // Le génome n'est copié que pour une famille de structure.
-                let Some((i, copy)) = evo_genetics::divergent_copy(&resident.genome, &cfg.mutation, rng) else { continue };
-                if !copy.domain.family.is_cellular() {
-                    continue;
-                }
-                let change = evo_genetics::insert_copy(&resident.genome, i, copy);
+                // La famille d'arrivée suit la table de parenté : on tire
+                // jusqu'à une famille de structure (au plus quelques essais).
+                let drawn = (0..8).find_map(|_| {
+                    evo_genetics::divergent_copy(&resident.genome, &cfg.mutation, rng).filter(|(_, g)| g.domain.family.is_cellular())
+                });
+                let Some((i, copy)) = drawn else { continue };
+                let mut change = evo_genetics::insert_copy(&resident.genome, i, copy);
                 let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
                 if !multiple && best_s(&fixers) >= s {
                     continue;
                 }
-                // L'accélérateur de la complexité rend ces copies plus fréquentes.
-                if let Some(accelerated) = fixes(regime, s, ne, arising / count as f64, complex_boost, rng) {
-                    let mut change = change;
-                    if accelerated {
+                if regime.candidate_fixes(s, ne, n as f64 / count as f64, rng) {
+                    if extra > 0 && rng.random::<f64>() < extra as f64 / n as f64 {
                         change.cause = GenomeChangeCause::Accelerator;
                     }
                     consider(&mut fixers, s, change, phenotype, rates);

@@ -200,6 +200,9 @@ fn complexity(args: &[String]) {
     if let Some(p) = opt(args, "--retention") {
         cfg.transitions.retention_probability = p.parse().expect("probabilité invalide");
     }
+    if let Some(p) = opt(args, "--structurel") {
+        cfg.evolution.structural_probability = p.parse().expect("probabilité invalide");
+    }
     if args.iter().any(|a| a == "--sans-accelerateur") {
         cfg.evolution.accelerator.enabled = false;
     }
