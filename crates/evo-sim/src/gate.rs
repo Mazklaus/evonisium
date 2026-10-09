@@ -200,7 +200,7 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
             return None;
         }
         (above_since, trace, reached, max_o2, earlier_seconds) = (some(v[0]), some(v[1]), some(v[2]), v[3], v[4]);
-        late = v[5..].chunks_exact(4).map(|c| (c[0] as u64, c[1] as u64, c[2] as u64, c[3] as u64)).collect();
+        late = v[5..].as_chunks::<4>().0.iter().map(|c| (c[0] as u64, c[1] as u64, c[2] as u64, c[3] as u64)).collect();
         eprintln!("  {key} (graine {seed}) : reprise à {}", format_years(world.years));
         Some(world)
     });
