@@ -211,8 +211,13 @@ fn complexity(args: &[String]) {
             let mut multi = 0.0;
             let mut total = 0.0;
             let (mut max_cells, mut max_types, mut max_size) = (1.0f64, 1usize, 1.0f64);
+            let (mut genes, mut max_genes, mut pops, mut dead) = (0usize, 0usize, 0usize, 0usize);
             for p in world.communities.iter().flatten() {
                 total += p.biomass;
+                genes += p.genome.genes.len();
+                dead += p.genome.genes.iter().filter(|g| !g.functional).count();
+                max_genes = max_genes.max(p.genome.genes.len());
+                pops += 1;
                 if p.phenotype.is_eukaryote() {
                     euk += p.biomass;
                 }
@@ -228,7 +233,7 @@ fn complexity(args: &[String]) {
             }
             let total = total.max(1e-300);
             println!(
-                "{:>9} O₂ {:.1e} | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | {:.0} s",
+                "{:>9} O₂ {:.1e} | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
                 format_years(world.years()),
                 s.globals.o2_mixing,
                 100.0 * phago / total,
@@ -237,6 +242,10 @@ fn complexity(args: &[String]) {
                 max_size,
                 max_cells,
                 max_types,
+                genes as f64 / pops.max(1) as f64,
+                max_genes,
+                100.0 * dead as f64 / genes.max(1) as f64,
+                world.config.bio_level,
                 start.elapsed().as_secs_f64()
             );
         }
