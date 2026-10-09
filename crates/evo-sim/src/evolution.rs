@@ -34,6 +34,7 @@
 //!   stagne : plus de mutations innovantes et de transferts. Une fixation
 //!   qui n'aurait pas eu lieu sans lui porte la cause « Accélérateur ».
 
+use crate::transitions;
 use crate::world::WorldConfig;
 use evo_core::rng::{rng_for, Stream};
 use evo_genetics::popgen::fixation_probability;
@@ -44,8 +45,8 @@ use evo_genetics::{
 use evo_life::community::{CellContext, Population};
 use evo_life::growth::growth_rates_with;
 use evo_life::metabolism::photosynthesis_stage;
-use evo_life::metabolism::{ANOXYGENIC_CENTRES, REACTION_COUNT};
-use evo_life::phenotype::{thermal_factor, Capacities, Enzyme};
+use evo_life::metabolism::{AEROBIC_RESPIRATION, ANOXYGENIC_CENTRES, FERMENTATION, REACTIONS, REACTION_COUNT};
+use evo_life::phenotype::{thermal_factor, Basis, Capacities, Enzyme, PATHWAY_MASK};
 use evo_life::{selection_coefficient, GrowthRates, Phenotype, Physiology};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
@@ -96,7 +97,7 @@ pub struct EvolutionParams {
 impl Default for EvolutionParams {
     fn default() -> Self {
         Self {
-            candidates_per_kind: [4, 1, 1, 1, 1, 2, 2],
+            candidates_per_kind: [4, 1, 1, 1, 1, 2, 2, 1],
             innovation_probability: 1e-13,
             tunnel: true,
             tunnel_min_selection: -0.05,
@@ -126,11 +127,28 @@ pub struct AcceleratorParams {
     /// Multiplicateur des mutations innovantes (de novo, duplication suivie
     /// de divergence) et des transferts horizontaux quand il agit.
     pub boost: f64,
+    /// Durée sans nouvelle étape de la complexité (après la photosynthèse
+    /// oxygénique) avant d'agir sur les transitions de l'étape 4 : rétentions
+    /// d'endosymbiotes et mutations innovantes plus fréquentes.
+    pub complexity_patience_years: f64,
+    /// Quand l'accélérateur de la complexité agit, son effet sur les
+    /// rétentions d'endosymbiotes est multiplié par 10 à chaque durée
+    /// écoulée sans nouvelle étape, années.
+    pub complexity_escalation_years: f64,
+    /// Plafond de cet effet sur les rétentions.
+    pub complexity_max_boost: f64,
 }
 
 impl Default for AcceleratorParams {
     fn default() -> Self {
-        Self { enabled: true, patience_years: 600e6, boost: 100.0 }
+        Self {
+            enabled: true,
+            patience_years: 600e6,
+            boost: 100.0,
+            complexity_patience_years: 1.0e9,
+            complexity_escalation_years: 100e6,
+            complexity_max_boost: 1e12,
+        }
     }
 }
 
@@ -146,6 +164,8 @@ pub struct EvolutionStats {
     pub innovations_drawn: u64,
     pub innovations_accelerated: u64,
     pub innovations_evaluated: u64,
+    /// Mutations réunies par recombinaison chez les sexués.
+    pub recombinations: u64,
     pub fixed_by_cause: [u64; GENOME_CHANGE_CAUSE_COUNT],
 }
 
@@ -158,6 +178,7 @@ impl EvolutionStats {
         self.innovations_drawn += o.innovations_drawn;
         self.innovations_accelerated += o.innovations_accelerated;
         self.innovations_evaluated += o.innovations_evaluated;
+        self.recombinations += o.recombinations;
         for (a, b) in self.fixed_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -180,14 +201,33 @@ struct Best {
 /// ajoutant les siennes.
 #[derive(Clone, Copy, Debug)]
 pub struct RawCapacities {
-    cap: [f64; REACTION_COUNT],
-    aff: [f64; REACTION_COUNT],
+    /// Sommes brutes (sans l'échelle de la cellule) : enzymes qui passent par
+    /// la membrane de l'hôte, et voies lumineuses des organites.
+    membrane: [f64; REACTION_COUNT],
+    membrane_aff: [f64; REACTION_COUNT],
+    inner: [f64; REACTION_COUNT],
+    inner_aff: [f64; REACTION_COUNT],
     count: [u32; REACTION_COUNT],
+    /// Digestion des proies : fermentation (cytoplasme), respiration de
+    /// l'hôte et des organites.
+    ferment: f64,
+    respire_membrane: f64,
+    respire_inner: f64,
 }
 
 impl RawCapacities {
     pub fn of(enzymes: &[Enzyme], t: f64, physio: &Physiology) -> Self {
-        let mut raw = Self { cap: [0.0; REACTION_COUNT], aff: [0.0; REACTION_COUNT], count: [0; REACTION_COUNT] };
+        let z = [0.0; REACTION_COUNT];
+        let mut raw = Self {
+            membrane: z,
+            membrane_aff: z,
+            inner: z,
+            inner_aff: z,
+            count: [0; REACTION_COUNT],
+            ferment: 0.0,
+            respire_membrane: 0.0,
+            respire_inner: 0.0,
+        };
         for e in enzymes {
             raw.add(e, t, physio, 1.0);
         }
@@ -197,8 +237,25 @@ impl RawCapacities {
     fn add(&mut self, e: &Enzyme, t: f64, physio: &Physiology, sign: f64) {
         let r = e.reaction as usize;
         let c = e.efficiency * thermal_factor(t, e.t_opt_k, e.t_width_k, physio);
-        self.cap[r] += sign * c;
-        self.aff[r] += sign * c * e.affinity;
+        // Comme `Phenotype::capacities` : ce qui puise dans l'eau traverse la
+        // membrane de l'hôte ; la lumière d'un plaste est captée à
+        // l'intérieur.
+        if e.internal && REACTIONS[r].is_light() {
+            self.inner[r] += sign * c;
+            self.inner_aff[r] += sign * c * e.affinity;
+        } else {
+            self.membrane[r] += sign * c;
+            self.membrane_aff[r] += sign * c * e.affinity;
+        }
+        if e.reaction == FERMENTATION {
+            self.ferment += sign * c;
+        } else if e.reaction == AEROBIC_RESPIRATION {
+            if e.internal {
+                self.respire_inner += sign * c;
+            } else {
+                self.respire_membrane += sign * c;
+            }
+        }
         if sign > 0.0 {
             self.count[r] += 1;
         } else {
@@ -209,15 +266,16 @@ impl RawCapacities {
     /// Capacités d'un mutant dont les enzymes sont `mutant`, le résident
     /// (dont `self` est la somme) ayant `resident`. Les enzymes communes en
     /// tête et en queue de liste ne sont pas recalculées.
-    pub fn mutant(&self, resident: &[Enzyme], mutant: &[Enzyme], t: f64, physio: &Physiology) -> Capacities {
+    pub fn mutant(&self, resident: &[Enzyme], mutant: &Phenotype, t: f64, physio: &Physiology) -> Capacities {
+        let enzymes = &mutant.enzymes;
         let mut head = 0;
-        while head < resident.len() && head < mutant.len() && resident[head] == mutant[head] {
+        while head < resident.len() && head < enzymes.len() && resident[head] == enzymes[head] {
             head += 1;
         }
         let mut tail = 0;
         while tail < resident.len() - head
-            && tail < mutant.len() - head
-            && resident[resident.len() - 1 - tail] == mutant[mutant.len() - 1 - tail]
+            && tail < enzymes.len() - head
+            && resident[resident.len() - 1 - tail] == enzymes[enzymes.len() - 1 - tail]
         {
             tail += 1;
         }
@@ -225,25 +283,34 @@ impl RawCapacities {
         for e in &resident[head..resident.len() - tail] {
             raw.add(e, t, physio, -1.0);
         }
-        for e in &mutant[head..mutant.len() - tail] {
+        for e in &enzymes[head..enzymes.len() - tail] {
             raw.add(e, t, physio, 1.0);
         }
-        raw.finish()
+        raw.finish(mutant.cell_size, physio)
     }
 
-    /// Capacités normalisées, comme [`Phenotype::capacities`].
-    pub fn finish(&self) -> Capacities {
-        let mut cap = self.cap;
+    /// Capacités normalisées d'une cellule de taille `cell_size`, comme
+    /// [`Phenotype::capacities`].
+    pub fn finish(&self, cell_size: f64, physio: &Physiology) -> Capacities {
+        let membrane = 1.0 / cell_size;
+        let inner = physio.organelle_scale;
+        let mut cap = [0.0; REACTION_COUNT];
         let mut affinity = [1.0; REACTION_COUNT];
         for r in 0..REACTION_COUNT {
-            if self.count[r] > 0 && cap[r] > 0.0 {
-                affinity[r] = self.aff[r] / cap[r];
-            } else {
-                cap[r] = 0.0;
+            let c = self.membrane[r] * membrane + self.inner[r] * inner;
+            if self.count[r] > 0 && c > 0.0 {
+                cap[r] = c;
+                affinity[r] = (self.membrane_aff[r] * membrane + self.inner_aff[r] * inner) / c;
             }
         }
         let partner = ANOXYGENIC_CENTRES.iter().map(|&r| cap[r as usize].min(1.0)).fold(0.0, f64::max);
-        Capacities { cap, affinity, partner }
+        Capacities {
+            cap,
+            affinity,
+            partner,
+            digest_fermentation: self.ferment,
+            digest_respiration: self.respire_membrane * membrane + self.respire_inner * inner,
+        }
     }
 }
 
@@ -371,9 +438,11 @@ pub fn evolve_genotype(
     envs: &[CellEnvironment],
     cfg: &WorldConfig,
     dt: f64,
+    years: f64,
     group: &GenotypeGroup,
     rng: &mut impl Rng,
     accelerator_on: bool,
+    complex_boost: f64,
     stats: &mut EvolutionStats,
 ) -> Option<(GenomeChange, Phenotype, GrowthRates, f64)> {
     let physio = &cfg.physiology;
@@ -391,7 +460,7 @@ pub fn evolve_genotype(
         .iter()
         .map(|&(c, j, b)| {
             let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-            let cnd = ctx.conditions(CellContext::photo_biomass(&communities[c]));
+            let cnd = ctx.conditions_of(&communities[c], physio);
             (c, j, b, cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
         })
         .collect();
@@ -399,12 +468,16 @@ pub fn evolve_genotype(
     let chem = &chemistry[rc];
     let (cond, base) = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| (j.3, j.4)).unwrap_or_else(|| {
         let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-        let cnd = ctx.conditions(CellContext::photo_biomass(pops));
+        let cnd = ctx.conditions_of(pops, physio);
         (cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
     });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
     let cell_biomass: f64 = pops.iter().map(|p| p.biomass).sum();
     let boost = if accelerator_on { evo.accelerator.boost } else { 1.0 };
+    // Les rétentions d'endosymbiotes reçoivent l'effet entier (qui croît
+    // tant que la complexité stagne) ; les mutations, celui de l'accélérateur.
+    let retention_boost = complex_boost;
+    let complex_boost = complex_boost.min(evo.accelerator.boost);
     let regime = &cfg.regime;
     let generations = dt / resident.rates.generation_time(physio);
     let ne = cfg.regime.effective_size(group.census);
@@ -414,7 +487,7 @@ pub fn evolve_genotype(
     // Évalue un génome candidat contre la population qu'il affronterait.
     // Coefficient de sélection d'un phénotype candidat.
     let judge = |phenotype: Phenotype| -> Option<(f64, Phenotype, GrowthRates)> {
-        if phenotype.signature == 0 {
+        if phenotype.signature & PATHWAY_MASK == 0 {
             return None;
         }
         // Mutation sans effet sur le phénotype (marqueur, gène inactif) :
@@ -426,7 +499,7 @@ pub fn evolve_genotype(
         // par génotype et par cellule : seules les enzymes qui diffèrent sont
         // recalculées.
         let rates_in = |cnd: &evo_life::Conditions, base: &RawCapacities, chem: &WaterChemistry| {
-            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype.enzymes, cnd.temperature_k, physio);
+            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype, cnd.temperature_k, physio);
             growth_rates_with(&phenotype, &caps, cnd, chem, physio)
         };
         let rates = rates_in(&cond, &base, chem);
@@ -454,8 +527,28 @@ pub fn evolve_genotype(
         }
         Some((s / weight, phenotype, rates))
     };
-    let evaluate = |genome: &Genome, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
-        let phenotype = Phenotype::from_genome(genome, physio);
+    // Construction incrémentale : la base du résident sert à tous ses
+    // mutants ponctuels.
+    let basis = Basis::new(&resident.genome, physio);
+    let evaluate = |change: &GenomeChange, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
+        let genome = &change.genome;
+        let unchanged = match change.element {
+            ChangedElement::Marker { .. } => true,
+            ChangedElement::Gene { index, .. } => {
+                genome.genes.len() == resident.genome.genes.len()
+                    && !genome.genes[index as usize].functional
+                    && !resident.genome.genes[index as usize].functional
+            }
+            _ => false,
+        };
+        let phenotype = if unchanged {
+            (*resident.phenotype).clone()
+        } else {
+            match basis.derive(&resident.genome, genome, change.element, physio) {
+                Some(b) => Phenotype::assemble(genome, &b, physio),
+                None => Phenotype::from_genome(genome, physio),
+            }
+        };
         stats.genetic_evaluations += 1;
         judge(phenotype)
     };
@@ -466,6 +559,11 @@ pub fn evolve_genotype(
             *best = Some(Best { s, change, phenotype, rates });
         }
     };
+    // Chez un sexué, les autres mutations avantageuses qui se fixeraient
+    // peuvent se réunir à la meilleure (voir `transitions::recombine`).
+    let sexual = resident.phenotype.sexual;
+    let has_regulator = resident.genome.functional_genes().any(|g| g.domain.family == evo_genetics::DomainFamily::Regulator);
+    let mut beneficial: Vec<GenomeChange> = Vec::new();
 
     // Mutants des classes courantes : l'offre est immense, chaque candidat
     // représente une part égale des mutants de sa classe. Mutants innovants :
@@ -474,7 +572,42 @@ pub fn evolve_genotype(
     // nombreux. Ceux que l'accélérateur ajoute sont tirés à part.
     let mut tunnel_pending: Vec<(GenomeChange, f64, f64)> = Vec::new();
     for (k, &kind) in MUTATION_KINDS.iter().enumerate() {
+        // Sans régulateur, pas de bloc à dupliquer : la classe se confondrait
+        // avec la duplication simple.
+        if kind == MutationKind::ModuleDuplication && !has_regulator {
+            continue;
+        }
+        // L'accélérateur des transitions de la complexité agit aussi sur
+        // les mutations innovantes.
+        let boost = if is_innovative(kind) { boost.max(complex_boost) } else { boost };
         let arising = supply * u * generations * cfg.mutation.weights[k] / weight_total;
+        // Une copie qui diverge vers une famille de structure ou de
+        // régulation (cytosquelette, adhésion, signal, régulateur, méiose)
+        // n'invente pas de chimie : des homologues existent chez les
+        // procaryotes (FtsZ et MreB pour l'actine et la tubuline, systèmes à
+        // deux composants, recombinases). C'est une mutation courante,
+        // sans la probabilité d'innovation des voies nouvelles.
+        if kind == MutationKind::DuplicationDivergence {
+            let count = evo.candidates_per_kind[k] * group.candidate_factor();
+            for _ in 0..count {
+                let change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
+                if !matches!(change.element, ChangedElement::Inserted { family, .. } if family.is_cellular()) {
+                    continue;
+                }
+                let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
+                if best.as_ref().is_some_and(|b| b.s >= s) {
+                    continue;
+                }
+                // L'accélérateur de la complexité rend ces copies plus fréquentes.
+                if let Some(accelerated) = fixes(regime, s, ne, arising / count as f64, complex_boost, rng) {
+                    let mut change = change;
+                    if accelerated {
+                        change.cause = GenomeChangeCause::Accelerator;
+                    }
+                    consider(&mut best, s, change, phenotype, rates);
+                }
+            }
+        }
         let (count, copies, accelerated) = if is_innovative(kind) {
             let lambda = arising * evo.innovation_probability;
             let natural = poisson(lambda, rng);
@@ -502,15 +635,23 @@ pub fn evolve_genotype(
             let judged = if kind == MutationKind::NeutralMarker {
                 Some((0.0, (*resident.phenotype).clone(), resident.rates))
             } else {
-                evaluate(&change.genome, stats)
+                evaluate(&change, stats)
             };
             let Some((s, phenotype, rates)) = judged else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
+                if sexual && kind == MutationKind::Point && regime.candidate_fixes(s, ne, copies, rng) {
+                    beneficial.push(change);
+                }
                 continue;
             }
             if regime.candidate_fixes(s, ne, copies, rng) {
                 if accelerated > 0.0 && rng.random::<f64>() < accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
+                }
+                if sexual && s > 0.0 {
+                    if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+                        beneficial.push(b.change.clone());
+                    }
                 }
                 consider(&mut best, s, change, phenotype, rates);
             } else if is_innovative(kind) && evo.tunnel && s > evo.tunnel_min_selection {
@@ -578,7 +719,7 @@ pub fn evolve_genotype(
             }
             let gene = genes[rng.random_range(0..genes.len())];
             let mut change = transfer_gene(&resident.genome, gene, GenomeChangeCause::HorizontalTransfer);
-            let Some((s, phenotype, rates)) = evaluate(&change.genome, stats) else { continue };
+            let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
             if best.as_ref().is_some_and(|b| b.s >= s) {
                 continue;
             }
@@ -588,6 +729,39 @@ pub fn evolve_genotype(
                     change.cause = GenomeChangeCause::Accelerator;
                 }
                 consider(&mut best, s, change, phenotype, rates);
+            }
+        }
+    }
+    // Endosymbiose : un phagotrophe garde une proie englobée.
+    if resident.phenotype.engulfment > 0.0 {
+        // Les rétentions se comptent sur l'effectif réel (pas sur l'effectif
+        // efficace plafonné) : un événement rare dont le nombre ne dépend
+        // pas de la résolution de la grille.
+        let partners = transitions::engulfed_partners(resident, i, pops, group.census, dt, years, cfg, rng);
+        for partner in partners {
+            let Some((s, phenotype, rates)) = evaluate(&partner.change, stats) else { continue };
+            if best.as_ref().is_some_and(|b| b.s >= s) {
+                continue;
+            }
+            if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, retention_boost, rng) {
+                let mut change = partner.change;
+                if accelerated {
+                    change.cause = GenomeChangeCause::Accelerator;
+                }
+                consider(&mut best, s, change, phenotype, rates);
+            }
+        }
+    }
+    // Sexe : la meilleure mutation se recombine avec les autres avantageuses.
+    if sexual && !beneficial.is_empty() {
+        if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+            if let Some(change) = transitions::recombine(&resident.genome, &b.change, &beneficial) {
+                if let Some((s, phenotype, rates)) = evaluate(&change, stats) {
+                    if s > b.s {
+                        stats.recombinations += 1;
+                        best = Some(Best { s, change, phenotype, rates });
+                    }
+                }
             }
         }
     }
@@ -606,9 +780,11 @@ pub fn evolve_deme(
     envs: &[CellEnvironment],
     cfg: &WorldConfig,
     dt: f64,
+    years: f64,
     step_index: u64,
     round: u64,
     accelerator_on: bool,
+    complex_boost: f64,
 ) -> (Vec<Fixation>, EvolutionStats) {
     let mut stats = EvolutionStats::default();
     let mut out = Vec::new();
@@ -621,7 +797,7 @@ pub fn evolve_deme(
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
         };
         if let Some((change, phenotype, rates, selection)) =
-            evolve_genotype(communities, chemistry, envs, cfg, dt, &group, &mut rng, accelerator_on, &mut stats)
+            evolve_genotype(communities, chemistry, envs, cfg, dt, years, &group, &mut rng, accelerator_on, complex_boost, &mut stats)
         {
             let GenomeChange { genome, cause, element } = change;
             out.push(Fixation {
@@ -645,6 +821,7 @@ mod tests {
     use evo_core::rng::{rng_for, Stream};
     use evo_genetics::{Domain, DomainFamily, Gene, MutationParams};
     use evo_life::metabolism::{domain_relations, ANOXYGENIC_PHOTOSYNTHESIS, METHANOGENESIS, PHOTOFERROTROPHY};
+    use evo_life::phenotype::Capacities;
 
     /// Les capacités d'un mutant déduites de celles du résident sont celles
     /// d'un calcul complet, aux arrondis près, pour toutes les classes de
@@ -656,33 +833,51 @@ mod tests {
             domain: Domain { family, efficiency, affinity: 1.3, t_opt_k, t_width_k: 9.0, absorption_nm: 450.0 },
             functional: true,
         };
-        let genome = Genome {
-            genes: vec![
+        let mut genome = Genome::new(
+            vec![
                 gene(DomainFamily::Catalytic(METHANOGENESIS), 1.0, 300.0),
                 gene(DomainFamily::Cytochrome, 0.4, 300.0),
                 gene(DomainFamily::Catalytic(PHOTOFERROTROPHY), 0.3, 296.0),
                 gene(DomainFamily::Pigment, 0.5, 300.0),
                 gene(DomainFamily::Catalytic(ANOXYGENIC_PHOTOSYNTHESIS), 0.2, 305.0),
                 gene(DomainFamily::Catalytic(METHANOGENESIS), 0.6, 290.0),
+                gene(DomainFamily::Catalytic(FERMENTATION), 0.5, 299.0),
+                // Une grande cellule : la membrane compte.
+                gene(DomainFamily::Cytoskeleton, 0.3, 300.0),
             ],
-            marker: [0; evo_genetics::genome::MARKER_LEN],
-        };
+            [0; evo_genetics::genome::MARKER_LEN],
+        );
+        // Un plaste et une mitochondrie : capacités internes.
+        genome.organelles.push(evo_genetics::Organelle {
+            genes: vec![
+                gene(DomainFamily::Pigment, 0.6, 300.0),
+                gene(DomainFamily::Catalytic(ANOXYGENIC_PHOTOSYNTHESIS), 0.5, 300.0),
+                gene(DomainFamily::Catalytic(AEROBIC_RESPIRATION), 0.7, 301.0),
+            ],
+            origin_lineage: 1,
+            acquired_years: 0.0,
+        });
         let params = MutationParams { weights: [1.0; MUTATION_KIND_COUNT], relations: domain_relations(), ..Default::default() };
         let resident = Phenotype::from_genome(&genome, &physio);
         let t = 297.0;
         let base = RawCapacities::of(&resident.enzymes, t, &physio);
-        assert_eq!(base.finish(), resident.capacities(t, &physio));
+        let close = |a: &Capacities, b: &Capacities| {
+            for r in 0..REACTION_COUNT {
+                assert!((a.cap[r] - b.cap[r]).abs() < 1e-12, "capacité {r} : {} contre {}", a.cap[r], b.cap[r]);
+                assert!((a.affinity[r] - b.affinity[r]).abs() < 1e-9, "affinité {r}");
+            }
+            assert!((a.partner - b.partner).abs() < 1e-12);
+            assert!((a.digest_fermentation - b.digest_fermentation).abs() < 1e-12);
+            assert!((a.digest_respiration - b.digest_respiration).abs() < 1e-12);
+        };
+        assert!(resident.cell_size > 1.5);
+        close(&base.finish(resident.cell_size, &physio), &resident.capacities(t, &physio));
         let mut rng = rng_for(9, Stream::Validation, &[]);
         for _ in 0..2000 {
             let m = mutate(&genome, &params, &mut rng);
             let mutant = Phenotype::from_genome(&m.genome, &physio);
-            let fast = base.mutant(&resident.enzymes, &mutant.enzymes, t, &physio);
-            let full = mutant.capacities(t, &physio);
-            for r in 0..REACTION_COUNT {
-                assert!((fast.cap[r] - full.cap[r]).abs() < 1e-12, "capacité {r} : {} contre {}", fast.cap[r], full.cap[r]);
-                assert!((fast.affinity[r] - full.affinity[r]).abs() < 1e-9, "affinité {r}");
-            }
-            assert!((fast.partner - full.partner).abs() < 1e-12);
+            let fast = base.mutant(&resident.enzymes, &mutant, t, &physio);
+            close(&fast, &mutant.capacities(t, &physio));
         }
     }
 }

@@ -100,7 +100,9 @@ impl OriginFixation {
             return 0.0;
         }
         if p_fix >= 1.0 {
-            return 1.0;
+            // Chaque copie se fixe : il faut encore qu'une copie apparaisse
+            // (nombre de copies tiré selon une loi de Poisson).
+            return -(-copies).dexp_m1();
         }
         -(copies * (-p_fix).dln_1p()).dexp_m1()
     }

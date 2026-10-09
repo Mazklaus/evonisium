@@ -11,7 +11,7 @@
 //! encore ni prédation, ni maladie, ni activité motrice ; le stress compte
 //! l'oxygène et, depuis l'étape 2, les ultraviolets.
 
-use crate::metabolism::{EnergySource, REACTIONS, REACTION_COUNT};
+use crate::metabolism::{EnergySource, AEROBIC_RESPIRATION, FERMENTATION, REACTIONS, REACTION_COUNT};
 use crate::phenotype::{Capacities, Phenotype};
 use crate::spectrum::LightSpectrum;
 use evo_planet::{WaterChemistry, WaterPool};
@@ -80,6 +80,53 @@ pub struct Physiology {
     pub carbon_per_cell: f64,
     /// Lumière disponible selon la longueur d'onde (étoile, couche d'eau).
     pub spectrum: LightSpectrum,
+    /// Cellule complexe (étape 4). Taille gagnée par unité de cytosquelette
+    /// (taille relative à une bactérie de 1 µm) et taille maximale.
+    pub cytoskeleton_size: f64,
+    pub max_cell_size: f64,
+    /// Entretien du cytosquelette dynamique, kJ·molC⁻¹·an⁻¹ par unité.
+    pub cytoskeleton_cost_kj: f64,
+    /// Capacité d'une voie d'organite relative à la même voie sur la
+    /// membrane d'une bactérie.
+    pub organelle_scale: f64,
+    /// Rapport de taille prédateur sur proie à partir duquel une proie peut
+    /// être englobée, et à partir duquel elle l'est sans difficulté.
+    pub engulf_min_ratio: f64,
+    pub engulf_full_ratio: f64,
+    /// Ingestion maximale d'un phagotrophe, mol de carbone de proie par mole
+    /// de carbone et par an (quelques fois sa masse par jour), et
+    /// concentration de proies de demi-saturation, molC·m⁻³.
+    pub max_ingestion: f64,
+    pub prey_half: f64,
+    /// Mortalité par prédation au plus, an⁻¹.
+    pub max_predation: f64,
+    /// Économie relative sur le coût des protéines des voies apportée par un
+    /// système de signal complet (expression réglée sur le besoin).
+    pub signalling_saving: f64,
+    /// Recombinase de méiose à partir de laquelle un eucaryote est sexué.
+    pub sex_meiosis_threshold: f64,
+    /// Adhésion d'une colonie clonale (les cellules filles restent
+    /// attachées) ; en dessous, des agrégats dont la taille vue par un
+    /// prédateur croît de `aggregate_size` par unité d'adhésion.
+    pub clonal_adhesion: f64,
+    pub aggregate_size: f64,
+    /// Doublements d'une colonie par unité d'adhésion au-delà du seuil, et
+    /// nombre maximal de cellules (étape 4 : colonies, corps simples).
+    pub colony_doublings: f64,
+    pub max_colony_cells: f64,
+    /// Zones de développement d'un corps au plus.
+    pub max_body_zones: usize,
+    /// Profondeur, en cellules, sur laquelle les substances dissoutes et la
+    /// lumière baissent d'un facteur e dans un corps.
+    pub diffusion_cells: f64,
+    /// Portée du morphogène émis par la surface, en cellules, pour une
+    /// portée de récepteur moyenne.
+    pub morphogen_reach_cells: f64,
+    /// Part de la membrane d'une cellule collée à ses voisines, qui ne
+    /// puise plus dans l'eau : filament, feuillet, boule.
+    pub contact_filament: f64,
+    pub contact_sheet: f64,
+    pub contact_sphere: f64,
 }
 
 impl Default for Physiology {
@@ -110,8 +157,64 @@ impl Default for Physiology {
             replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,
             spectrum: LightSpectrum::default(),
+            cytoskeleton_size: 6.0,
+            max_cell_size: 30.0,
+            cytoskeleton_cost_kj: 10000.0,
+            organelle_scale: 1.0,
+            engulf_min_ratio: 1.2,
+            engulf_full_ratio: 2.5,
+            max_ingestion: 2000.0,
+            prey_half: 1e-3,
+            max_predation: 1000.0,
+            signalling_saving: 0.4,
+            sex_meiosis_threshold: 0.1,
+            clonal_adhesion: 0.5,
+            aggregate_size: 2.0,
+            colony_doublings: 10.0,
+            max_colony_cells: 4096.0,
+            max_body_zones: 4,
+            diffusion_cells: 1.5,
+            morphogen_reach_cells: 1.0,
+            contact_filament: 0.3,
+            contact_sheet: 0.5,
+            contact_sphere: 0.5,
         }
     }
+}
+
+/// Nombre maximal de proies ou de prédateurs décrits dans une cellule (le
+/// plafond de populations par cellule).
+pub const MAX_TROPHIC: usize = 8;
+
+/// Liste courte de couples (taille vue par un prédateur, valeur) : les
+/// proies d'une cellule (valeur : carbone, mol·m⁻³) ou ses prédateurs
+/// (valeur : mortalité, an⁻¹, d'une proie qu'ils avalent sans difficulté).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Trophic {
+    pub len: u8,
+    pub items: [(f64, f64); MAX_TROPHIC],
+}
+
+impl Trophic {
+    pub fn push(&mut self, size: f64, value: f64) {
+        if (self.len as usize) < MAX_TROPHIC && value > 0.0 {
+            self.items[self.len as usize] = (size, value);
+            self.len += 1;
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &(f64, f64)> {
+        self.items[..self.len as usize].iter()
+    }
+}
+
+/// Part d'une proie de taille `prey` qu'un prédateur de taille `predator`
+/// parvient à englober : nulle sous le rapport minimal, entière au-delà du
+/// rapport de pleine capacité.
+#[inline]
+pub fn edibility(predator: f64, prey: f64, physio: &Physiology) -> f64 {
+    let ratio = predator / prey.max(1e-9);
+    ((ratio - physio.engulf_min_ratio) / (physio.engulf_full_ratio - physio.engulf_min_ratio)).clamp(0.0, 1.0)
 }
 
 /// Conditions physiques d'une cellule vues par un organisme.
@@ -123,6 +226,30 @@ pub struct Conditions {
     /// Lumière absorbée disponible par mole de carbone de biomasse
     /// phototrophe, kJ·molC⁻¹·an⁻¹.
     pub light_kj: f64,
+    /// Proies (taille, carbone dans l'eau) et prédateurs (taille, pression).
+    pub prey: Trophic,
+    pub predators: Trophic,
+}
+
+impl Conditions {
+    /// Conditions sans proie ni prédateur.
+    pub fn new(temperature_k: f64, uv_w_m2: f64, light_kj: f64) -> Self {
+        Self { temperature_k, uv_w_m2, light_kj, prey: Trophic::default(), predators: Trophic::default() }
+    }
+
+    /// Carbone des proies qu'un prédateur de taille `size` peut englober,
+    /// mol·m⁻³.
+    pub fn edible_prey(&self, size: f64, physio: &Physiology) -> f64 {
+        self.prey.iter().map(|&(s, c)| c * edibility(size, s, physio)).sum()
+    }
+
+    /// Mortalité par prédation d'une proie de taille `size`, an⁻¹, bornée
+    /// (la pression vient de la dernière évaluation des prédateurs : quand
+    /// leurs proies s'effondrent, elle peut devenir démesurée).
+    pub fn predation(&self, size: f64, physio: &Physiology) -> f64 {
+        let m: f64 = self.predators.iter().map(|&(s, pressure)| pressure * edibility(s, size, physio)).sum();
+        m.min(physio.max_predation)
+    }
 }
 
 /// Résultat de l'évaluation d'un phénotype dans un milieu.
@@ -140,15 +267,28 @@ pub struct GrowthRates {
     pub autotroph_energy_kj: f64,
     /// Énergie d'appoint sans carbone (phototrophie simple, rhodopsine).
     pub supplement_kj: f64,
-    /// Part de l'énergie à carbone tirée de voies hétérotrophes.
+    /// Part de l'énergie à carbone tirée de voies hétérotrophes (matière
+    /// organique dissoute et proies).
     pub heterotroph_share: f64,
+    /// Parts du carbone de croissance venues de la matière organique
+    /// dissoute et des proies englouties.
+    pub doc_share: f64,
+    pub prey_share: f64,
+    /// Proies digérées pour l'énergie, mol de carbone par mole de carbone et
+    /// par an, et part digérée par respiration aérobie (le reste fermente).
+    pub prey_uptake: f64,
+    pub prey_aerobic_share: f64,
+    /// Énergie tirée des proies, kJ·molC⁻¹·an⁻¹.
+    pub prey_energy_kj: f64,
     /// Coût de fabrication d'une mole de carbone de biomasse, kJ.
     pub biomass_cost_kj: f64,
     /// Taux de naissance permis par le surplus d'énergie, an⁻¹.
     pub birth: f64,
-    /// Mortalité totale, an⁻¹, dont la part due aux ultraviolets.
+    /// Mortalité totale, an⁻¹, dont la part due aux ultraviolets et celle
+    /// due aux prédateurs.
     pub mortality: f64,
     pub uv_mortality: f64,
+    pub predation: f64,
     /// Taux de croissance net r, an⁻¹.
     pub r: f64,
 }
@@ -168,6 +308,12 @@ impl GrowthRates {
             0.0
         }
     }
+
+    /// Carbone de proie consommé, mol par mole de carbone et par an
+    /// (digestion et croissance).
+    pub fn prey_demand(&self) -> f64 {
+        self.prey_uptake + self.birth * self.prey_share
+    }
 }
 
 #[inline]
@@ -176,19 +322,96 @@ fn monod(c: f64, k: f64) -> f64 {
     c / (k + c)
 }
 
+/// Bilan d'énergie d'une cellule (ou d'une zone d'un corps), avant les
+/// naissances et les morts.
+#[derive(Clone, Copy, Debug, Default)]
+struct Budget {
+    reaction: [f64; REACTION_COUNT],
+    reaction_energy: [f64; REACTION_COUNT],
+    het_doc: f64,
+    het_prey: f64,
+    auto: f64,
+    supplement: f64,
+    prey_uptake: f64,
+    prey_aerobic: f64,
+    maintenance: f64,
+    oxygen_stress: f64,
+    uv: f64,
+}
+
+impl Budget {
+    fn add_scaled(&mut self, o: &Budget, w: f64) {
+        for r in 0..REACTION_COUNT {
+            self.reaction[r] += w * o.reaction[r];
+            self.reaction_energy[r] += w * o.reaction_energy[r];
+        }
+        self.het_doc += w * o.het_doc;
+        self.het_prey += w * o.het_prey;
+        self.auto += w * o.auto;
+        self.supplement += w * o.supplement;
+        self.prey_uptake += w * o.prey_uptake;
+        self.prey_aerobic += w * o.prey_aerobic;
+        self.maintenance += w * o.maintenance;
+        self.oxygen_stress += w * o.oxygen_stress;
+        self.uv += w * o.uv;
+    }
+}
+
 /// Évalue r(g, c) pour un phénotype dans une cellule.
 pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    if p.body.is_some() {
+        return body_rates(p, cond, chem, physio);
+    }
     growth_rates_with(p, &p.capacities(cond.temperature_k, physio), cond, chem, physio)
 }
 
 /// [`growth_rates`] avec les capacités déjà calculées à la température de
-/// `cond`.
+/// `cond` (pour un corps, elles sont recalculées par type cellulaire).
 pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    if p.body.is_some() {
+        return body_rates(p, cond, chem, physio);
+    }
+    let prey = cond.edible_prey(p.cell_size, physio);
+    let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, chem, physio);
+    finish(p, &b, cond, chem, physio)
+}
+
+/// Corps d'un multicellulaire : chaque zone a son type cellulaire et ses
+/// conditions (les substances dissoutes et la lumière baissent avec la
+/// profondeur, les ultraviolets n'atteignent que la surface, les proies ne
+/// sont prises que par la surface) ; les bilans des zones s'ajoutent,
+/// pondérés par leur part des cellules.
+fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    let body = p.body.as_ref().expect("corps");
+    let mut total = Budget::default();
+    let prey = cond.edible_prey(p.cell_size, physio);
+    let caps: Vec<Capacities> = body.types.iter().map(|t| t.capacities(cond.temperature_k, physio)).collect();
+    for (k, z) in body.zones.iter().enumerate() {
+        let t = &body.types[z.cell_type as usize];
+        let zone_chem: WaterChemistry = std::array::from_fn(|i| chem[i] * z.access);
+        let surface = k == 0;
+        let b = budget(
+            t,
+            &caps[z.cell_type as usize],
+            cond.light_kj * z.light,
+            if surface { cond.uv_w_m2 } else { 0.0 },
+            if surface { prey } else { 0.0 },
+            &zone_chem,
+            physio,
+        );
+        total.add_scaled(&b, z.weight);
+    }
+    finish(p, &total, cond, chem, physio)
+}
+
+/// Bilan d'énergie d'une cellule exposée à `light_kj`, `uv` et à des proies
+/// englobables de concentration `prey` (molC·m⁻³).
+#[allow(clippy::too_many_arguments)]
+fn budget(p: &Phenotype, caps: &Capacities, light_kj: f64, uv: f64, prey: f64, chem: &WaterChemistry, physio: &Physiology) -> Budget {
     let o2 = chem[WaterPool::O2 as usize].max(0.0);
     let anaerobic_factor = physio.oxygen_inhibition_half / (physio.oxygen_inhibition_half + o2);
     let chemical_gain = 1.0 + physio.electron_transport_gain * p.electron_transport;
-    let mut out = GrowthRates::default();
-    let (mut het, mut auto) = (0.0, 0.0);
+    let mut out = Budget::default();
 
     // Second centre réactionnel (photosystème I) pour la voie oxygénique.
     let partner = caps.partner;
@@ -223,53 +446,100 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
                 if water_oxidation {
                     quality *= p.water_oxidation;
                 }
-                let e = cond.light_kj * physio.photo_efficiency * quality * limitation;
+                let e = light_kj * physio.photo_efficiency * quality * limitation;
                 (e, e)
             }
         };
         out.reaction[reaction.id as usize] = value;
         out.reaction_energy[reaction.id as usize] = e;
         if reaction.heterotrophic {
-            het += e;
+            out.het_doc += e;
         } else {
-            auto += e;
+            out.auto += e;
+        }
+    }
+    // Phagotrophie : les proies englouties sont digérées par fermentation
+    // (dans le cytoplasme) ou par respiration aérobie (sur la membrane de
+    // l'hôte ou dans un organite), selon ce qui rend le plus.
+    if p.engulfment > 0.0 && prey > 0.0 {
+        let ingest = physio.max_ingestion * p.engulfment * monod(prey, physio.prey_half);
+        let ferm = &REACTIONS[FERMENTATION as usize];
+        let resp = &REACTIONS[AEROBIC_RESPIRATION as usize];
+        let dg = |r: &crate::metabolism::Reaction| match r.energy {
+            EnergySource::Chemical { dg_kj, .. } => dg_kj,
+            EnergySource::Light { .. } => 0.0,
+        };
+        let q_f = ingest.min(physio.max_uptake * caps.digest_fermentation);
+        let e_f = q_f * dg(ferm);
+        let q_r = ingest.min(physio.max_uptake * caps.digest_respiration) * monod(o2, resp.cosubstrate.map_or(1e-3, |c| c.1));
+        let e_r = q_r * dg(resp) * chemical_gain;
+        if e_r > e_f {
+            out.prey_uptake = q_r;
+            out.prey_aerobic = q_r;
+            out.het_prey = e_r;
+        } else {
+            out.prey_uptake = q_f;
+            out.het_prey = e_f;
         }
     }
     let mut supplement = 0.0;
     if p.cyclic_phototrophy {
-        supplement += cond.light_kj * physio.cyclic_efficiency * p.light_capture * p.electron_transport;
+        supplement += light_kj * physio.cyclic_efficiency * p.light_capture * p.electron_transport;
     }
-    supplement += cond.light_kj * physio.rhodopsin_efficiency * p.rhodopsin;
+    supplement += light_kj * physio.rhodopsin_efficiency * p.rhodopsin;
+    out.supplement = supplement;
+    out.maintenance = p.maintenance_kj;
+    out.oxygen_stress = physio.oxygen_stress_mortality * o2 / (o2 + physio.oxygen_stress_half) * (1.0 - p.oxygen_defense);
+    out.uv = physio.uv_mortality * uv.max(0.0) * (1.0 - (physio.pigment_uv_shield * p.pigment).min(0.95));
+    out
+}
 
-    let carbon_energy = het + auto;
+/// Naissances, morts et r à partir du bilan d'énergie de l'organisme.
+fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    let mut out = GrowthRates { reaction: b.reaction, reaction_energy: b.reaction_energy, ..Default::default() };
+    let het = b.het_doc + b.het_prey;
+    let carbon_energy = het + b.auto;
     let het_share = if carbon_energy > 0.0 { het / carbon_energy } else { 0.0 };
     let cost = het_share * physio.heterotroph_biomass_kj + (1.0 - het_share) * physio.autotroph_biomass_kj;
     // L'énergie d'appoint (phototrophie simple, rhodopsine) ne fournit pas
     // d'électrons : elle paie l'entretien, pas la fabrication de biomasse à
     // partir du CO₂. Seules les voies qui apportent du carbone font croître.
-    let surplus = carbon_energy - (p.maintenance_kj - supplement).max(0.0);
+    let surplus = carbon_energy - (b.maintenance - b.supplement).max(0.0);
     // Sans voie qui apporte du carbone, l'énergie d'appoint ne fait que
     // réduire la famine.
     let birth = if carbon_energy > 0.0 {
-        let max_growth = physio.max_growth / (1.0 + physio.replication_cost_per_gene * p.gene_count as f64);
+        let mut max_growth = physio.max_growth / (1.0 + physio.replication_cost_per_gene * p.gene_count as f64);
+        // Un individu plus massif se reproduit plus lentement (loi en
+        // puissance un quart de la masse) ; une bactérie garde le plafond.
+        let mass = p.cell_volume() * p.cells();
+        if mass > 1.0 {
+            max_growth /= mass.sqrt().sqrt();
+        }
         (surplus / cost).clamp(0.0, max_growth) * monod(chem[WaterPool::Po4 as usize], physio.phosphate_half)
     } else {
         0.0
     };
     // Un déficit d'énergie consomme la biomasse : mortalité de famine.
     let starvation = (-surplus).max(0.0) / cost;
-    let oxygen_stress = physio.oxygen_stress_mortality * o2 / (o2 + physio.oxygen_stress_half) * (1.0 - p.oxygen_defense);
-    let uv = physio.uv_mortality * cond.uv_w_m2.max(0.0) * (1.0 - (physio.pigment_uv_shield * p.pigment).min(0.95));
-    let mortality = physio.background_mortality + starvation + oxygen_stress + uv;
+    let predation = cond.predation(p.body_size, physio);
+    let mortality = physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation;
 
-    out.energy_kj = carbon_energy + supplement;
-    out.autotroph_energy_kj = auto;
-    out.supplement_kj = supplement;
+    out.energy_kj = carbon_energy + b.supplement;
+    out.autotroph_energy_kj = b.auto;
+    out.supplement_kj = b.supplement;
     out.heterotroph_share = het_share;
+    if carbon_energy > 0.0 {
+        out.doc_share = b.het_doc / carbon_energy;
+        out.prey_share = b.het_prey / carbon_energy;
+    }
+    out.prey_uptake = b.prey_uptake;
+    out.prey_energy_kj = b.het_prey;
+    out.prey_aerobic_share = if b.prey_uptake > 0.0 { b.prey_aerobic / b.prey_uptake } else { 0.0 };
     out.biomass_cost_kj = cost;
     out.birth = birth;
     out.mortality = mortality;
-    out.uv_mortality = uv;
+    out.uv_mortality = b.uv;
+    out.predation = predation;
     out.r = birth - mortality;
     out
 }
@@ -294,7 +564,7 @@ mod tests {
     }
 
     fn genome(genes: &[(DomainFamily, f64)]) -> Genome {
-        Genome { genes: genes.iter().map(|&(f, e)| gene(f, e)).collect(), marker: [0; 32] }
+        Genome::new(genes.iter().map(|&(f, e)| gene(f, e)).collect(), [0; 32])
     }
 
     fn chem(h2: f64, o2: f64) -> WaterChemistry {
@@ -310,7 +580,7 @@ mod tests {
     }
 
     fn at(t: f64, uv: f64, light: f64) -> Conditions {
-        Conditions { temperature_k: t, uv_w_m2: uv, light_kj: light }
+        Conditions::new(t, uv, light)
     }
 
     #[test]

@@ -199,14 +199,29 @@ pub fn signature_names(signature: u32) -> Vec<&'static str> {
     REACTIONS.iter().filter(|r| signature & (1 << r.id) != 0).map(|r| r.name).collect()
 }
 
-/// Libellé court d'une guilde, pour les rapports.
+/// Libellé court d'une guilde, pour les rapports : ses voies, puis son
+/// organisation (bits au-dessus des voies, voir `phenotype`).
 pub fn guild_label(signature: u32) -> String {
+    use crate::phenotype::{EUKARYOTE, MULTICELLULAR, PHAGOTROPH, PLASTID};
     let names = signature_names(signature);
-    if names.is_empty() {
-        "aucune voie".into()
-    } else {
-        names.join(" + ")
+    let mut label = if names.is_empty() { "aucune voie".to_string() } else { names.join(" + ") };
+    let mut traits = Vec::new();
+    if signature & PHAGOTROPH != 0 {
+        traits.push("phagotrophe");
     }
+    if signature & EUKARYOTE != 0 {
+        traits.push("eucaryote");
+    }
+    if signature & PLASTID != 0 {
+        traits.push("à plaste");
+    }
+    if signature & MULTICELLULAR != 0 {
+        traits.push("multicellulaire");
+    }
+    if !traits.is_empty() {
+        label = format!("{label} ({})", traits.join(", "));
+    }
+    label
 }
 
 /// Parentés entre familles de domaines (règle « recycler l'existant par
@@ -230,6 +245,22 @@ pub fn domain_relations() -> Vec<DomainRelation> {
         // Méthanogenèse inverse (méthanotrophie anaérobie et aérobie).
         rel(Catalytic(METHANOGENESIS), Catalytic(METHANOTROPHY), 0.2),
         rel(Catalytic(FERMENTATION), Catalytic(SULFATE_REDUCTION), 0.2),
+        // Cellule complexe (étape 4). Le cytosquelette dérive des kinases de
+        // sucres de la fermentation (superfamille de l'actine) ; les
+        // récepteurs de signal, des kinases et des photorécepteurs ; les
+        // protéines d'adhésion, de protéines de membrane et du cytosquelette ;
+        // les facteurs de transcription et la recombinase de méiose, des
+        // protéines qui lient l'ADN pour le réparer.
+        rel(Catalytic(FERMENTATION), Cytoskeleton, 0.05),
+        rel(Catalytic(FERMENTATION), Signalling, 0.05),
+        rel(Rhodopsin, Signalling, 0.3),
+        rel(Rhodopsin, Adhesion, 0.1),
+        rel(Cytoskeleton, Adhesion, 0.2),
+        rel(Signalling, Adhesion, 0.1),
+        rel(Repair, Regulator, 0.2),
+        rel(Signalling, Regulator, 0.1),
+        rel(Regulator, Regulator, 0.5),
+        rel(Repair, Meiosis, 0.3),
     ];
     // Les centres anoxygéniques changent de donneur entre eux, et chacun peut
     // donner le centre oxygénique (photosystème II).

@@ -13,7 +13,7 @@ Feuille de route (document Vision, « Périmètre consolidé de l'étape 4 ») :
 | Réseau trophique | oui : 8 espèces, 22 liens dans la cellule de l'impact | capture 05 |
 | Colonne stratigraphique | oui : 24 couches, couche à iridium de l'impact | capture 06 |
 | Globe G3 | oui : région subdivisée puis paysage (98 304 triangles) | captures 12, 13, 14 |
-| Anatomie depuis le plan, palier 2 | oui : corps 3D des microbes (adaptateur) et d'un plan d'essai pluricellulaire (9 644 triangles, 21 os) | captures 08, 10, 11 |
+| Anatomie depuis le plan, palier 2 | oui : corps 3D des microbes, d'une colonie simulée (filament de 12 cellules à 160 Ma) et d'un plan d'essai pluricellulaire (9 644 triangles, 21 os) | captures 08, 10, 11, 15 à 18 |
 | Comparateur | oui : 14 lignes, même échelle, ancêtre commun | capture 09 |
 | Décor avec les silhouettes des voisines | oui | capture 07 |
 | 60 images par seconde | non vérifiable ici (rendu logiciel) | |
@@ -48,11 +48,29 @@ Feuille de route (document Vision, « Périmètre consolidé de l'étape 4 ») :
 ![Plan d'essai](etape-4-client/10-corps-essai.png)
 ![Plan d'essai, organes](etape-4-client/11-corps-essai-anatomie.png)
 
+**Corps simulés** (suite, après la publication du plan de construction par le fil « cellules complexes »). Chaque espèce arrive avec son plan simulé (`evo_life::BodyPlan`) et son organisation (taille de cellule, cellules du corps, types cellulaires, organites, plastes, phagotrophie, sexe). `evo_view::anatomy::from_simulated` le traduit pour evo-morph :
+
+- **colonie en filament** : une chaîne de cellules ovales enroulée en boucle lâche, les autres types cellulaires intercalés selon leur part et un peu renflés (comme les hétérocystes), des membranes photosynthétiques dans chaque cellule qui photosynthétise ;
+- **boule et feuillet** : une sphère ou une lame ondulée, les couches profondes en organes internes colorés par appareil, le grain des cellules ou le motif de signalisation du plan en motif de Turing sur la peau ;
+- **cellule eucaryote** : noyau, plastes, mitochondries et vacuole digestive d'un phagotrophe, sans paroi ;
+- les modules que les étapes suivantes produiront (segments, appendices, organes, feuilles) passent par une traduction générique : attache, axe, symétrie et répétitions, articulation, revêtement, pigments, couleur structurale.
+
+Les procaryotes gardent leurs formes du palier 1, plus variées que la cellule ronde du plan simulé. Pour les eucaryotes et les colonies, la fiche montre une planche tirée du corps 3D (profil au lavis, motif, organes en transparence, barre d'échelle) au lieu de la figure de microscope. Le comparateur gagne trois lignes : cellule (procaryote ou eucaryote, plastes, phagotrophie), cellules du corps, reproduction.
+
+Essai : `--porte4 --seul=colonie --ma_min=150` fait tourner la Terre (graine 2026, niveau 4) jusqu'à sa première colonie pluricellulaire après 150 Ma, puis ouvre sa fiche, son anatomie et le comparateur. Résultat (`rapport-colonie.json`) : à 160 Ma, un filament photosynthétique de 12 cellules, 11 µm, membranes photosynthétiques dans chaque cellule. La première colonie apparaît vers 70 Ma (deux cellules). Aucun eucaryote n'est encore apparu à 212 Ma sur ce monde : la cellule eucaryote n'est vérifiée que par les tests unitaires.
+
+![Colonie, fiche](etape-4-client/15-colonie-fiche.png)
+![Colonie, organes](etape-4-client/17-colonie-organes.png)
+![Colonie, comparateur](etape-4-client/18-colonie-comparateur.png)
+
+**Changement de résolution du vivant.** Quand des multicellulaires gagnent les terres, la grille du vivant passe au niveau de la planète en cours de partie. Rien à changer côté client : chaque cellule publiée porte sa cellule du vivant, les grilles sont emboîtées (les anciens numéros restent valides), et le client ne garde aucun tableau dimensionné sur la grille du vivant.
+
 **Sauvegardes en arbre.** Une sauvegarde faite après en avoir rechargé une autre se range sous elle dans l'écran d'accueil.
 
 ## Limites connues et suites
 
-- **Plan de construction.** Le moteur ne publie pas encore le plan des corps pluricellulaires (fil « cellules complexes »). evo-morph lit son propre type d'affichage (`evo_morph::body::BodyPlan`, champs du doc Organismes) ; les microbes y passent par un adaptateur depuis la forme du palier 1. Quand le plan simulé sera publié, il suffira d'un adaptateur de plus.
+- **Plan de construction.** evo-morph lit son propre type d'affichage (`evo_morph::body::BodyPlan`, champs du doc Organismes) ; le plan simulé y passe par `from_simulated`, les procaryotes par la forme du palier 1.
+- [Simplification] Les filaments très longs sont épaissis jusqu'à rester visibles (au moins 1,2 % de leur longueur) ; la barre d'échelle garde la taille vraie.
 - **Format de sauvegarde 4** : les perturbations (barrières, anomalies) sont sauvegardées ; les sauvegardes des étapes précédentes sont refusées.
 - Les pièces rigides fusionnent dans la peau au lieu d'être des maillages séparés, et les yeux restent des ellipsoïdes sombres quel que soit leur stade.
 - Le relief d'une région se recalcule toutes les 200 étapes, pas à chaque pas.
@@ -62,4 +80,6 @@ Feuille de route (document Vision, « Périmètre consolidé de l'étape 4 ») :
 ```sh
 cargo build --release -p evo-godot
 godot --path client --resolution 1600x900 -- --porte4 --niveau=4 --sortie=/tmp/porte4
+# Corps simulés : première colonie après 150 Ma
+godot --path client --resolution 1600x900 -- --porte4 --seul=colonie --ma_min=150 --niveau=4 --sortie=/tmp/colonie
 ```

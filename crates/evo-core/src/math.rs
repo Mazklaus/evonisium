@@ -25,6 +25,8 @@ pub trait Det: Copy {
     fn dasin(self) -> Self;
     fn dacos(self) -> Self;
     fn datan2(self, x: Self) -> Self;
+    fn dcbrt(self) -> Self;
+    fn dexp2(self) -> Self;
 }
 
 impl Det for f64 {
@@ -47,6 +49,14 @@ impl Det for f64 {
     #[inline]
     fn dpowf(self, e: f64) -> f64 {
         libm::pow(self, e)
+    }
+    #[inline]
+    fn dcbrt(self) -> f64 {
+        libm::cbrt(self)
+    }
+    #[inline]
+    fn dexp2(self) -> f64 {
+        libm::exp2(self)
     }
     #[inline]
     fn dsin(self) -> f64 {

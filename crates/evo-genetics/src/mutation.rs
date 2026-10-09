@@ -25,10 +25,15 @@ pub enum MutationKind {
     /// apparentée (table de parenté), avec une qualité d'abord médiocre.
     /// C'est la voie principale d'apparition des nouveaux domaines.
     DuplicationDivergence,
+    /// Duplication d'un bloc régulé entier (régulateur et gènes qu'il
+    /// commande), copié juste après l'original : un module de plus en une
+    /// mutation (document Génétique, « Duplication puis divergence d'un
+    /// module ou d'un type cellulaire »). Sans régulateur, simple duplication.
+    ModuleDuplication,
 }
 
 /// Nombre de classes de mutations.
-pub const MUTATION_KIND_COUNT: usize = 7;
+pub const MUTATION_KIND_COUNT: usize = 8;
 
 /// Taux et poids relatifs des classes de mutations.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -38,7 +43,7 @@ pub struct MutationParams {
     /// Réduction maximale du taux par la réparation de l'ADN.
     pub max_repair_factor: f64,
     /// Poids relatifs : ponctuelle, perte, duplication, délétion, neutre,
-    /// de novo, duplication suivie de divergence.
+    /// de novo, duplication suivie de divergence, duplication d'un module.
     pub weights: [f64; MUTATION_KIND_COUNT],
     /// Écart type des petits pas (relatif pour efficacité, affinité, largeur).
     pub small_step: f64,
@@ -65,8 +70,10 @@ impl Default for MutationParams {
             rate_per_gene: 3e-3,
             max_repair_factor: 10.0,
             // La divergence vers une famille apparentée est une partie des
-            // duplications ; le de novo reste dix fois plus rare.
-            weights: [0.70, 0.08, 0.06, 0.06, 0.089, 0.001, 0.01],
+            // duplications ; le de novo reste dix fois plus rare. Les
+            // duplications d'un bloc entier (segmentales) sont prises sur les
+            // duplications d'un gène.
+            weights: [0.70, 0.08, 0.05, 0.06, 0.089, 0.001, 0.01, 0.01],
             small_step: 0.08,
             large_step: 0.5,
             large_step_share: 0.05,
@@ -83,9 +90,12 @@ impl MutationParams {
     /// Mutations attendues par génome et par génération : le taux est un trait
     /// du génome (gènes de réparation), pas une constante globale.
     pub fn genomic_rate(&self, genome: &Genome) -> f64 {
-        let repair = genome.family_efficiency(DomainFamily::Repair).min(1.0);
+        // La recombinase de méiose répare aussi, par recombinaison homologue,
+        // à moitié moins bien qu'un gène de réparation dédié.
+        let repair = (genome.family_efficiency(DomainFamily::Repair) + 0.5 * genome.family_efficiency(DomainFamily::Meiosis)).min(1.0);
         let factor = 1.0 + (self.max_repair_factor - 1.0) * repair;
-        self.rate_per_gene * genome.genes.len().max(1) as f64 / factor
+        let genes = genome.genes.len() + genome.organelles.iter().map(|o| o.genes.len()).sum::<usize>();
+        self.rate_per_gene * genes.max(1) as f64 / factor
     }
 }
 
@@ -98,6 +108,7 @@ pub const MUTATION_KINDS: [MutationKind; MUTATION_KIND_COUNT] = [
     MutationKind::NeutralMarker,
     MutationKind::DeNovo,
     MutationKind::DuplicationDivergence,
+    MutationKind::ModuleDuplication,
 ];
 
 impl MutationParams {
@@ -161,9 +172,36 @@ fn apply(g: &mut Genome, kind: MutationKind, params: &MutationParams, rng: &mut 
     let gene_at = |g: &Genome, i: usize| ChangedElement::Gene { index: i as u16, family: g.genes[i].domain.family };
     match kind {
         MutationKind::Point => {
-            let i = rng.random_range(0..g.genes.len());
-            point_mutation(&mut g.genes[i].domain, params, rng);
-            gene_at(g, i)
+            // Les gènes des organites mutent aussi (même tirage qu'avant leur
+            // apparition quand il n'y en a pas).
+            let in_organelles: usize = g.organelles.iter().map(|o| o.genes.len()).sum();
+            let mut i = rng.random_range(0..g.genes.len() + in_organelles);
+            if i < g.genes.len() {
+                point_mutation(&mut g.genes[i].domain, params, rng);
+                return gene_at(g, i);
+            }
+            i -= g.genes.len();
+            for (k, o) in g.organelles.iter_mut().enumerate() {
+                if i < o.genes.len() {
+                    point_mutation(&mut o.genes[i].domain, params, rng);
+                    return ChangedElement::OrganelleGene { organelle: k as u16, index: i as u16 };
+                }
+                i -= o.genes.len();
+            }
+            unreachable!("indice de gène hors du génome")
+        }
+        MutationKind::ModuleDuplication => {
+            let regulators: Vec<usize> =
+                (0..g.genes.len()).filter(|&i| g.genes[i].functional && g.genes[i].domain.family == DomainFamily::Regulator).collect();
+            if regulators.is_empty() {
+                return apply(g, MutationKind::Duplication, params, rng);
+            }
+            let r = regulators[rng.random_range(0..regulators.len())];
+            let block = g.block_of(r);
+            let copy: Vec<Gene> = g.genes[block.clone()].to_vec();
+            let (start, len) = (block.end, copy.len());
+            g.genes.splice(start..start, copy);
+            ChangedElement::Module { start: start as u16, len: len as u16 }
         }
         MutationKind::LossOfFunction => {
             let i = rng.random_range(0..g.genes.len());
@@ -248,13 +286,10 @@ mod tests {
             t_width_k: 10.0,
             absorption_nm: 420.0,
         };
-        Genome {
-            genes: vec![
-                Gene { domain: d, functional: true },
-                Gene { domain: Domain { family: DomainFamily::Repair, ..d }, functional: true },
-            ],
-            marker: [0; MARKER_LEN],
-        }
+        Genome::new(
+            vec![Gene { domain: d, functional: true }, Gene { domain: Domain { family: DomainFamily::Repair, ..d }, functional: true }],
+            [0; MARKER_LEN],
+        )
     }
 
     #[test]
@@ -273,7 +308,7 @@ mod tests {
             let m = change.genome;
             seen.insert(kind);
             match kind {
-                MutationKind::Duplication | MutationKind::DeNovo => assert_eq!(m.genes.len(), 3),
+                MutationKind::Duplication | MutationKind::DeNovo | MutationKind::ModuleDuplication => assert_eq!(m.genes.len(), 3),
                 MutationKind::DuplicationDivergence => {
                     assert_eq!(m.genes.len(), 3);
                     // La copie d'un gène de réparation devient un pigment médiocre.
@@ -288,6 +323,42 @@ mod tests {
             }
         }
         assert_eq!(seen.len(), MUTATION_KIND_COUNT);
+    }
+
+    #[test]
+    fn module_duplication_copies_a_regulator_and_its_block() {
+        let mut g = sample_genome();
+        let reg = Gene { domain: Domain { family: DomainFamily::Regulator, ..g.genes[0].domain }, functional: true };
+        // constitutif, régulateur, deux gènes commandés, régulateur, un gène
+        g.genes = vec![g.genes[1], reg, g.genes[0], g.genes[0], reg, g.genes[1]];
+        assert_eq!(g.block_of(1), 1..4);
+        assert_eq!(g.block_of(4), 4..6);
+        assert_eq!(g.regulated_by(), vec![None, Some(1), Some(1), Some(1), Some(4), Some(4)]);
+        let params = MutationParams::default();
+        let mut rng = rng_for(3, Stream::Validation, &[]);
+        for _ in 0..50 {
+            let c = mutate_with_kind(&g, MutationKind::ModuleDuplication, &params, &mut rng);
+            match c.element {
+                ChangedElement::Module { start: 4, len: 3 } => assert_eq!(c.genome.genes.len(), 9),
+                ChangedElement::Module { start: 6, len: 2 } => assert_eq!(c.genome.genes.len(), 8),
+                e => panic!("élément inattendu {e:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn organelle_genes_mutate_too() {
+        let mut g = sample_genome();
+        g.organelles.push(crate::genome::Organelle { genes: vec![g.genes[0]; 4], origin_lineage: 7, acquired_years: 0.0 });
+        let params = MutationParams::default();
+        let mut rng = rng_for(5, Stream::Validation, &[]);
+        let hits = (0..300)
+            .filter(|_| {
+                matches!(mutate_with_kind(&g, MutationKind::Point, &params, &mut rng).element, ChangedElement::OrganelleGene { .. })
+            })
+            .count();
+        // 4 gènes d'organite sur 6 gènes en tout.
+        assert!((150..250).contains(&hits), "{hits}");
     }
 
     #[test]

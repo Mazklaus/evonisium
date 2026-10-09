@@ -42,7 +42,7 @@ fn genetic_throughput(seed: u64) -> (f64, f64) {
     let genome = world.minimal_cell();
     let physio = Physiology::default();
     let params = world.config.mutation.clone();
-    let cond = Conditions { temperature_k: 295.0, uv_w_m2: 5.0, light_kj: 1e5 };
+    let cond = Conditions::new(295.0, 5.0, 1e5);
     let mut chem = [0.0; WATER_POOL_COUNT];
     chem[WaterPool::Dic as usize] = 8.0;
     chem[WaterPool::H2 as usize] = 8e-4;

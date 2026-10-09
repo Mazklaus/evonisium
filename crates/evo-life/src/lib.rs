@@ -10,12 +10,14 @@
 //! - [`spectrum`] : lumière disponible selon la longueur d'onde, sous l'étoile
 //!   de la partie, et couleur des pigments.
 
+pub mod body;
 pub mod community;
 pub mod growth;
 pub mod metabolism;
 pub mod phenotype;
 pub mod spectrum;
 
+pub use body::{body_plan, BodyPlan};
 pub use community::{CellContext, Population};
 pub use growth::{growth_rates, selection_coefficient, Conditions, GrowthRates, Physiology};
 pub use phenotype::Phenotype;

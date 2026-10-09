@@ -33,6 +33,7 @@ use crate::history::{CellView, ClimateMode, EventView, History, Publication, Pub
 use crate::influence::{InfluenceParams, InfluenceReserve, InfluenceView};
 use crate::observation::{Focus, FocusCell, InterestZone, PopulationView, MAX_FOCUS_CELLS};
 use crate::orders::{AppliedOrder, Intervention, Order, OrderKind, OrderQueue};
+use crate::transitions::TransitionParams;
 use evo_core::events::{EventKind, EventLog, Origin};
 use evo_core::flux::{Element, FluxRegistry};
 use evo_core::math::Det;
@@ -129,6 +130,8 @@ pub struct WorldConfig {
     pub mutation: MutationParams,
     pub regime: OriginFixation,
     pub evolution: EvolutionParams,
+    /// Grandes transitions de l'étape 4 (endosymbiose, sexe).
+    pub transitions: TransitionParams,
     /// Part de la biomasse qui passe chaque année dans une cellule voisine.
     pub migration_rate: f64,
     /// Sous ce seuil de biomasse (mol de carbone), une population disparaît.
@@ -171,6 +174,7 @@ impl WorldConfig {
             mutation: MutationParams { reaction_count: REACTION_COUNT as u8, relations: domain_relations(), ..Default::default() },
             regime: OriginFixation::default(),
             evolution: EvolutionParams::default(),
+            transitions: TransitionParams::default(),
             migration_rate: 1.0,
             extinction_biomass: 1.0,
             founder_biomass: 100.0,
@@ -236,6 +240,8 @@ pub struct WorldStats {
     pub cells_flooded: u64,
     /// Pas pendant lesquels l'accélérateur a agi.
     pub accelerator_steps: u64,
+    /// Mutations réunies par recombinaison chez les sexués.
+    pub recombinations: u64,
 }
 
 impl WorldStats {
@@ -247,6 +253,7 @@ impl WorldStats {
         self.innovations_drawn += o.innovations_drawn;
         self.innovations_accelerated += o.innovations_accelerated;
         self.innovations_evaluated += o.innovations_evaluated;
+        self.recombinations += o.recombinations;
         for (a, b) in self.fixed_changes_by_cause.iter_mut().zip(o.fixed_by_cause) {
             *a += b;
         }
@@ -306,6 +313,46 @@ pub struct Progress {
     /// Multiple du pas demandé utilisé au prochain pas (pas adaptatif ;
     /// 0 ou 1 : le pas demandé).
     pub step_factor: u32,
+    /// Première apparition de chaque étape de la complexité
+    /// ([`COMPLEXITY_STAGES`]) : date et événement.
+    pub complexity_years: [Option<f64>; COMPLEXITY_STAGE_COUNT],
+    pub complexity_events: [Option<u64>; COMPLEXITY_STAGE_COUNT],
+    /// Accélérateur des transitions de la complexité (endosymbiose
+    /// facilitée, innovations plus fréquentes), et date du dernier progrès.
+    pub complex_accelerator_on: bool,
+    pub complexity_since_years: Option<f64>,
+}
+
+/// Étapes de la complexité suivies et signalées (chemin des « cellules
+/// complexes ») ; chacune est datée à sa première apparition sur la planète,
+/// dans l'ordre où elle survient.
+pub const COMPLEXITY_PATHWAY: &str = "cellule complexe";
+pub const COMPLEXITY_STAGE_COUNT: usize = 8;
+pub const COMPLEXITY_STAGES: [&str; COMPLEXITY_STAGE_COUNT] = [
+    "phagotrophie",
+    "eucaryote (endosymbiose)",
+    "plaste",
+    "reproduction sexuée",
+    "colonie clonale",
+    "deux types cellulaires",
+    "eucaryote multicellulaire à deux types cellulaires",
+    "eucaryote multicellulaire complexe hors de l'eau",
+];
+
+/// Étapes de la complexité atteintes par une population (bits, dans l'ordre
+/// de [`COMPLEXITY_STAGES`]) ; `on_land` : sa cellule n'est pas océanique.
+pub fn complexity_bits(p: &Phenotype, on_land: bool) -> u8 {
+    let types = p.cell_types() >= 2 && p.is_multicellular();
+    let mut bits = 0u8;
+    bits |= u8::from(p.is_phagotroph());
+    bits |= u8::from(p.is_eukaryote()) << 1;
+    bits |= u8::from(p.plastids > 0) << 2;
+    bits |= u8::from(p.sexual) << 3;
+    bits |= u8::from(p.is_multicellular()) << 4;
+    bits |= u8::from(types) << 5;
+    bits |= u8::from(types && p.is_eukaryote()) << 6;
+    bits |= u8::from(types && p.is_eukaryote() && on_land) << 7;
+    bits
 }
 
 /// Immigrant retenu pour une guilde d'une cellule.
@@ -486,6 +533,7 @@ impl World {
                 gene(DomainFamily::Cytochrome, 0.5, 1.0, 420.0),
             ],
             marker,
+            organelles: Vec::new(),
         }
     }
 
@@ -787,7 +835,7 @@ impl World {
         // 3. Évolution.
         let t2 = Instant::now();
         let rounds = self.config.evolution.round_years.map_or(1, |r| ((dt / r) - 1e-9).ceil().max(1.0) as u64);
-        if self.progress.accelerator_on {
+        if self.progress.accelerator_on || self.progress.complex_accelerator_on {
             self.stats.accelerator_steps += 1;
         }
         let mut modified = Vec::new();
@@ -1048,12 +1096,13 @@ impl World {
     fn evolution_phase(&mut self, years: f64, dt: f64, step_index: u64, round: u64) -> Vec<(usize, usize, GenomeChangeCause)> {
         let cfg = &self.config;
         let accelerator = self.progress.accelerator_on;
+        let complex = self.complexity_boost(years);
         let (communities, chemistry, envs) = (&self.communities, &self.chemistry, &self.bio.env);
         let results: Vec<(Vec<Fixation>, EvolutionStats)> = self
             .demes
             .par_iter()
             .enumerate()
-            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, step_index, round, accelerator))
+            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, years, step_index, round, accelerator, complex))
             .collect();
         let mut modified = Vec::new();
         for (fixations, stats) in results {
@@ -1253,8 +1302,8 @@ impl World {
                 if pops.len() <= max {
                     return (0, 0, 0, 0, occupied);
                 }
-                let guilds: Vec<Option<u8>> = pops.iter().map(|p| p.phenotype.main_pathway()).collect();
-                let mut guild: BTreeMap<Option<u8>, usize> = BTreeMap::new();
+                let guilds: Vec<Option<u32>> = pops.iter().map(|p| p.phenotype.guild_key()).collect();
+                let mut guild: BTreeMap<Option<u32>, usize> = BTreeMap::new();
                 for g in &guilds {
                     *guild.entry(*g).or_default() += 1;
                 }
@@ -1382,6 +1431,7 @@ impl World {
                 );
             }
         }
+        self.complexity_bookkeeping(&modified);
         // Détecteur de stagnation : l'accélérateur n'agit qu'en dernier recours.
         let acc = &self.config.evolution.accelerator;
         if acc.enabled && !self.progress.accelerator_on && self.progress.best_stage < 4 {
@@ -1423,10 +1473,170 @@ impl World {
             self.events.push(years, None, EventKind::Snowball { ice_fraction: ice, starts: false });
         }
 
+        // Des multicellulaires complexes gagnent les terres : le vivant passe
+        // à la résolution de la planète.
+        if self.config.transitions.refine_on_land
+            && self.progress.complexity_years[7].is_some()
+            && self.config.bio_level < self.config.level
+        {
+            self.refine_life_grid();
+        }
+
         if self.history.due(years) {
             self.record_history();
         }
         self.publish();
+    }
+
+    /// Passe la grille du vivant à la résolution de la grille physique
+    /// (document d'architecture : vivant au niveau 6 quand les
+    /// multicellulaires colonisent les terres). Chaque cellule fine reçoit la
+    /// chimie de sa cellule grossière (des concentrations) et une part de ses
+    /// populations au prorata de son volume d'eau. Les grilles sont
+    /// emboîtées : une cellule grossière garde son numéro, si bien que les
+    /// événements passés restent bien placés.
+    pub fn refine_life_grid(&mut self) {
+        let level = self.config.level;
+        if self.config.bio_level >= level {
+            return;
+        }
+        let before = [self.total_carbon(), self.total_phosphorus(), self.total_electrons()];
+        let mut bio = BioGrid::new(&self.planet.grid, level);
+        bio.aggregate(&self.planet.cells);
+        let old_of: Vec<usize> = bio.children.iter().map(|kids| self.bio.parent[kids[0] as usize] as usize).collect();
+        self.chemistry = old_of.iter().map(|&o| self.chemistry[o]).collect();
+        self.communities = old_of
+            .iter()
+            .enumerate()
+            .map(|(c, &o)| {
+                let volume = self.bio.env[o].water_volume_m3;
+                let share = if volume > 0.0 { bio.env[c].water_volume_m3 / volume } else { 0.0 };
+                if share <= 0.0 {
+                    return Vec::new();
+                }
+                self.communities[o]
+                    .iter()
+                    .map(|p| {
+                        let mut q = p.clone();
+                        q.biomass *= share;
+                        q
+                    })
+                    .collect()
+            })
+            .collect();
+        self.bio = bio;
+        self.config.bio_level = level;
+        let deme_level = self.config.deme_level.unwrap_or(level.saturating_sub(1)).min(level);
+        let deme_grid = BioGrid::new(&self.bio.grid, deme_level);
+        (self.demes, self.deme_index) = (deme_grid.children, deme_grid.parent);
+        // Les arrondis du partage sont portés au bilan comme un échange.
+        let after = [self.total_carbon(), self.total_phosphorus(), self.total_electrons()];
+        for (k, e) in [Element::Carbon, Element::Phosphorus, Element::Electrons].into_iter().enumerate() {
+            self.flux.exchange(e, after[k] - before[k]);
+        }
+    }
+
+    /// Effet de l'accélérateur de la complexité au moment `years` : 1 quand
+    /// il n'agit pas ; sinon son multiplicateur, décuplé à chaque
+    /// `complexity_escalation_years` passées depuis sa mise en marche, au plus
+    /// `complexity_max_boost`. [Simplification] Accélération déclarée : sur
+    /// les petits mondes, les hôtes phagotrophes sont trop peu nombreux pour
+    /// garder un endosymbiote dans des délais terrestres.
+    fn complexity_boost(&self, years: f64) -> f64 {
+        let acc = &self.config.evolution.accelerator;
+        if !self.progress.complex_accelerator_on {
+            return 1.0;
+        }
+        let Some(oxygenic) = self.progress.stage_years[4] else { return acc.boost };
+        let since = self.progress.complexity_since_years.unwrap_or(oxygenic).max(oxygenic);
+        let running = (years - since - acc.complexity_patience_years).max(0.0);
+        let escalation = 10f64.dpowf(running / acc.complexity_escalation_years.max(1.0));
+        (acc.boost * escalation).min(acc.complexity_max_boost.max(acc.boost))
+    }
+
+    /// Étapes de la complexité : première apparition sur la planète, et
+    /// accélérateur des transitions quand la complexité stagne (seulement
+    /// une fois la photosynthèse oxygénique apparue : avant, c'est elle que
+    /// l'accélérateur de la photosynthèse surveille).
+    fn complexity_bookkeeping(&mut self, modified: &[(usize, usize, GenomeChangeCause)]) {
+        let years = self.years;
+        let mut reached = [None::<(usize, usize, GenomeChangeCause)>; COMPLEXITY_STAGE_COUNT];
+        for &(c, i, cause) in modified {
+            let Some(p) = self.communities[c].get(i) else { continue };
+            let bits = complexity_bits(&p.phenotype, !self.bio.env[c].is_ocean);
+            for (k, slot) in reached.iter_mut().enumerate() {
+                if bits & (1 << k) != 0 && self.progress.complexity_years[k].is_none() && slot.is_none() {
+                    *slot = Some((c, i, cause));
+                }
+            }
+        }
+        // Une colonie existante qui gagne la terre ferme ne passe pas par
+        // une fixation : on la cherche parmi les populations des terres.
+        if self.progress.complexity_years[7].is_none() && self.progress.complexity_years[6].is_some() && reached[7].is_none() {
+            'land: for (c, pops) in self.communities.iter().enumerate() {
+                if self.bio.env[c].is_ocean {
+                    continue;
+                }
+                for (i, p) in pops.iter().enumerate() {
+                    if complexity_bits(&p.phenotype, true) & (1 << 7) != 0 {
+                        reached[7] = Some((c, i, GenomeChangeCause::SpontaneousMutation(evo_genetics::MutationKind::Point)));
+                        break 'land;
+                    }
+                }
+            }
+        }
+        let mut any = None;
+        for (k, slot) in reached.iter().enumerate() {
+            let Some((c, i, cause)) = *slot else { continue };
+            let lineage = self.communities[c][i].lineage;
+            let previous = self.progress.complexity_events.iter().rev().find_map(|e| *e);
+            let id = self.events.push_with(
+                years,
+                Some(c as u32),
+                EventKind::Innovation {
+                    lineage,
+                    pathway: COMPLEXITY_PATHWAY.into(),
+                    stage: k as u8 + 1,
+                    label: COMPLEXITY_STAGES[k].into(),
+                },
+                origin_of(cause),
+                previous,
+            );
+            self.progress.complexity_years[k] = Some(years);
+            self.progress.complexity_events[k] = Some(id);
+            any = Some(id);
+        }
+        if let Some(id) = any {
+            self.progress.complexity_since_years = Some(years);
+            if self.progress.complex_accelerator_on {
+                self.progress.complex_accelerator_on = false;
+                self.events.push_with(
+                    years,
+                    None,
+                    EventKind::AcceleratorOff { pathway: COMPLEXITY_PATHWAY.into() },
+                    Origin::Accelerator,
+                    Some(id),
+                );
+            }
+        }
+        let acc = &self.config.evolution.accelerator;
+        let Some(oxygenic) = self.progress.stage_years[4] else { return };
+        // Le but suivi : un eucaryote multicellulaire à deux types cellulaires.
+        if !acc.enabled || self.progress.complex_accelerator_on || self.progress.complexity_years[6].is_some() {
+            return;
+        }
+        let since = self.progress.complexity_since_years.unwrap_or(oxygenic).max(oxygenic);
+        if years - since >= acc.complexity_patience_years {
+            self.progress.complex_accelerator_on = true;
+            let stage = self.progress.complexity_years.iter().rposition(Option::is_some).map_or(0, |k| k as u8 + 1);
+            self.events.push_with(
+                years,
+                None,
+                EventKind::AcceleratorOn { pathway: COMPLEXITY_PATHWAY.into(), stage },
+                Origin::Accelerator,
+                None,
+            );
+        }
     }
 
     /// Grandeurs globales à la date courante.
@@ -1561,7 +1771,10 @@ impl World {
     }
 
     pub fn species(&self) -> Vec<SpeciesView> {
-        let mut map: BTreeMap<u32, (SpeciesView, f64, Vec<usize>)> = BTreeMap::new();
+        // Vue, biomasse de la population la plus abondante, génotypes vus
+        // (adresses), et cette population.
+        type Entry<'a> = (SpeciesView, f64, Vec<usize>, Option<&'a Population>);
+        let mut map: BTreeMap<u32, Entry> = BTreeMap::new();
         for (b, pops) in self.communities.iter().enumerate() {
             for p in pops {
                 let sig = p.signature();
@@ -1577,6 +1790,7 @@ impl World {
                         },
                         0.0,
                         Vec::new(),
+                        None,
                     )
                 });
                 let v = &mut e.0;
@@ -1587,20 +1801,24 @@ impl World {
                 if !e.2.contains(&key) {
                     e.2.push(key);
                 }
-                // Cellule et pigment de la population la plus abondante.
+                // Cellule, pigment et organisation de la population la plus
+                // abondante.
                 if p.biomass > e.1 {
                     e.1 = p.biomass;
                     v.peak_bio_cell = b as u32;
                     if let Some(nm) = p.phenotype.pigment_nm {
                         v.pigment_rgb = Some(pigment_colour(nm));
                     }
+                    v.organisation = crate::history::Organisation::of(&p.phenotype);
+                    e.3 = Some(p);
                 }
             }
         }
         let mut list: Vec<SpeciesView> = map
             .into_values()
-            .map(|(mut v, _, eco)| {
+            .map(|(mut v, _, eco, peak)| {
                 v.ecotypes = eco.len() as u32;
+                v.body_plan = peak.map(|p| Arc::new(evo_life::body_plan(&p.genome, &p.phenotype, &self.config.physiology)));
                 v
             })
             .collect();
@@ -1957,6 +2175,31 @@ mod tests {
     }
 
     #[test]
+    fn refining_the_life_grid_keeps_mass_and_life() {
+        let mut cfg = WorldConfig::new(11, 4);
+        cfg.bio_level = 3;
+        cfg.step_years = 1000.0;
+        let mut w = World::new(cfg);
+        w.seed_life();
+        for _ in 0..20 {
+            w.step();
+        }
+        let biomass = w.biomass();
+        let coarse = w.bio.len();
+        w.refine_life_grid();
+        assert_eq!(w.config.bio_level, 4);
+        assert!(w.bio.len() > 3 * coarse);
+        assert_eq!(w.communities.len(), w.bio.len());
+        assert!((w.biomass() - biomass).abs() <= 1e-9 * biomass);
+        for _ in 0..10 {
+            w.step();
+        }
+        assert!(w.carbon_balance_error() < 1e-9, "carbone {}", w.carbon_balance_error());
+        assert!(w.phosphorus_balance_error() < 1e-9);
+        assert!(w.biomass() > 0.0);
+    }
+
+    #[test]
     fn same_seed_same_history() {
         let mut a = small_world(9);
         let mut b = small_world(9);
@@ -2083,7 +2326,9 @@ mod tests {
         );
         a.step();
         assert!(a.disturbances.killed_biomass > 0.0);
-        assert!(a.disturbances.killed_biomass > 0.05 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
+        // La part tuée dépend de la biomasse prise dans le rayon de destruction
+        // (3 % avec les colonies de l'étape 4, 5 % et plus avant).
+        assert!(a.disturbances.killed_biomass > 0.01 * before, "l'impact tue : {} sur {before}", a.disturbances.killed_biomass);
         // Le carbone tué reste dans le système ; le CO₂ libéré est inscrit.
         assert!(a.carbon_balance_error() < 1e-9 && a.phosphorus_balance_error() < 1e-9, "bilan");
         assert!(a.total_carbon() > carbon);
