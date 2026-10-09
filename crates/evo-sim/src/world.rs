@@ -1787,7 +1787,7 @@ impl World {
             step: self.stats.steps,
             years: self.years,
             step_years: self.config.step_years,
-            climate_mode: ClimateMode::for_step(self.config.step_years),
+            climate_mode: ClimateMode::for_step(self.next_step_years()),
             globals,
             cells,
             bio_level: self.config.bio_level,
