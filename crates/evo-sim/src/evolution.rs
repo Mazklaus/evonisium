@@ -696,10 +696,12 @@ pub fn evolve_genotype(
         if kind == MutationKind::DuplicationDivergence {
             let count = evo.candidates_per_kind[k] * group.candidate_factor();
             for _ in 0..count {
-                let change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
-                if !matches!(change.element, ChangedElement::Inserted { family, .. } if family.is_cellular()) {
+                // Le génome n'est copié que pour une famille de structure.
+                let Some((i, copy)) = evo_genetics::divergent_copy(&resident.genome, &cfg.mutation, rng) else { continue };
+                if !copy.domain.family.is_cellular() {
                     continue;
                 }
+                let change = evo_genetics::insert_copy(&resident.genome, i, copy);
                 let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
                 if !multiple && best_s(&fixers) >= s {
                     continue;

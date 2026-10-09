@@ -164,6 +164,41 @@ pub fn mutate_with_kind(genome: &Genome, kind: MutationKind, params: &MutationPa
     genome.derive(GenomeChangeCause::SpontaneousMutation(kind), |g| apply(g, kind, params, rng))
 }
 
+/// Tire une duplication suivie de divergence sans copier le génome : le
+/// gène dupliqué et sa copie divergée, que [`insert_copy`] place juste
+/// après lui. Mêmes tirages que [`mutate_with_kind`] pour cette classe ;
+/// `None` pour un génome vide.
+pub fn divergent_copy(genome: &Genome, params: &MutationParams, rng: &mut impl Rng) -> Option<(usize, Gene)> {
+    (!genome.genes.is_empty()).then(|| diverge(genome, params, rng))
+}
+
+/// Génome augmenté de la copie `copy` du gène `i`, placée juste après lui.
+pub fn insert_copy(genome: &Genome, i: usize, copy: Gene) -> GenomeChange {
+    genome.derive(GenomeChangeCause::SpontaneousMutation(MutationKind::DuplicationDivergence), |g| {
+        g.genes.insert(i + 1, copy);
+        ChangedElement::Inserted { index: (i + 1) as u16, family: copy.domain.family }
+    })
+}
+
+fn diverge(g: &Genome, params: &MutationParams, rng: &mut impl Rng) -> (usize, Gene) {
+    let i = rng.random_range(0..g.genes.len());
+    let mut copy = g.genes[i];
+    let total: f64 = params.relatives(copy.domain.family).map(|r| r.weight).sum();
+    if total > 0.0 {
+        let mut x = rng.random::<f64>() * total;
+        for r in params.relatives(copy.domain.family) {
+            if x < r.weight {
+                copy.domain.family = r.to;
+                break;
+            }
+            x -= r.weight;
+        }
+        copy.domain.efficiency *= params.divergence_quality;
+    }
+    // Sans parent déclaré, c'est une simple duplication.
+    (i, copy)
+}
+
 /// Applique une seconde mutation à un génome déjà muté (double mutant du
 /// tunnel stochastique) ; la cause reste celle de la première.
 pub fn mutate_again(first: &GenomeChange, params: &MutationParams, rng: &mut impl Rng) -> GenomeChange {
@@ -228,21 +263,7 @@ fn apply(g: &mut Genome, kind: MutationKind, params: &MutationParams, rng: &mut 
             ChangedElement::Marker { site: i as u16 }
         }
         MutationKind::DuplicationDivergence => {
-            let i = rng.random_range(0..g.genes.len());
-            let mut copy = g.genes[i];
-            let total: f64 = params.relatives(copy.domain.family).map(|r| r.weight).sum();
-            if total > 0.0 {
-                let mut x = rng.random::<f64>() * total;
-                for r in params.relatives(copy.domain.family) {
-                    if x < r.weight {
-                        copy.domain.family = r.to;
-                        break;
-                    }
-                    x -= r.weight;
-                }
-                copy.domain.efficiency *= params.divergence_quality;
-            }
-            // Sans parent déclaré, c'est une simple duplication.
+            let (i, copy) = diverge(g, params, rng);
             g.genes.insert(i + 1, copy);
             ChangedElement::Inserted { index: (i + 1) as u16, family: copy.domain.family }
         }
