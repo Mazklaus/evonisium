@@ -1,0 +1,21 @@
+name: Signaler un bug
+description: Quelque chose ne marche pas comme prévu.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Ce qui s'est passé
+      description: Ce que tu as fait, ce que tu attendais et ce que tu as obtenu.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduire
+    attributes:
+      label: Comment le reproduire
+      description: Étapes, commande lancée, graine de la partie, point de sauvegarde si possible.
+  - type: input
+    id: systeme
+    attributes:
+      label: Système
+      description: Système d'exploitation, processeur, carte graphique, version de Godot.
