@@ -52,7 +52,14 @@ pub struct GateOptions {
     pub eviction: Option<crate::world::Eviction>,
     /// Pas fixe : sans allongement aux périodes calmes.
     pub fixed_step: bool,
+    /// Dossier des points de reprise : la partie y est sauvée régulièrement
+    /// et reprend de là si elle a été interrompue (les longues parties au
+    /// niveau 6 durent des heures).
+    pub checkpoint_dir: Option<PathBuf>,
 }
+
+/// Pas entre deux points de reprise.
+const CHECKPOINT_STEPS: u64 = 50;
 
 impl Default for GateOptions {
     fn default() -> Self {
@@ -69,6 +76,7 @@ impl Default for GateOptions {
             innovation_probability: None,
             eviction: None,
             fixed_step: false,
+            checkpoint_dir: None,
         }
     }
 }
@@ -176,12 +184,32 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     if opts.fixed_step {
         cfg.adaptive_step = None;
     }
-    let mut world = World::new(cfg);
-    world.seed_life();
+    let checkpoint = opts.checkpoint_dir.as_ref().map(|d| d.join(format!("{key}-{seed}-n{}.reprise", opts.level)));
     let mut above_since: Option<f64> = None;
     let (mut trace, mut reached, mut max_o2) = (None, None, 0.0f64);
+    let mut earlier_seconds = 0.0;
     // Cellules peuplées et saturées des derniers pas.
     let mut late: std::collections::VecDeque<(u64, u64, u64, u64)> = std::collections::VecDeque::new();
+    // Reprise : l'état du monde (identique au bit) et celui de la porte.
+    let resumed = checkpoint.as_ref().and_then(|c| {
+        let world = World::load_file(c).ok()?;
+        let text = std::fs::read_to_string(c.with_extension("porte")).ok()?;
+        let v: Vec<f64> = text.split_whitespace().map(|x| x.parse().unwrap_or(f64::NAN)).collect();
+        let some = |x: f64| x.is_finite().then_some(x);
+        if v.len() < 5 {
+            return None;
+        }
+        (above_since, trace, reached, max_o2, earlier_seconds) = (some(v[0]), some(v[1]), some(v[2]), v[3], v[4]);
+        late = v[5..].chunks_exact(4).map(|c| (c[0] as u64, c[1] as u64, c[2] as u64, c[3] as u64)).collect();
+        eprintln!("  {key} (graine {seed}) : reprise à {}", format_years(world.years));
+        Some(world)
+    });
+    let mut world = resumed.unwrap_or_else(|| {
+        let mut w = World::new(cfg);
+        w.seed_life();
+        w
+    });
+    let start = start.checked_sub(std::time::Duration::from_secs_f64(earlier_seconds)).unwrap_or(start);
     while world.years < opts.max_years {
         let st = &world.stats;
         let before = (st.occupied_cell_steps, st.saturated_cell_steps, st.established_eviction_cell_steps, st.growing_eviction_cell_steps);
@@ -220,6 +248,25 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
         }
         if world.communities.iter().all(Vec::is_empty) {
             break;
+        }
+        if let Some(c) = &checkpoint {
+            if world.stats.steps.is_multiple_of(CHECKPOINT_STEPS) {
+                let f = |x: Option<f64>| x.map_or("nan".to_string(), |y| y.to_string());
+                let mut state = format!("{} {} {} {} {}", f(above_since), f(trace), f(reached), max_o2, start.elapsed().as_secs_f64());
+                for (a, b, c, d) in &late {
+                    state.push_str(&format!(" {a} {b} {c} {d}"));
+                }
+                // Écrit à côté puis renommé : une coupure ne laisse jamais
+                // un point de reprise à moitié écrit.
+                let tmp = c.with_extension("tmp");
+                let ok = world.save_file(&tmp).and_then(|_| std::fs::rename(&tmp, c)).and_then(|_| {
+                    std::fs::write(c.with_extension("porte.tmp"), state)?;
+                    std::fs::rename(c.with_extension("porte.tmp"), c.with_extension("porte"))
+                });
+                if let Err(e) = ok {
+                    eprintln!("  point de reprise impossible : {e}");
+                }
+            }
         }
     }
     let seconds = start.elapsed().as_secs_f64();
