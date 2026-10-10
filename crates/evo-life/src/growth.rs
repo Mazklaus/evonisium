@@ -42,7 +42,12 @@ pub struct Physiology {
     /// Entretien, kJ·molC⁻¹·an⁻¹ : base, réplication par gène présent
     /// (pseudogènes compris), expression par gène fonctionnel, et coût des
     /// protéines d'une voie, qui croît avec le carré de son activité totale et
-    /// de son affinité.
+    /// de son affinité. L'entretien du génome, divisé par le volume de la
+    /// cellule, est ce qui borne sa longueur : à 200 kJ, des centaines de
+    /// régulateurs sans effet s'accumulaient (jusqu'à 1 300 gènes) ; à 2 000,
+    /// la moyenne reste vers 20 à 40 gènes et les plus longs vers 300, et les
+    /// grandes cellules portent plus facilement un grand génome (Lane et
+    /// Martin, 2010).
     pub base_maintenance_kj: f64,
     pub genome_cost_kj: f64,
     pub expression_cost_kj: f64,
@@ -140,7 +145,7 @@ impl Default for Physiology {
             autotroph_biomass_kj: 2000.0,
             heterotroph_biomass_kj: 400.0,
             base_maintenance_kj: 2000.0,
-            genome_cost_kj: 200.0,
+            genome_cost_kj: 2000.0,
             expression_cost_kj: 300.0,
             gene_cost_kj: 2000.0,
             thermal_reference_width_k: 10.0,

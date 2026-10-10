@@ -201,6 +201,9 @@ fn complexity(args: &[String]) {
     if let Some(p) = opt(args, "--retention") {
         cfg.transitions.retention_probability = p.parse().expect("probabilité invalide");
     }
+    if let Some(p) = opt(args, "--structurel") {
+        cfg.evolution.structural_probability = p.parse().expect("probabilité invalide");
+    }
     if args.iter().any(|a| a == "--sans-accelerateur") {
         cfg.evolution.accelerator.enabled = false;
     }
@@ -232,6 +235,15 @@ fn complexity(args: &[String]) {
                 if let Some(y) = world.progress.complexity_years[k] {
                     *done = true;
                     println!("  ★ {} : {}", COMPLEXITY_STAGES[k], format_years(y));
+                    // Sauvegarde à la première apparition d'une étape, pour
+                    // étudier la suite (`--save-at-stage k chemin`).
+                    if let Some(i) = args.iter().position(|a| a == "--save-at-stage") {
+                        if args.get(i + 1).and_then(|v| v.parse::<usize>().ok()) == Some(k) {
+                            if let Some(path) = args.get(i + 2) {
+                                world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -282,6 +294,9 @@ fn complexity(args: &[String]) {
                 world.config.bio_level,
                 start.elapsed().as_secs_f64()
             );
+            if args.iter().any(|a| a == "--suivre") {
+                trace_complex(&world);
+            }
         }
         if world.progress.complexity_years[6].is_some() && args.iter().any(|a| a == "--stop") {
             break;
@@ -291,6 +306,47 @@ fn complexity(args: &[String]) {
     println!("{} simulés en {:.0} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
     if let Some(path) = opt(args, "--save") {
         world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
+    }
+}
+
+/// Détail des phagotrophes et des eucaryotes : effectifs, cellules
+/// occupées, taux médians (naissance, mortalité, prédation subie, part du
+/// carbone tirée des proies, r).
+fn trace_complex(world: &World) {
+    type Pick = fn(&evo_life::Population) -> bool;
+    let groups: [(&str, Pick); 2] = [("phagotrophes", |p| p.phenotype.is_phagotroph()), ("eucaryotes", |p| p.phenotype.is_eukaryote())];
+    for (name, pick) in groups {
+        let mut cells = 0usize;
+        let mut rows: Vec<&evo_life::Population> = Vec::new();
+        for pops in &world.communities {
+            let before = rows.len();
+            rows.extend(pops.iter().filter(|p| pick(p)));
+            if rows.len() > before {
+                cells += 1;
+            }
+        }
+        if rows.is_empty() {
+            println!("      {name} : aucun");
+            continue;
+        }
+        let median = |f: &dyn Fn(&evo_life::Population) -> f64| {
+            let mut v: Vec<f64> = rows.iter().map(|p| f(p)).collect();
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        };
+        let biomass: f64 = rows.iter().map(|p| p.biomass).sum();
+        println!(
+            "      {name} : {} populations dans {cells} cellules, {:.2e} mol C | naissance {:.3} mortalité {:.3} prédation {:.3} proies {:.2} r {:.4} taille {:.1} cellules {:.0}",
+            rows.len(),
+            biomass,
+            median(&|p| p.rates.birth),
+            median(&|p| p.rates.mortality),
+            median(&|p| p.rates.predation),
+            median(&|p| p.rates.prey_share),
+            median(&|p| p.rates.r),
+            median(&|p| p.phenotype.cell_size),
+            median(&|p| p.phenotype.cells()),
+        );
     }
 }
 

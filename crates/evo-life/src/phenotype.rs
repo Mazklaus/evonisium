@@ -383,30 +383,108 @@ impl Basis {
 
     /// Base du génome `genome`, issu de `resident` (de base `self`) par le
     /// changement `element` ; `None` quand le changement touche
-    /// l'organisation (il faut alors tout reconstruire).
+    /// l'organisation ou fusionne deux types cellulaires (il faut alors tout
+    /// reconstruire). Couvre les mutations ponctuelles et les pertes de
+    /// fonction, les duplications, insertions et délétions d'un gène qui
+    /// n'est pas de structure ni de régulation, et les gènes des organites.
     pub fn derive(&self, resident: &Genome, genome: &Genome, element: ChangedElement, physio: &Physiology) -> Option<Self> {
-        let ChangedElement::Gene { index, .. } = element else { return None };
-        let i = index as usize;
-        if genome.genes.len() != resident.genes.len() || genome.organelles.len() != resident.organelles.len() {
+        if genome.organelles.len() != resident.organelles.len() {
             return None;
         }
-        let (old, new) = (&resident.genes[i], &genome.genes[i]);
-        // Un gène qui change d'organisation, de régulation ou de
-        // fonctionnalité peut changer le développement et les types.
-        let plain = |g: &Gene| !g.domain.family.is_cellular() && g.functional;
-        if !plain(old) || !plain(new) {
-            return None;
-        }
+        let plain = |g: &Gene| !g.domain.family.is_cellular();
         let mut basis = self.clone();
         let membrane = 1.0 / basis.cell_size;
-        for (mask, sums) in basis.masks.iter().zip(basis.sums.iter_mut()) {
-            if mask.as_ref().is_none_or(|m| m[i]) {
-                sums.add(old, membrane, physio, -1);
-                sums.add(new, membrane, physio, 1);
+        match element {
+            ChangedElement::Gene { index, .. } => {
+                let i = index as usize;
+                if genome.genes.len() != resident.genes.len() {
+                    return None;
+                }
+                let (old, new) = (&resident.genes[i], &genome.genes[i]);
+                if !plain(old) || !plain(new) {
+                    return None;
+                }
+                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
+                    let active = mask.as_deref().is_none_or(|m| active_at(&resident.genes, m, i));
+                    if old.functional && active {
+                        sums.add(old, membrane, physio, -1);
+                    }
+                    if new.functional && active {
+                        sums.add(new, membrane, physio, 1);
+                    }
+                    if let Some(m) = mask {
+                        m[i] = new.functional && active;
+                    }
+                }
             }
+            ChangedElement::Removed { index, .. } => {
+                let i = index as usize;
+                if genome.genes.len() + 1 != resident.genes.len() || !plain(&resident.genes[i]) {
+                    return None;
+                }
+                let old = &resident.genes[i];
+                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
+                    if old.functional && mask.as_deref().is_none_or(|m| m[i]) {
+                        sums.add(old, membrane, physio, -1);
+                    }
+                    if let Some(m) = mask {
+                        m.remove(i);
+                    }
+                }
+            }
+            ChangedElement::Inserted { index, .. } => {
+                let j = index as usize;
+                if genome.genes.len() != resident.genes.len() + 1 || !plain(&genome.genes[j]) {
+                    return None;
+                }
+                // Le gène inséré rejoint le bloc du gène qui le précède.
+                let new = &genome.genes[j];
+                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
+                    let active = j == 0 || mask.as_deref().is_none_or(|m| active_at(&resident.genes, m, j - 1));
+                    if new.functional && active {
+                        sums.add(new, membrane, physio, 1);
+                    }
+                    if let Some(m) = mask {
+                        m.insert(j, new.functional && active);
+                    }
+                }
+            }
+            ChangedElement::OrganelleGene { organelle, index } => {
+                let (o, i) = (organelle as usize, index as usize);
+                let (Some(old_o), Some(new_o)) = (resident.organelles.get(o), genome.organelles.get(o)) else { return None };
+                if old_o.genes.len() != new_o.genes.len() || i >= old_o.genes.len() {
+                    return None;
+                }
+                let (old, new) = (&old_o.genes[i], &new_o.genes[i]);
+                if !plain(old) || !plain(new) {
+                    return None;
+                }
+                for sums in basis.sums.iter_mut() {
+                    if old.functional {
+                        sums.add(old, membrane, physio, -1);
+                    }
+                    if new.functional {
+                        sums.add(new, membrane, physio, 1);
+                    }
+                }
+            }
+            _ => return None,
+        }
+        // Deux types devenus identiques n'en font plus qu'un : la
+        // reconstruction complète les fusionne.
+        let masks = &basis.masks;
+        if (1..masks.len()).any(|k| masks[..k].contains(&masks[k])) {
+            return None;
         }
         Some(basis)
     }
+}
+
+/// Activité, dans un type cellulaire de jeu `mask`, du bloc qui contient le
+/// gène `i` : celle du dernier régulateur fonctionnel qui le précède (un
+/// régulateur se commande lui-même), ou vrai pour un gène constitutif.
+fn active_at(genes: &[Gene], mask: &[bool], i: usize) -> bool {
+    (0..=i).rev().find(|&k| genes[k].functional && genes[k].domain.family == DomainFamily::Regulator).is_none_or(|k| mask[k])
 }
 
 /// Développement d'une colonie clonale : nombre de cellules, forme, zones,
@@ -824,21 +902,28 @@ mod tests {
             acquired_years: 0.0,
         });
         let mut incremental = 0;
+        let mut resized = 0;
         for _ in 0..3000 {
             let basis = Basis::new(&genome, &physio);
             let kind =
-                if rng.random::<f64>() < 0.8 { MutationKind::Point } else { MUTATION_KINDS[rng.random_range(0..MUTATION_KINDS.len())] };
+                if rng.random::<f64>() < 0.5 { MutationKind::Point } else { MUTATION_KINDS[rng.random_range(0..MUTATION_KINDS.len())] };
             let change = mutate_with_kind(&genome, kind, &params, &mut rng);
             let full = Phenotype::from_genome(&change.genome, &physio);
             if let Some(b) = basis.derive(&genome, &change.genome, change.element, &physio) {
                 incremental += 1;
-                assert_eq!(Phenotype::assemble(&change.genome, &b, &physio), full);
+                if change.genome.genes.len() != genome.genes.len() {
+                    resized += 1;
+                }
+                assert_eq!(Phenotype::assemble(&change.genome, &b, &physio), full, "{:?}", change.element);
             }
             if change.genome.genes.len() < 40 {
                 genome = change.genome;
             }
         }
-        assert!(incremental > 500, "{incremental} constructions incrémentales");
+        assert!(
+            incremental > 1500 && resized > 300,
+            "{incremental} constructions incrémentales, dont {resized} avec un gène en plus ou en moins"
+        );
     }
 
     #[test]

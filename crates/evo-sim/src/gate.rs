@@ -271,8 +271,24 @@ pub fn run_world(key: &str, seed: u64, opts: &GateOptions) -> WorldResult {
     }
     let seconds = start.elapsed().as_secs_f64();
     let events = &world.events.events;
+    // L'étape oxygénique revient à l'accélérateur si elle vient d'un tirage
+    // ajouté par lui, ou si elle arrive pendant qu'il agit sur la
+    // photosynthèse (il multiplie aussi les tirages qui ne portent pas sa
+    // marque).
+    let photosynthesis = evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY;
+    let mut accelerated = false;
     let oxygenic_origin = events.iter().find_map(|e| match &e.kind {
-        EventKind::Innovation { stage: 4, pathway, .. } if *pathway == evo_life::metabolism::PHOTOSYNTHESIS_PATHWAY => Some(e.origin),
+        EventKind::AcceleratorOn { pathway, .. } if *pathway == photosynthesis => {
+            accelerated = true;
+            None
+        }
+        EventKind::AcceleratorOff { pathway } if *pathway == photosynthesis => {
+            accelerated = false;
+            None
+        }
+        EventKind::Innovation { stage: 4, pathway, .. } if *pathway == photosynthesis => {
+            Some(if accelerated { Origin::Accelerator } else { e.origin })
+        }
         _ => None,
     });
     let rhodopsin_years = events.iter().find_map(|e| match &e.kind {
