@@ -1,6 +1,6 @@
 # Client Godot d'Evonisium
 
-Le client de l'étape 3 : le globe de l'Atlas naturaliste et les écrans du premier jouable. Il est écrit en GDScript (dossier `client/`) au-dessus d'une extension native en Rust, la crate `evo-godot`, qui fait tourner le moteur dans son propre fil et ne lui parle que par la file d'ordres et le canal d'observation.
+Le client de jeu : le globe de l'Atlas naturaliste et les écrans du premier jouable (étape 3), les outils de naturaliste de l'étape 4 et la descente au sol de l'étape 5. Il est écrit en GDScript (dossier `client/`) au-dessus d'une extension native en Rust, la crate `evo-godot`, qui fait tourner le moteur dans son propre fil et ne lui parle que par la file d'ordres et le canal d'observation.
 
 ## Lancer le jeu
 
