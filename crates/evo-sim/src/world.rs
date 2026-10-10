@@ -321,6 +321,10 @@ pub struct Progress {
     /// facilitée, innovations plus fréquentes), et date du dernier progrès.
     pub complex_accelerator_on: bool,
     pub complexity_since_years: Option<f64>,
+    /// Temps simulé écoulé depuis le dernier tour d'évolution, années : les
+    /// tours se comptent sur le temps, pas sur les pas, pour que l'histoire
+    /// ne dépende pas du pas choisi par le joueur.
+    pub evolution_clock: f64,
 }
 
 /// Étapes de la complexité suivies et signalées (chemin des « cellules
@@ -834,14 +838,24 @@ impl World {
 
         // 3. Évolution.
         let t2 = Instant::now();
-        let rounds = self.config.evolution.round_years.map_or(1, |r| ((dt / r) - 1e-9).ceil().max(1.0) as u64);
+        // Un tour par tranche de `round_years` de temps simulé, le reste
+        // reporté au pas suivant ; sans durée de tour, un tour par pas.
+        let (rounds, sub) = match self.config.evolution.round_years {
+            Some(r) if r > 0.0 => {
+                let pending = self.progress.evolution_clock + dt;
+                let n = (pending / r + 1e-9).floor().max(0.0) as u64;
+                self.progress.evolution_clock = (pending - n as f64 * r).max(0.0);
+                (n, r)
+            }
+            _ => (1, dt),
+        };
         if self.progress.accelerator_on || self.progress.complex_accelerator_on {
             self.stats.accelerator_steps += 1;
         }
         let mut modified = Vec::new();
         for round in 0..rounds {
-            let sub = dt / rounds as f64;
-            modified.extend(self.evolution_phase(years + round as f64 * sub, sub, step_index, round));
+            let start = (years + dt - (rounds - round) as f64 * sub).max(years);
+            modified.extend(self.evolution_phase(start, sub, step_index, round));
         }
         check(self, "évolution");
         timings.evolution = t2.elapsed();
@@ -863,6 +877,32 @@ impl World {
         if std::env::var_os("EVO_DEBUG_O2").is_some() && (self.years / 2e7).floor() > (years / 2e7).floor() {
             let r = &self.planet.reservoirs;
             let b = r.oxygen;
+            let (mut n, mut sum, mut silent, mut max) = (0.0f64, 0.0f64, 0.0f64, 0usize);
+            for p in self.communities.iter().flatten() {
+                n += p.biomass;
+                sum += p.biomass * p.genome.genes.len() as f64;
+                silent += p.biomass * p.genome.genes.iter().filter(|g| !g.functional).count() as f64;
+                max = max.max(p.genome.genes.len());
+            }
+            eprintln!(
+                "GENES {:.1} Ma moyenne pondérée {:.1} max {max} inactifs {:.0} %",
+                self.years / 1e6,
+                sum / n.max(1e-30),
+                100.0 * silent / sum.max(1e-30)
+            );
+            let pl = &self.planet;
+            eprintln!(
+                "TERRES {:.1} Ma terres {:.3} océan {:.3} niveau {:.0} m CO2 {:.0} Pa T {:.1} K bilans C {:.1e} P {:.1e} e {:.1e}",
+                self.years / 1e6,
+                pl.land_area() / pl.params.surface_area(),
+                pl.ocean_fraction(),
+                pl.sea_level_m,
+                pl.partial_pressure(Gas::Co2),
+                self.summary().globals.mean_temperature_k,
+                self.carbon_balance_error(),
+                self.phosphorus_balance_error(),
+                self.electron_balance_error()
+            );
             eprintln!(
                 "O2 {:.1} Ma f={:.3e} orgC={:.4e} sedP={:.4e} deepP={:.4e} photo={:.4e} rel={:.4e} up={:.4e} deep={:.4e} red={:.4e} ch4={:.4e} femn={:.4e} ow={:.4e} sulf={:.4e} sea={:.4e}",
                 self.years / 1e6, r.mixing_ratio(Gas::O2), r.organic_c, r.sediment_p, r.deep_po4, b.photosynthesis, b.surface_release,
@@ -1173,6 +1213,12 @@ impl World {
         self.stats.fixed_changes_by_cause[f.cause.index()] += 1;
         let lineage = self.communities[c][index].lineage;
         self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause: f.cause, element: f.element });
+        for &(cause, element, adaptive) in &f.extra {
+            self.stats.substitutions += 1;
+            self.stats.adaptive_substitutions += adaptive as u64;
+            self.stats.fixed_changes_by_cause[cause.index()] += 1;
+            self.journal.record(JournalEntry { years, lineage, cell: c as u32, cause, element });
+        }
         Some((c, index, f.cause))
     }
 
@@ -1741,7 +1787,7 @@ impl World {
             step: self.stats.steps,
             years: self.years,
             step_years: self.config.step_years,
-            climate_mode: ClimateMode::for_step(self.config.step_years),
+            climate_mode: ClimateMode::for_step(self.next_step_years()),
             globals,
             cells,
             bio_level: self.config.bio_level,
@@ -2169,6 +2215,9 @@ mod tests {
         // la grille plus grossière ne laisserait presque rien à coloniser.
         cfg.bio_level = 3;
         cfg.step_years = 1000.0;
+        // Un tour d'évolution par pas : à cette échelle, un tour par 300 ka
+        // n'en ferait aucun.
+        cfg.evolution.round_years = Some(1000.0);
         let mut w = World::new(cfg);
         w.seed_life();
         w
@@ -2399,7 +2448,7 @@ mod tests {
         for _ in 0..60 {
             w.step();
             for pops in &w.communities {
-                let guilds: BTreeSet<_> = pops.iter().map(|p| p.phenotype.main_pathway()).collect();
+                let guilds: BTreeSet<_> = pops.iter().map(|p| p.phenotype.guild_key()).collect();
                 // Au-dessus du plafond, il ne reste qu'une population par guilde.
                 assert!(pops.len() <= 2 || guilds.len() == pops.len(), "{} populations pour {} guildes", pops.len(), guilds.len());
             }

@@ -37,9 +37,10 @@
 use crate::transitions;
 use crate::world::WorldConfig;
 use evo_core::rng::{rng_for, Stream};
+use evo_genetics::genome::MARKER_LEN;
 use evo_genetics::popgen::fixation_probability;
 use evo_genetics::{
-    mutate, mutate_with_kind, poisson, transfer_gene, tunnel_probability, ChangedElement, Genome, GenomeChange, GenomeChangeCause,
+    mutate, mutate_with_kind, poisson, transfer_gene, tunnel_probability, ChangedElement, Gene, Genome, GenomeChange, GenomeChangeCause,
     MutationKind, OriginFixation, GENOME_CHANGE_CAUSE_COUNT, MUTATION_KINDS, MUTATION_KIND_COUNT,
 };
 use evo_life::community::{CellContext, Population};
@@ -92,20 +93,27 @@ pub struct EvolutionParams {
     /// (`None` : un tour par pas, quelle que soit sa durée). Le test
     /// d'équivalence des pas (docs/etape-3-equivalence.md) fixe 100 ka.
     pub round_years: Option<f64>,
+    /// Fixations multiples : tous les candidats qui se fixent au même tour
+    /// (chacun selon sa probabilité, ce qui fait une loi de Poisson quand
+    /// l'offre n'est pas saturée) sont réunis en un génome, s'ils touchent
+    /// des gènes distincts et si leur réunion vaut au moins le meilleur seul.
+    /// Sans cela, seul le meilleur se fixe à chaque tour.
+    pub multiple_fixations: bool,
 }
 
 impl Default for EvolutionParams {
     fn default() -> Self {
         Self {
             candidates_per_kind: [4, 1, 1, 1, 1, 2, 2, 1],
-            innovation_probability: 1e-13,
+            innovation_probability: 3e-14,
             tunnel: true,
             tunnel_min_selection: -0.05,
             hgt_rate: 1e-7,
             hgt_candidates: 1,
             ne_per_m2: 2e-3,
             accelerator: AcceleratorParams::default(),
-            round_years: Some(100_000.0),
+            round_years: Some(300_000.0),
+            multiple_fixations: true,
         }
     }
 }
@@ -427,6 +435,96 @@ pub struct Fixation {
     pub element: ChangedElement,
     /// Coefficient de sélection du changement fixé (0 : neutre).
     pub selection: f64,
+    /// Changements fixés au même tour et réunis avec le principal : cause,
+    /// élément touché (rang dans le génome du résident), et vrai s'il était
+    /// avantageux seul.
+    pub extra: Vec<(GenomeChangeCause, ChangedElement, bool)>,
+}
+
+/// Fixation retenue pour un génotype au cours d'un tour.
+pub struct Fixed {
+    pub change: GenomeChange,
+    pub phenotype: Phenotype,
+    pub rates: GrowthRates,
+    pub selection: f64,
+    pub extra: Vec<(GenomeChangeCause, ChangedElement, bool)>,
+}
+
+/// Réunit en un génome le changement principal et ceux, fixés au même tour,
+/// qui touchent des gènes distincts (une suppression ou une modification
+/// par gène du résident, des insertions en nombre quelconque, un changement
+/// par site du marqueur). Tous dérivent du même résident. Renvoie le génome
+/// réuni et les rangs des changements retenus, le principal compris.
+pub fn combine_changes(resident: &Genome, changes: &[&GenomeChange]) -> Option<(GenomeChange, Vec<usize>)> {
+    let first = changes.first()?;
+    let n = resident.genes.len();
+    // Par gène du résident : remplacé (Some(Some)), supprimé (Some(None)).
+    let mut edits: Vec<Option<Option<Gene>>> = vec![None; n];
+    // Gènes insérés avant le gène de même rang du résident (n : à la fin).
+    let mut inserts: Vec<Vec<Gene>> = vec![Vec::new(); n + 1];
+    let mut marker = resident.marker;
+    let mut marked = [false; MARKER_LEN];
+    let mut taken = Vec::new();
+    for (k, ch) in changes.iter().enumerate() {
+        let ok = match ch.element {
+            ChangedElement::Gene { index, .. } => {
+                let i = index as usize;
+                let free = i < n && edits[i].is_none() && i < ch.genome.genes.len();
+                if free {
+                    edits[i] = Some(Some(ch.genome.genes[i]));
+                }
+                free
+            }
+            ChangedElement::Inserted { index, .. } => {
+                let i = index as usize;
+                let free = i <= n && i < ch.genome.genes.len();
+                if free {
+                    inserts[i].push(ch.genome.genes[i]);
+                }
+                free
+            }
+            ChangedElement::Removed { index, .. } => {
+                let i = index as usize;
+                let free = i < n && edits[i].is_none();
+                if free {
+                    edits[i] = Some(None);
+                }
+                free
+            }
+            ChangedElement::Marker { site } => {
+                let i = site as usize;
+                let free = i < MARKER_LEN && !marked[i];
+                if free {
+                    marked[i] = true;
+                    marker[i] = ch.genome.marker[i];
+                }
+                free
+            }
+            // Plusieurs éléments, organite, bloc : jamais réunis.
+            _ => false,
+        };
+        if ok {
+            taken.push(k);
+        } else if k == 0 {
+            return None;
+        }
+    }
+    let change = resident.derive(first.cause, |g| {
+        let mut genes = Vec::with_capacity(n + 1);
+        for (i, edit) in edits.iter().enumerate() {
+            genes.extend_from_slice(&inserts[i]);
+            match edit {
+                None => genes.push(resident.genes[i]),
+                Some(Some(gene)) => genes.push(*gene),
+                Some(None) => {}
+            }
+        }
+        genes.extend_from_slice(&inserts[n]);
+        g.genes = genes;
+        g.marker = marker;
+        first.element
+    });
+    Some((change, taken))
 }
 
 /// Régime « apparition puis fixation » pour un génotype : le résident est la
@@ -444,7 +542,7 @@ pub fn evolve_genotype(
     accelerator_on: bool,
     complex_boost: f64,
     stats: &mut EvolutionStats,
-) -> Option<(GenomeChange, Phenotype, GrowthRates, f64)> {
+) -> Option<Fixed> {
     let physio = &cfg.physiology;
     let evo = &cfg.evolution;
     let (rc, i) = group.rep;
@@ -553,10 +651,17 @@ pub fn evolve_genotype(
         judge(phenotype)
     };
 
-    let mut best: Option<Best> = None;
-    let consider = |best: &mut Option<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
-        if best.as_ref().is_none_or(|b| s > b.s) {
-            *best = Some(Best { s, change, phenotype, rates });
+    // Candidats qui se fixent au cours du tour ; sans fixations multiples,
+    // seul le meilleur est gardé.
+    let multiple = evo.multiple_fixations;
+    let mut fixers: Vec<Best> = Vec::new();
+    let best_s = |fixers: &[Best]| fixers.iter().map(|b| b.s).fold(f64::NEG_INFINITY, f64::max);
+    let consider = |fixers: &mut Vec<Best>, s: f64, change: GenomeChange, phenotype: Phenotype, rates: GrowthRates| {
+        if multiple {
+            fixers.push(Best { s, change, phenotype, rates });
+        } else if fixers.first().is_none_or(|b| s > b.s) {
+            fixers.clear();
+            fixers.push(Best { s, change, phenotype, rates });
         }
     };
     // Chez un sexué, les autres mutations avantageuses qui se fixeraient
@@ -595,7 +700,7 @@ pub fn evolve_genotype(
                     continue;
                 }
                 let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
-                if best.as_ref().is_some_and(|b| b.s >= s) {
+                if !multiple && best_s(&fixers) >= s {
                     continue;
                 }
                 // L'accélérateur de la complexité rend ces copies plus fréquentes.
@@ -604,7 +709,7 @@ pub fn evolve_genotype(
                     if accelerated {
                         change.cause = GenomeChangeCause::Accelerator;
                     }
-                    consider(&mut best, s, change, phenotype, rates);
+                    consider(&mut fixers, s, change, phenotype, rates);
                 }
             }
         }
@@ -628,6 +733,29 @@ pub fn evolve_genotype(
             }
             (count, arising / count as f64, 0.0)
         };
+        // Délétions : la strate des pseudogènes est tirée à part. Une délétion
+        // tombe au hasard, mais seules celles qui n'emportent pas de gène
+        // utile sont viables ; chez les bactéries, les pseudogènes
+        // disparaissent ainsi en quelques millions d'années (Kuo et Ochman,
+        // 2010). Tirée parmi tous les gènes, la délétion d'un pseudogène
+        // n'est presque jamais candidate quand le génome en compte des
+        // milliers.
+        if kind == MutationKind::Deletion {
+            let silent: Vec<usize> = resident.genome.genes.iter().enumerate().filter(|(_, g)| !g.functional).map(|(i, _)| i).collect();
+            if !silent.is_empty() {
+                let i = silent[rng.random_range(0..silent.len())];
+                let change = resident.genome.derive(GenomeChangeCause::SpontaneousMutation(kind), |g| {
+                    let family = g.genes.remove(i).domain.family;
+                    ChangedElement::Removed { index: i as u16, family }
+                });
+                let copies = arising * silent.len() as f64 / resident.genome.genes.len() as f64;
+                if let Some((s, phenotype, rates)) = evaluate(&change, stats) {
+                    if (multiple || best_s(&fixers) < s) && regime.candidate_fixes(s, ne, copies, rng) {
+                        consider(&mut fixers, s, change, phenotype, rates);
+                    }
+                }
+            }
+        }
         for _ in 0..count {
             let mut change = mutate_with_kind(&resident.genome, kind, &cfg.mutation, rng);
             // Un marqueur neutre ne change pas le phénotype : neutre, sans
@@ -638,7 +766,7 @@ pub fn evolve_genotype(
                 evaluate(&change, stats)
             };
             let Some((s, phenotype, rates)) = judged else { continue };
-            if best.as_ref().is_some_and(|b| b.s >= s) && s > 0.0 {
+            if !multiple && best_s(&fixers) >= s && s > 0.0 {
                 if sexual && kind == MutationKind::Point && regime.candidate_fixes(s, ne, copies, rng) {
                     beneficial.push(change);
                 }
@@ -648,12 +776,12 @@ pub fn evolve_genotype(
                 if accelerated > 0.0 && rng.random::<f64>() < accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
                 }
-                if sexual && s > 0.0 {
-                    if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+                if !multiple && sexual && s > 0.0 {
+                    if let Some(b) = fixers.first().filter(|b| b.s > 0.0) {
                         beneficial.push(b.change.clone());
                     }
                 }
-                consider(&mut best, s, change, phenotype, rates);
+                consider(&mut fixers, s, change, phenotype, rates);
             } else if is_innovative(kind) && evo.tunnel && s > evo.tunnel_min_selection {
                 tunnel_pending.push((change, s, copies));
             }
@@ -682,7 +810,7 @@ pub fn evolve_genotype(
             continue;
         }
         let Some((s2, phenotype2, rates2)) = judge(phenotype2) else { continue };
-        if s2 <= 0.0 || best.as_ref().is_some_and(|b| b.s >= s2) {
+        if s2 <= 0.0 || best_s(&fixers) >= s2 {
             continue;
         }
         // Taux de la seconde mutation : celui de sa classe, une classe
@@ -698,7 +826,7 @@ pub fn evolve_genotype(
         if poisson(copies * p1, rng) > 0 {
             stats.tunnel_successes += 1;
             let double = GenomeChange { genome: second.genome, cause: change.cause, element: ChangedElement::Several };
-            consider(&mut best, s2, double, phenotype2, rates2);
+            consider(&mut fixers, s2, double, phenotype2, rates2);
         }
     }
 
@@ -720,7 +848,7 @@ pub fn evolve_genotype(
             let gene = genes[rng.random_range(0..genes.len())];
             let mut change = transfer_gene(&resident.genome, gene, GenomeChangeCause::HorizontalTransfer);
             let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
-            if best.as_ref().is_some_and(|b| b.s >= s) {
+            if !multiple && best_s(&fixers) >= s {
                 continue;
             }
             let copies = supply * evo.hgt_rate * generations * donor.biomass / cell_biomass / evo.hgt_candidates as f64;
@@ -728,7 +856,7 @@ pub fn evolve_genotype(
                 if accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
                 }
-                consider(&mut best, s, change, phenotype, rates);
+                consider(&mut fixers, s, change, phenotype, rates);
             }
         }
     }
@@ -740,7 +868,7 @@ pub fn evolve_genotype(
         let partners = transitions::engulfed_partners(resident, i, pops, group.census, dt, years, cfg, rng);
         for partner in partners {
             let Some((s, phenotype, rates)) = evaluate(&partner.change, stats) else { continue };
-            if best.as_ref().is_some_and(|b| b.s >= s) {
+            if !multiple && best_s(&fixers) >= s {
                 continue;
             }
             if let Some(accelerated) = fixes(&cfg.regime, s, ne, partner.copies, retention_boost, rng) {
@@ -748,24 +876,59 @@ pub fn evolve_genotype(
                 if accelerated {
                     change.cause = GenomeChangeCause::Accelerator;
                 }
-                consider(&mut best, s, change, phenotype, rates);
+                consider(&mut fixers, s, change, phenotype, rates);
             }
         }
     }
-    // Sexe : la meilleure mutation se recombine avec les autres avantageuses.
-    if sexual && !beneficial.is_empty() {
-        if let Some(b) = best.as_ref().filter(|b| b.s > 0.0) {
+    // Sexe : la meilleure mutation se recombine avec les autres avantageuses
+    // (avec les fixations multiples, leur réunion ci-dessous en tient lieu).
+    if !multiple && sexual && !beneficial.is_empty() {
+        let mut recombined = None;
+        if let Some(b) = fixers.first().filter(|b| b.s > 0.0) {
             if let Some(change) = transitions::recombine(&resident.genome, &b.change, &beneficial) {
                 if let Some((s, phenotype, rates)) = evaluate(&change, stats) {
                     if s > b.s {
                         stats.recombinations += 1;
-                        best = Some(Best { s, change, phenotype, rates });
+                        recombined = Some(Best { s, change, phenotype, rates });
+                    }
+                }
+            }
+        }
+        if let Some(r) = recombined {
+            fixers = vec![r];
+        }
+    }
+    // Le meilleur d'abord ; à égalité, l'ordre des tirages.
+    fixers.sort_by(|a, b| b.s.total_cmp(&a.s));
+    let mut fixers = fixers.into_iter();
+    let first = fixers.next()?;
+    // Les autres candidats fixés, sauf les délétères (presque neutres), se
+    // fixent à la suite du meilleur : on les réunit en un génome, jugé une
+    // fois, retenu s'il vaut au moins le meilleur seul et garde sa guilde.
+    let others: Vec<Best> = fixers.filter(|b| b.s >= 0.0).collect();
+    if !others.is_empty() {
+        let changes: Vec<&GenomeChange> = std::iter::once(&first.change).chain(others.iter().map(|b| &b.change)).collect();
+        if let Some((change, taken)) = combine_changes(&resident.genome, &changes) {
+            if taken.len() > 1 {
+                // Plusieurs changements : le phénotype se construit en entier
+                // (la construction incrémentale ne suit qu'un élément).
+                stats.genetic_evaluations += 1;
+                if let Some((s, phenotype, rates)) = judge(Phenotype::from_genome(&change.genome, physio)) {
+                    if s >= first.s && phenotype.signature == first.phenotype.signature {
+                        let extra = taken[1..]
+                            .iter()
+                            .map(|&k| {
+                                let o = &others[k - 1];
+                                (o.change.cause, o.change.element, o.s > 0.0)
+                            })
+                            .collect();
+                        return Some(Fixed { change, phenotype, rates, selection: s, extra });
                     }
                 }
             }
         }
     }
-    best.map(|b| (b.change, b.phenotype, b.rates, b.s))
+    Some(Fixed { change: first.change, phenotype: first.phenotype, rates: first.rates, selection: first.s, extra: Vec::new() })
 }
 
 /// Évolution d'un dème : un tirage par génotype, dans sa cellule
@@ -796,7 +959,7 @@ pub fn evolve_deme(
         } else {
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
         };
-        if let Some((change, phenotype, rates, selection)) =
+        if let Some(Fixed { change, phenotype, rates, selection, extra }) =
             evolve_genotype(communities, chemistry, envs, cfg, dt, years, &group, &mut rng, accelerator_on, complex_boost, &mut stats)
         {
             let GenomeChange { genome, cause, element } = change;
@@ -809,6 +972,7 @@ pub fn evolve_deme(
                 cause,
                 element,
                 selection,
+                extra,
             });
         }
     }
@@ -879,5 +1043,53 @@ mod tests {
             let fast = base.mutant(&resident.enzymes, &mutant, t, &physio);
             close(&fast, &mutant.capacities(t, &physio));
         }
+    }
+
+    /// Les changements fixés au même tour se réunissent en un génome, rang
+    /// par rang du résident ; deux changements d'un même gène ne se cumulent
+    /// pas (le premier, le meilleur, l'emporte).
+    #[test]
+    fn changes_of_one_round_combine_gene_by_gene() {
+        let gene = |family, efficiency| Gene {
+            domain: Domain { family, efficiency, affinity: 1.0, t_opt_k: 300.0, t_width_k: 9.0, absorption_nm: 450.0 },
+            functional: true,
+        };
+        let (a, b, c) =
+            (gene(DomainFamily::Catalytic(METHANOGENESIS), 1.0), gene(DomainFamily::Cytochrome, 0.4), gene(DomainFamily::Pigment, 0.5));
+        let d = gene(DomainFamily::Rhodopsin, 0.05);
+        let resident = Genome { genes: vec![a, b, c], marker: [0; evo_genetics::genome::MARKER_LEN], organelles: Vec::new() };
+        let cause = GenomeChangeCause::SpontaneousMutation(MutationKind::Point);
+        let b2 = gene(DomainFamily::Cytochrome, 0.6);
+        let point = resident.derive(cause, |g| {
+            g.genes[1] = b2;
+            ChangedElement::Gene { index: 1, family: DomainFamily::Cytochrome }
+        });
+        let dup = resident.derive(cause, |g| {
+            g.genes.insert(1, a);
+            ChangedElement::Inserted { index: 1, family: a.domain.family }
+        });
+        let del = resident.derive(cause, |g| {
+            g.genes.remove(2);
+            ChangedElement::Removed { index: 2, family: c.domain.family }
+        });
+        let lof = resident.derive(cause, |g| {
+            g.genes[1].functional = false;
+            ChangedElement::Gene { index: 1, family: DomainFamily::Cytochrome }
+        });
+        let new = resident.derive(cause, |g| {
+            g.genes.push(d);
+            ChangedElement::Inserted { index: 3, family: d.domain.family }
+        });
+        let marker = resident.derive(cause, |g| {
+            g.marker[5] = 2;
+            ChangedElement::Marker { site: 5 }
+        });
+        let (combined, taken) = combine_changes(&resident, &[&point, &dup, &del, &lof, &new, &marker]).unwrap();
+        assert_eq!(taken, vec![0, 1, 2, 4, 5]);
+        assert_eq!(combined.genome.genes, vec![a, a, b2, d]);
+        assert_eq!(combined.genome.marker[5], 2);
+        assert_eq!(combined.element, point.element);
+        let several = GenomeChange { element: ChangedElement::Several, ..point.clone() };
+        assert!(combine_changes(&resident, &[&several, &dup]).is_none());
     }
 }

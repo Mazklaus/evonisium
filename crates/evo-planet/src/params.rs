@@ -163,8 +163,23 @@ pub struct PlanetParams {
     pub weathering_co2_exponent: f64,
     /// Altération des fonds océaniques, en part du dégazage de référence.
     pub seafloor_weathering_share: f64,
+    /// Sensibilité de l'altération des fonds à la température, K pour un
+    /// facteur e. La dissolution du basalte a une énergie d'activation de
+    /// l'ordre de 90 kJ/mol (Coogan et Dosso, 2015 ; Krissansen-Totton et
+    /// Catling, 2017), mais elle suit l'eau profonde, qui varie moins que la
+    /// surface : on prend l'écart de la température moyenne, amorti.
+    /// C'est le thermostat d'un monde sans terres émergées. [Simplification
+    /// signalée]
+    pub seafloor_weathering_activation_k: f64,
     /// Phosphore libéré par mole de CO₂ consommée par l'altération.
     pub weathering_phosphorus_ratio: f64,
+    /// Part de ce phosphore que libère aussi l'altération des fonds : le
+    /// basalte en contient autant que le granite (~0,1 % de P₂O₅), mais les
+    /// oxydes de fer des circulations hydrothermales en reprennent une bonne
+    /// partie (Wheat et coll., 1996). Sans elle, un monde sans terres
+    /// émergées n'a plus aucune source de phosphore et l'apatite le vide.
+    /// [Simplification signalée]
+    pub seafloor_phosphorus_share: f64,
     /// Part du carbone organique exporté qui est enfoui dans les sédiments.
     pub organic_burial_efficiency: f64,
     /// Baisse relative de cette part quand l'océan profond est oxygéné (la
@@ -193,6 +208,11 @@ pub struct PlanetParams {
     /// phosphore réactif enfoui (Ruttenberg, 1993) ; le temps de séjour total
     /// du phosphore océanique est de 20 000 à 50 000 ans.
     pub apatite_burial_years: f64,
+    /// Température de l'eau autour d'une source hydrothermale sous une mer
+    /// gelée, K : la zone de mélange reste un refuge pour la vie pendant une
+    /// glaciation globale (les glaciations huroniennes et cryogéniennes
+    /// n'ont pas éteint la vie).
+    pub vent_refuge_temperature_k: f64,
     /// Oxydation des roches réduites exposées (kérogène, sulfures, fer),
     /// mol d'O₂ par mole de CO₂ consommée par l'altération des silicates des
     /// terres, à la fraction d'O₂ de référence, et exposant de la loi en
@@ -324,7 +344,9 @@ impl PlanetParams {
             weathering_activation_k: 13.7,
             weathering_co2_exponent: 0.3,
             seafloor_weathering_share: 0.15,
+            seafloor_weathering_activation_k: 40.0,
             weathering_phosphorus_ratio: 0.004,
+            seafloor_phosphorus_share: 0.5,
             organic_burial_efficiency: 0.05,
             organic_burial_oxic_reduction: 0.6,
             burial_carbon_to_phosphorus: 250.0,
@@ -334,6 +356,7 @@ impl PlanetParams {
             anoxia_steepness: 4.0,
             anoxic_burial_carbon_to_phosphorus: 4000.0,
             apatite_burial_years: 100_000.0,
+            vent_refuge_temperature_k: 283.0,
             // Environ 7·10¹² mol d'O₂ par an sur les terres actuelles.
             oxidative_weathering_per_weathered_c: 3.0,
             oxidative_weathering_reference: 0.21,
