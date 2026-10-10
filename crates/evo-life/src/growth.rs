@@ -70,10 +70,14 @@ pub struct Physiology {
     /// saturation de la croissance par le phosphate, mol·m⁻³.
     pub carbon_to_phosphorus: f64,
     pub phosphate_half: f64,
-    /// Part de la nécromasse qui forme des particules et coule hors de la
-    /// couche de surface (pompe biologique : 10 à 20 % de la production dans
-    /// les océans actuels).
+    /// Part de la nécromasse d'une bactérie isolée qui forme des particules
+    /// et coule hors de la couche de surface (pompe biologique : 10 à 20 % de
+    /// la production dans les océans actuels).
     pub sinking_share: f64,
+    /// Part qui coule au plus, pour les grands corps (rapport d'export de 0,1
+    /// à 0,5 selon la taille du plancton, Laws et coll., 2000). Voir
+    /// [`Physiology::sinking_share_of`].
+    pub max_sinking_share: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
     /// Baisse relative du taux de croissance maximal par gène : répliquer un
@@ -134,6 +138,27 @@ pub struct Physiology {
     pub contact_sphere: f64,
 }
 
+impl Physiology {
+    /// Part de la nécromasse qui coule hors de la couche de surface pour un
+    /// corps de taille linéaire `body_size` (relative à une bactérie). La
+    /// vitesse de chute suit la loi de Stokes (carré de la taille) ; une
+    /// particule coule si elle quitte la couche avant d'être reminéralisée,
+    /// soit v / (v + v₀), plafonné à `max_sinking_share`. v₀ est tel qu'une
+    /// bactérie isolée donne `sinking_share`. Les grandes algues et les
+    /// colonies exportent donc davantage (Logan et coll., 1995 ; Lenton et
+    /// coll., 2014). [Simplification] Ni agrégats ni pelotes fécales, ni
+    /// lest minéral.
+    pub fn sinking_share_of(&self, body_size: f64) -> f64 {
+        let (base, max) = (self.sinking_share, self.max_sinking_share.max(self.sinking_share));
+        if base <= 0.0 || base >= max {
+            return base;
+        }
+        let v0 = max / base - 1.0;
+        let v = body_size.max(1.0).powi(2);
+        max * v / (v + v0)
+    }
+}
+
 impl Default for Physiology {
     fn default() -> Self {
         Self {
@@ -158,6 +183,7 @@ impl Default for Physiology {
             carbon_to_phosphorus: 106.0,
             phosphate_half: 1e-4,
             sinking_share: 0.15,
+            max_sinking_share: 0.5,
             max_growth: 6000.0,
             replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,

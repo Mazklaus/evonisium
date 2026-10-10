@@ -213,6 +213,7 @@ fn complexity(args: &[String]) {
     let mut world = World::new(cfg);
     world.orders.submit(0.0, OrderKind::SeedLife);
     let mut next = every;
+    let (mut previous_budget, mut previous_years) = (evo_planet::geochem::OxygenBudget::default(), 0.0);
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
     let mut accelerated = false;
     let mut seen_oxygenic = false;
@@ -297,6 +298,9 @@ fn complexity(args: &[String]) {
             if args.iter().any(|a| a == "--suivre") {
                 trace_complex(&world);
             }
+            if args.iter().any(|a| a == "--bilan") {
+                trace_oxygen(&world, &mut previous_budget, &mut previous_years);
+            }
         }
         if world.progress.complexity_years[6].is_some() && args.iter().any(|a| a == "--stop") {
             break;
@@ -312,6 +316,38 @@ fn complexity(args: &[String]) {
 /// Détail des phagotrophes et des eucaryotes : effectifs, cellules
 /// occupées, taux médians (naissance, mortalité, prédation subie, part du
 /// carbone tirée des proies, r).
+/// Bilan de l'oxygène et du phosphore depuis la ligne précédente, en
+/// mol par an : sources et puits d'O₂, export et enfouissement du carbone
+/// organique, phosphore dissous de l'océan profond, oxygénation du fond.
+fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget, previous_years: &mut f64) {
+    let r = &world.planet.reservoirs;
+    let b = &r.oxygen;
+    let dt = (world.years() - *previous_years).max(1.0);
+    let d = |now: f64, before: f64| (now - before) / dt;
+    let l = &r.last;
+    println!(
+        "    O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
+        d(b.surface_release, previous.surface_release),
+        d(b.deep_respiration, previous.deep_respiration),
+        d(b.reduced_gases, previous.reduced_gases),
+        d(b.methane, previous.methane),
+        d(b.iron_manganese, previous.iron_manganese),
+        d(b.seafloor_oxidation, previous.seafloor_oxidation),
+        d(b.oxidative_weathering, previous.oxidative_weathering),
+        d(b.sulfide, previous.sulfide),
+        l.organic_export,
+        l.organic_burial,
+        100.0 * l.organic_burial / l.organic_export.max(1e-300),
+        l.methane_release,
+        r.deep_po4,
+        r.deep_so4,
+        r.pyrite_s,
+        l.hydrogen_escape,
+    );
+    *previous = *b;
+    *previous_years = world.years();
+}
+
 fn trace_complex(world: &World) {
     type Pick = fn(&evo_life::Population) -> bool;
     let groups: [(&str, Pick); 2] = [("phagotrophes", |p| p.phenotype.is_phagotroph()), ("eucaryotes", |p| p.phenotype.is_eukaryote())];

@@ -102,8 +102,26 @@ pub struct PlanetParams {
     /// tampon des carbonates).
     pub dic_equilibrium: f64,
     pub dic_co2_exponent: f64,
-    /// Sulfate de la couche de surface, mol·m⁻³.
+    /// Sulfate de départ de l'océan, mol·m⁻³ (archéen : moins de 0,2 mM).
     pub sulfate_equilibrium: f64,
+    /// Sulfate de l'océan profond qui fait passer la moitié de la
+    /// reminéralisation anaérobie par la sulfato-réduction plutôt que par la
+    /// méthanogenèse, mol·m⁻³ (les méthanogènes ne dominent que sous
+    /// quelques dixièmes de millimolaire). [Simplification]
+    pub sulfate_reduction_half: f64,
+    /// Même seuil pour l'oxydation anaérobie du méthane par le sulfate,
+    /// mol·m⁻³ (Olson et coll., 2016). [Simplification]
+    pub methane_sulfate_half: f64,
+    /// Part du sulfure produit sous la surface enfouie en pyrite ; le reste
+    /// est réoxydé (environ 10 à 20 % dans les sédiments actuels, Canfield,
+    /// 1989 ; Berner, 2006).
+    pub pyrite_burial_share: f64,
+    /// Part de l'oxydation des roches exposées due à la pyrite (le reste au
+    /// kérogène), qui rend du sulfate à l'océan (Berner, 2006).
+    pub pyrite_weathering_share: f64,
+    /// Temps de séjour du sulfate face à l'enfouissement en évaporites
+    /// (gypse), ans.
+    pub gypsum_burial_years: f64,
     /// Échange entre la couche de surface et l'océan profond, an⁻¹.
     pub upwelling_rate: f64,
 
@@ -316,6 +334,11 @@ impl PlanetParams {
             dic_equilibrium: 8.0,
             dic_co2_exponent: 0.3,
             sulfate_equilibrium: 0.2,
+            sulfate_reduction_half: 0.5,
+            methane_sulfate_half: 0.5,
+            pyrite_burial_share: 0.15,
+            pyrite_weathering_share: 0.2,
+            gypsum_burial_years: 30e6,
             upwelling_rate: 0.01,
             plate_count: 14,
             plate_speed_cm_per_yr: 6.0,

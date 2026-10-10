@@ -279,9 +279,9 @@ impl Planet {
         }
         // L'H₂S dégazé est perdu par l'atmosphère (oxydé ou lessivé).
         rate[WaterPool::H2s as usize] = 10.0;
-        target[WaterPool::Sulfate as usize] = p.sulfate_equilibrium;
-        rate[WaterPool::Sulfate as usize] = 0.2;
         let deep = self.deep_volume_m3.max(1.0);
+        target[WaterPool::Sulfate as usize] = self.reservoirs.deep_so4.max(0.0) / deep;
+        rate[WaterPool::Sulfate as usize] = 0.2;
         for (pool, moles) in [
             (WaterPool::Fe2, self.reservoirs.deep_fe2),
             (WaterPool::Mn2, self.reservoirs.deep_mn2),

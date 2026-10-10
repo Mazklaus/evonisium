@@ -351,7 +351,7 @@ pub fn substep_with(
         }
         chem[WaterPool::Doc as usize] -= potential * doc_share * scale / volume;
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
-        let sinking = deaths * physio.sinking_share;
+        let sinking = deaths * physio.sinking_share_of(p.phenotype.body_size);
         out.sinking_carbon += sinking;
         chem[WaterPool::Doc as usize] += (deaths - sinking) / volume;
         chem[WaterPool::Po4 as usize] += (deaths - sinking) / cp / volume;
