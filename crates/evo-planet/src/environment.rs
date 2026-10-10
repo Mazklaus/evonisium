@@ -62,6 +62,13 @@ pub struct CellEnvironment {
     pub dry_area_m2: f64,
     pub land_light_par_w_m2: f64,
     pub moisture: f64,
+    /// Phosphore de l'altération libéré dans les sols de la cellule, mol·an⁻¹
+    /// (réglé à chaque pas par le monde, nul en mer).
+    pub phosphorus_supply: f64,
+    /// Phosphate de la solution du sol de la terre ferme, mol·m⁻³ : équilibre
+    /// entre ce que l'altération libère et ce que la pluie lessive (réglé à
+    /// chaque pas par le monde).
+    pub soil_phosphate: f64,
 }
 
 /// Concentrations de la couche d'eau, mol·m⁻³, indexées par [`WaterPool`].
@@ -256,6 +263,8 @@ impl Planet {
                     cl.insolation_w_m2 * (1.0 - p.albedo) * self.climate.light_share * (1.0 - 0.95 * ice_cover)
                 },
                 moisture: soil_moisture(display[c].rain_mm_yr as f64, cl.temperature_k, p.potential_evaporation_mm),
+                phosphorus_supply: 0.0,
+                soil_phosphate: 0.0,
             };
             if let Some(old) = self.cells.get(c) {
                 if old.is_ocean != ocean || old.water_volume_m3 != volume {
@@ -361,6 +370,7 @@ impl Planet {
             WaterPool::H2s => env.vent_h2s_supply,
             WaterPool::Fe2 => env.vent_fe_supply,
             WaterPool::Mn2 => env.vent_mn_supply,
+            WaterPool::Po4 => env.phosphorus_supply,
             _ => 0.0,
         }
     }
@@ -467,6 +477,7 @@ impl Planet {
             gravity: self.params.gravity(),
             area_m2: self.params.surface_area(),
             biotic_weathering: 1.0,
+            land_phosphorus_routed: 0.0,
         }
     }
 

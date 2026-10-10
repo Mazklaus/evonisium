@@ -86,6 +86,7 @@ impl CellContext<'_> {
         cond.land_light_kj = self.land_light_per_biomass(land);
         cond.moisture = self.env.moisture;
         cond.has_land = self.env.dry_area_m2 > 0.0 && !self.env.is_ocean;
+        cond.soil_po4 = self.env.soil_phosphate;
         cond
     }
 
@@ -220,7 +221,9 @@ pub fn substep_with(
         }
         demand[WaterPool::Doc as usize] += growth * p.rates.doc_share;
         demand[WaterPool::Dic as usize] += growth * (1.0 - p.rates.heterotroph_share);
-        demand[WaterPool::Po4 as usize] += growth / cp;
+        if !p.phenotype.is_terrestrial() {
+            demand[WaterPool::Po4 as usize] += growth / cp;
+        }
         // Digestion aérobie des proies.
         demand[WaterPool::O2 as usize] += p.rates.prey_uptake * p.rates.prey_aerobic_share * b;
     }
@@ -266,7 +269,11 @@ pub fn substep_with(
         for q in 0..n {
             let l = loss[q] * phi[q];
             pops[q].biomass -= l;
-            chem[WaterPool::Po4 as usize] += l / cp / volume;
+            if pops[q].phenotype.is_terrestrial() {
+                out.soil_phosphorus -= l / cp;
+            } else {
+                chem[WaterPool::Po4 as usize] += l / cp / volume;
+            }
         }
         for j in 0..n {
             let want = wants[j];
@@ -320,7 +327,8 @@ pub fn substep_with(
         let energy_ratio = if p.rates.energy_kj > 0.0 { energy_scale / p.rates.energy_kj } else { 0.0 };
         let het = p.rates.heterotroph_share;
         let doc_share = p.rates.doc_share;
-        let mut carbon_phi: f64 = factor[WaterPool::Po4 as usize];
+        let land = p.phenotype.is_terrestrial();
+        let mut carbon_phi: f64 = if land { 1.0 } else { factor[WaterPool::Po4 as usize] };
         if doc_share > 0.0 {
             carbon_phi = carbon_phi.min(factor[WaterPool::Doc as usize]);
         }
@@ -386,6 +394,14 @@ pub fn substep_with(
             debug_assert!(digested + incorporated <= carbon * (1.0 + 1e-9) + 1e-12, "proies : {digested} + {incorporated} > {carbon}");
         }
         chem[WaterPool::Doc as usize] -= potential * doc_share * scale / volume;
+        if land {
+            // La terre ferme puise son phosphore dans le sol et l'y rend ; sa
+            // nécromasse ne coule pas, son carbone rejoint les eaux.
+            out.soil_phosphorus += (births - deaths) / cp;
+            chem[WaterPool::Doc as usize] += deaths / volume;
+            p.biomass += births - deaths;
+            continue;
+        }
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
         let sinking = deaths * physio.sinking_share_of(p.phenotype.body_size);
         out.sinking_carbon += sinking;
@@ -411,6 +427,9 @@ pub struct SubstepOutput {
     /// Carbone des particules qui coulent ; elles emportent leur phosphore
     /// au rapport de la biomasse.
     pub sinking_carbon: f64,
+    /// Phosphore pris au sol par la terre ferme (net de ce qu'elle lui rend) :
+    /// le sol n'est pas suivi, c'est un apport de l'extérieur de la couche.
+    pub soil_phosphorus: f64,
 }
 
 #[cfg(test)]
@@ -444,6 +463,8 @@ mod tests {
             dry_area_m2: 0.0,
             land_light_par_w_m2: 0.0,
             moisture: 0.0,
+            phosphorus_supply: 0.0,
+            soil_phosphate: 0.0,
         }
     }
 

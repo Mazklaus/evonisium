@@ -282,6 +282,9 @@ pub struct Conditions {
     pub land_predators: Trophic,
     pub moisture: f64,
     pub has_land: bool,
+    /// Phosphate de la solution du sol, mol·m⁻³ : celui que puisent les
+    /// organismes de la terre ferme à la place de celui de l'eau.
+    pub soil_po4: f64,
     /// Vrai une fois les conditions tournées vers la terre ferme
     /// ([`Conditions::for_habitat`]).
     pub on_land: bool,
@@ -301,6 +304,7 @@ impl Conditions {
             land_predators: Trophic::default(),
             moisture: 0.0,
             has_land: false,
+            soil_po4: 0.0,
             on_land: false,
         }
     }
@@ -594,7 +598,8 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
         if mass > 1.0 {
             max_growth /= mass.sqrt().sqrt();
         }
-        (surplus / cost).clamp(0.0, max_growth) * monod(chem[WaterPool::Po4 as usize], physio.phosphate_half)
+        let po4 = if cond.on_land { cond.soil_po4 } else { chem[WaterPool::Po4 as usize] };
+        (surplus / cost).clamp(0.0, max_growth) * monod(po4, physio.phosphate_half)
     } else {
         0.0
     };

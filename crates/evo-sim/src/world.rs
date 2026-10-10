@@ -437,6 +437,33 @@ impl World {
         1.0 + (self.planet.params.biotic_weathering_max - 1.0).max(0.0) * cover
     }
 
+    /// Livre aux sols de la terre ferme leur part du phosphore de
+    /// l'altération (`land_phosphorus_local_share`), répartie selon l'aire
+    /// sèche, l'humidité et la température de chaque cellule. Renvoie
+    /// l'accélération de l'altération par la vie, qui en fixe le débit.
+    fn route_land_phosphorus(&mut self, years: f64) -> f64 {
+        let biotic = self.biotic_weathering();
+        let p = &self.planet.params;
+        let mut ctx = self.planet.box_context(years);
+        ctx.biotic_weathering = biotic;
+        let rate = self.planet.reservoirs.land_phosphorus(p, &ctx) * p.land_phosphorus_local_share.clamp(0.0, 1.0);
+        let weight = |e: &evo_planet::CellEnvironment| {
+            if e.water_volume_m3 <= 0.0 || e.dry_area_m2 <= 0.0 {
+                return 0.0;
+            }
+            e.dry_area_m2 * e.moisture * ((e.temperature_k - p.weathering_reference_k) / p.weathering_activation_k).dexp()
+        };
+        let total: f64 = self.bio.env.iter().map(weight).sum();
+        let weights: Vec<f64> = self.bio.env.iter().map(weight).collect();
+        for (e, w) in self.bio.env.iter_mut().zip(weights) {
+            e.phosphorus_supply = if total > 0.0 { rate * w / total } else { 0.0 };
+            // Phosphate du sol à l'équilibre entre apport et lessivage.
+            let soil = e.dry_area_m2 * p.soil_water_m * p.soil_leaching_per_year;
+            e.soil_phosphate = if soil > 0.0 { e.phosphorus_supply / soil } else { 0.0 };
+        }
+        biotic
+    }
+
     pub fn new(mut config: WorldConfig) -> Self {
         let planet = generate(config.planet.clone(), config.level, config.seed);
         // Les pigments sont jugés sous l'étoile de cette partie, dans l'eau.
@@ -1042,6 +1069,7 @@ impl World {
     }
 
     fn ecology_phase(&mut self, years: f64, dt: f64) {
+        let biotic = self.route_land_phosphorus(years);
         let cfg = &self.config;
         let planet = &self.planet;
         let envs = &self.bio.env;
@@ -1054,6 +1082,7 @@ impl World {
             oxygen: f64,
             extinctions: u64,
             redox_correction: f64,
+            soil_phosphorus: f64,
         }
         let zero = || CellEco {
             exact: [0.0; WATER_POOL_COUNT],
@@ -1061,6 +1090,7 @@ impl World {
             oxygen: 0.0,
             extinctions: 0,
             redox_correction: 0.0,
+            soil_phosphorus: 0.0,
         };
         let total = self
             .communities
@@ -1083,6 +1113,7 @@ impl World {
                     if !pops.is_empty() {
                         let o = substep_with(pops, &caps, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
                         r.oxygen += o.oxygen;
+                        r.soil_phosphorus += o.soil_phosphorus;
                         r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
                         r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
                     }
@@ -1091,6 +1122,9 @@ impl World {
                 let v = env.water_volume_m3;
                 let biomass_change = pops.iter().map(|p| p.biomass).sum::<f64>() - biomass_start;
                 r.rates = steady_rates(&r.exact, &start, chem, v, biomass_change, cp, t_eco, cfg.physiology.oxygen_stress_half);
+                // À l'équilibre, la couche rend le phosphore que les sols lui
+                // apportent (`steady_rates` annule son export net).
+                r.rates[WaterPool::Po4 as usize] += planet.vent_supply(env, WaterPool::Po4);
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
                 pops.retain(|p| {
@@ -1125,6 +1159,7 @@ impl World {
                 a.oxygen += b.oxygen;
                 a.extinctions += b.extinctions;
                 a.redox_correction += b.redox_correction;
+                a.soil_phosphorus += b.soil_phosphorus;
                 a
             });
         self.stats.local_extinctions += total.extinctions;
@@ -1143,8 +1178,13 @@ impl World {
         // Pendant l'écologie rapide, elles sont mesurées ; le reste du pas,
         // les boîtes inscrivent ce qu'elles reçoivent des couches prolongées.
         self.flux.exchange(Element::Electrons, vents * t_eco.min(dt));
+        // Le phosphore livré aux sols entre par les couches sur tout le pas ;
+        // les boîtes en retranchent autant de leur apport direct.
+        let routed = vent_pools[WaterPool::Po4 as usize];
+        self.flux.exchange(Element::Phosphorus, routed * dt.max(t_eco) + total.soil_phosphorus);
         let mut ctx = self.planet.box_context(years);
-        ctx.biotic_weathering = self.biotic_weathering();
+        ctx.biotic_weathering = biotic;
+        ctx.land_phosphorus_routed = routed;
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le

@@ -129,6 +129,16 @@ pub struct PlanetParams {
     /// couverte de vie (racines, acides organiques, sols) : un facteur 4 à 7
     /// selon GEOCARB et COPSE (Berner, 2006 ; Lenton et coll., 2016).
     pub biotic_weathering_max: f64,
+    /// Part du phosphore de l'altération des terres libérée dans les sols de
+    /// la terre ferme (apatite des roches altérées sur place), avant que les
+    /// eaux ne l'emportent vers l'océan ; le reste y arrive directement par
+    /// les fleuves (étape 5).
+    pub land_phosphorus_local_share: f64,
+    /// Eau de la solution du sol par m² de terre ferme, m, et part de son
+    /// phosphate lessivée par an : ensemble, ils fixent la concentration du
+    /// phosphate du sol pour un apport donné (quelques µmol/L dans les sols).
+    pub soil_water_m: f64,
+    pub soil_leaching_per_year: f64,
     /// Échange entre la couche de surface et l'océan profond, an⁻¹.
     pub upwelling_rate: f64,
 
@@ -348,6 +358,9 @@ impl PlanetParams {
             gypsum_burial_years: 30e6,
             potential_evaporation_mm: 1000.0,
             biotic_weathering_max: 4.0,
+            land_phosphorus_local_share: 0.5,
+            soil_water_m: 0.05,
+            soil_leaching_per_year: 5.0,
             upwelling_rate: 0.01,
             plate_count: 14,
             plate_speed_cm_per_yr: 6.0,

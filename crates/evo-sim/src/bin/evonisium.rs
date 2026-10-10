@@ -353,7 +353,11 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
 
 fn trace_complex(world: &World) {
     type Pick = fn(&evo_life::Population) -> bool;
-    let groups: [(&str, Pick); 2] = [("phagotrophes", |p| p.phenotype.is_phagotroph()), ("eucaryotes", |p| p.phenotype.is_eukaryote())];
+    let groups: [(&str, Pick); 3] = [
+        ("phagotrophes", |p| p.phenotype.is_phagotroph()),
+        ("eucaryotes", |p| p.phenotype.is_eukaryote()),
+        ("terrestres", |p| p.phenotype.is_terrestrial()),
+    ];
     for (name, pick) in groups {
         let mut cells = 0usize;
         let mut rows: Vec<&evo_life::Population> = Vec::new();
@@ -375,7 +379,7 @@ fn trace_complex(world: &World) {
         };
         let biomass: f64 = rows.iter().map(|p| p.biomass).sum();
         println!(
-            "      {name} : {} populations dans {cells} cellules, {:.2e} mol C | naissance {:.3} mortalité {:.3} prédation {:.3} proies {:.2} r {:.4} taille {:.1} cellules {:.0}",
+            "      {name} : {} populations dans {cells} cellules, {:.2e} mol C | naissance {:.3} mortalité {:.3} prédation {:.3} proies {:.2} r {:.4} taille {:.1} cellules {:.0} résistance {:.2} phototrophes {}",
             rows.len(),
             biomass,
             median(&|p| p.rates.birth),
@@ -385,8 +389,48 @@ fn trace_complex(world: &World) {
             median(&|p| p.rates.r),
             median(&|p| p.phenotype.cell_size),
             median(&|p| p.phenotype.cells()),
+            median(&|p| p.phenotype.desiccation_tolerance),
+            rows.iter().filter(|p| p.phenotype.phototroph).count(),
         );
+        if name == "terrestres" {
+            trace_land_cells(world, pick);
+        }
     }
+}
+
+/// Facteurs limitants dans les cellules où vit la terre ferme : phosphate du
+/// sol, lumière du sol par mole de carbone, humidité.
+fn trace_land_cells(world: &World, pick: fn(&evo_life::Population) -> bool) {
+    let physio = &world.config.physiology;
+    let (mut po4, mut light, mut moist, mut dic, mut dry) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for (c, pops) in world.communities.iter().enumerate() {
+        if !pops.iter().any(pick) {
+            continue;
+        }
+        let env = &world.bio.env[c];
+        let ctx = evo_life::CellContext { env, light_biomass_per_m2: world.config.light_biomass_per_m2 };
+        let (_, land) = evo_life::CellContext::photo_biomass(pops);
+        let chem = &world.chemistry[c];
+        po4.push(env.soil_phosphate);
+        dic.push(chem[evo_planet::WaterPool::Dic as usize]);
+        light.push(ctx.land_light_per_biomass(land));
+        moist.push(env.moisture);
+        dry.push(land / env.dry_area_m2.max(1.0));
+    }
+    let med = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let p = med(&mut po4);
+    println!(
+        "        cellules terrestres : PO₄ du sol {:.2e} mol/m³ (facteur {:.2}) | CID {:.2e} | lumière {:.2e} kJ/molC/an | humidité {:.2} | biomasse {:.2e} molC/m² de sol",
+        p,
+        p / (p + physio.phosphate_half),
+        med(&mut dic),
+        med(&mut light),
+        med(&mut moist),
+        med(&mut dry),
+    );
 }
 
 /// Empreintes de l'état d'une partie scénarisée (ordres, interventions,

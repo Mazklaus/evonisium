@@ -169,6 +169,10 @@ pub struct BoxContext {
     /// Accélération de l'altération des silicates et du phosphore par la vie
     /// de la terre ferme, 1 sans elle (étape 5).
     pub biotic_weathering: f64,
+    /// Phosphore de l'altération des terres livré directement aux sols des
+    /// cellules de la terre ferme, mol·an⁻¹ : il rejoint l'océan profond par
+    /// les eaux de ces cellules au lieu d'y entrer d'un coup.
+    pub land_phosphorus_routed: f64,
 }
 
 impl GlobalReservoirs {
@@ -468,6 +472,28 @@ impl GlobalReservoirs {
     /// le pouvoir oxydant déplacé quand une boîte vide freine un prélèvement,
     /// et celui qui n'a pu être repris (voir [`pair_throttled`]), mol
     /// d'équivalent O₂.
+    fn co2_factor(&self, params: &PlanetParams, ctx: &BoxContext) -> f64 {
+        let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
+        (p_co2 / params.co2_pa).max(0.0)
+    }
+
+    /// Altération des silicates des terres, mol de CO₂ par an : sans la vie,
+    /// puis avec elle. Les racines, les acides organiques et les sols de la
+    /// vie terrestre accélèrent l'altération des silicates et la libération
+    /// du phosphore ; l'oxydation des roches suit l'érosion, pas la vie.
+    pub fn land_weathering(&self, params: &PlanetParams, ctx: &BoxContext) -> (f64, f64) {
+        let bare = params.weathering_per_m2
+            * ctx.land_area_m2
+            * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
+            * self.co2_factor(params, ctx).dpowf(params.weathering_co2_exponent);
+        (bare, bare * ctx.biotic_weathering.max(1.0))
+    }
+
+    /// Phosphore libéré par l'altération des terres, mol·an⁻¹.
+    pub fn land_phosphorus(&self, params: &PlanetParams, ctx: &BoxContext) -> f64 {
+        self.land_weathering(params, ctx).1 * params.weathering_phosphorus_ratio
+    }
+
     pub fn integrate(
         &mut self,
         params: &PlanetParams,
@@ -501,7 +527,6 @@ impl GlobalReservoirs {
         let _ = ctx.deep_volume_m3;
         let sinks_before = self.oxygen.total_sinks();
         let release_before = self.oxygen.surface_release;
-        let p_ref = params.co2_pa;
         let h2_ratio = params.reduced_outgassing_ratio();
         let esc_per_mixing = params.hydrogen_escape * ctx.area_m2 * evo_core::units::SECONDS_PER_YEAR / 6.022_140_76e23;
         for _ in 0..n {
@@ -590,17 +615,8 @@ impl GlobalReservoirs {
             flux.exchange(Element::Electrons, -(0.25 * params.vent_fe_flux + 0.5 * params.vent_mn_flux) * deep_share);
 
             // 4. Altération des silicates (thermostat) et des fonds.
-            let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
-            let co2_factor = (p_co2 / p_ref).max(0.0);
-            let land = params.weathering_per_m2
-                * ctx.land_area_m2
-                * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
-                * co2_factor.dpowf(params.weathering_co2_exponent);
-            // Les racines, les acides organiques et les sols de la vie terrestre
-            // accélèrent l'altération des silicates et la libération du
-            // phosphore ; l'oxydation des roches suit l'érosion, pas la vie.
-            let bare = land;
-            let land = bare * ctx.biotic_weathering.max(1.0);
+            let co2_factor = self.co2_factor(params, ctx);
+            let (bare, land) = self.land_weathering(params, ctx);
             let seafloor = params.seafloor_weathering_share
                 * params.outgassing_co2
                 * ctx.activity
@@ -611,6 +627,8 @@ impl GlobalReservoirs {
             self.carbonate_c += w;
             acc.weathering_co2 += w;
             let p_in = (land + params.seafloor_phosphorus_share * seafloor) * h * params.weathering_phosphorus_ratio;
+            // La part livrée aux sols arrive par les couches des cellules.
+            let p_in = p_in - ctx.land_phosphorus_routed * h;
             self.deep_po4 += p_in;
             flux.exchange(Element::Phosphorus, p_in);
             // Phosphore authigène (apatite, fluorapatite carbonatée) : puits
@@ -827,6 +845,7 @@ mod tests {
             gravity: params.gravity(),
             area_m2: params.surface_area(),
             biotic_weathering: 1.0,
+            land_phosphorus_routed: 0.0,
         }
     }
 
