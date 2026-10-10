@@ -15,6 +15,7 @@ use godot::prelude::*;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 pub mod bodies;
+pub mod ground;
 pub mod jobs;
 pub mod runner;
 pub mod session;

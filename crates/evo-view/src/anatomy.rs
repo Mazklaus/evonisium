@@ -84,14 +84,20 @@ fn generic_module(m: &sim::Module, plan: &sim::BodyPlan) -> Module {
         sim::ModuleKind::Cell => ModuleKind::Head,
         sim::ModuleKind::Body => ModuleKind::Trunk,
         sim::ModuleKind::Segment => ModuleKind::Segment,
+        // Un appendice aplati est une lame (nageoire, aile), sinon un membre.
+        sim::ModuleKind::Appendage if m.dimensions.profile == sim::Profile::Flattened => ModuleKind::Fin,
         sim::ModuleKind::Appendage => ModuleKind::Limb,
         sim::ModuleKind::Leaf => ModuleKind::Leaf,
         sim::ModuleKind::Organ => {
             let t = m.cell_types.first().and_then(|&i| plan.cell_types.get(i as usize));
-            ModuleKind::Organ(t.map_or(System::Storage, system_of))
+            match t {
+                // Organe des sens à la surface : un œil (stade cupule).
+                Some(t) if t.role == "sensorielle" => ModuleKind::Eye(body::EyeStage::Cup),
+                _ => ModuleKind::Organ(t.map_or(System::Storage, system_of)),
+            }
         }
     };
-    let flat = matches!(kind, ModuleKind::Leaf);
+    let flat = matches!(kind, ModuleKind::Leaf | ModuleKind::Fin);
     let radius = if flat { d.thickness_m / 2.0 } else { d.width_m / 2.0 }.max(1e-9) as f32;
     let mut out = Module::new(kind, d.length_m.max(0.0) as f32, radius);
     out.width_m = if flat { d.width_m as f32 } else { 0.0 };
@@ -179,7 +185,18 @@ pub fn from_simulated(plan: &sim::BodyPlan, org: &Organisation, seed: u64) -> Bo
     }
     let cells = org.body_cells.max(1.0);
     let mut pattern = Pattern::NONE;
+    // Un tronc qui porte d'autres modules est celui d'un animal ou d'une
+    // plante : un tronc ordinaire, pas un corps de colonie.
+    let trunk = root.kind == sim::ModuleKind::Body && plan.modules.len() > 1;
     match (root.kind, d.profile) {
+        _ if trunk => {
+            let mut m = generic_module(root, plan);
+            m.attach = 0.0;
+            m.around_deg = 0.0;
+            m.elevation_deg = 0.0;
+            m.pigments = pigments;
+            modules.push(m);
+        }
         (sim::ModuleKind::Cell, _) => {
             let r = (d.width_m / 2.0).max(1e-9) as f32;
             let mut m = Module::new(ModuleKind::Trunk, r * 0.25, r);
@@ -274,7 +291,7 @@ pub fn from_simulated(plan: &sim::BodyPlan, org: &Organisation, seed: u64) -> Bo
         }
     }
     if root.kind != sim::ModuleKind::Cell {
-        let filament = d.profile == sim::Profile::Elongated;
+        let filament = d.profile == sim::Profile::Elongated && !trunk;
         // Couches internes : un organe centré par type cellulaire profond,
         // d'autant plus gros que la couche commence près de la surface.
         let main = &modules[0];

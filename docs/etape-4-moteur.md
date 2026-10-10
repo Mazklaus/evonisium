@@ -2,9 +2,54 @@
 
 Périmètre (document d'architecture, « Périmètre consolidé de l'étape 4 ») : bilan d'électrons exact sans correction, régulation de l'O₂ par l'enfouissement du carbone limité par le phosphore, tunnel analytique et innovations tirées selon une loi de Poisson, test de saturation de la référence à 100 ka, chronologie calée sur la Terre à un facteur 3 près, cache des phénotypes, pas adaptatif et 1 Ma/s sur monde mûr.
 
-Mesures au niveau 4 (2 562 cellules physiques), graine 2026, sauf mention contraire. La porte au niveau 6 n'a pas été repassée.
+Mesures de la suite (PR #10) : porte au niveau 6 sur les six mondes, graine 2026, avec un tour d'évolution par 300 ka de temps simulé (décision de l'utilisateur du 9 octobre). Le détail par monde est dans [etape-4-porte-n6.md](etape-4-porte-n6.md).
 
-## Ce qui est fait
+## Suite : ce qui a changé
+
+**Fixations multiples.** Tous les candidats qui se fixent au cours d'un tour, chacun selon sa probabilité (une loi de Poisson quand l'offre n'est pas saturée), sont réunis gène par gène dans un même génome (`combine_changes`), jugé une fois avec un phénotype construit en entier ; la réunion est gardée si elle vaut au moins le meilleur seul et garde sa guilde. Les changements d'organites et de blocs ne se combinent pas. `--fixation-unique` revient à l'ancien comportement.
+
+**Tours comptés sur le temps simulé.** Le moteur fait un tour par tranche de 300 ka écoulée (`EvolutionParams::round_years`, horloge `Progress::evolution_clock`) ; le reste passe au pas suivant. Le nombre de tours ne dépend donc ni de la durée du pas ni de son allongement. Format de sauvegarde 6.
+
+**Le curseur de vitesse ne touche plus l'histoire.** Le client réglait la durée du pas d'après la vitesse (un ordre `SetStepYears` à chaque changement) ; il ne fait plus que freiner le moteur. Le pas, ses allongements, les tours d'évolution et le mode du climat (équilibre au-delà de 10 ka) ne dépendent que du temps simulé et de l'état du monde. Test `the_speed_cursor_never_changes_history` (evo-engine) : la même partie jouée d'un trait à toute vitesse, puis freinée à 4 Ma/s, relâchée, freinée à 1 Ma/s puis à 10 Ma/s avec la caméra déplacée, arrive au même état, bit pour bit. Aux vitesses lentes (1 ka/s), un pas de 100 à 300 ka met donc plusieurs minutes à s'afficher ; l'interpolation entre deux états publiés revient au client.
+
+**Biais de délétion.** Les pseudogènes (gènes sans fonction) ont leur propre tirage de délétions, proportionnel à leur part du génome ; ils sont purgés au lieu de s'accumuler (4 % de gènes inactifs à 600 Ma).
+
+**Tectonique stable.** Les continents couvraient puis étaient noyés, et les plaques fusionnaient jusqu'à une seule : plus de terres ni de dorsales, 6 bar de CO₂ et 340 K à 2 Ga. Corrigé : la parcelle la plus proche de chaque plaque survit, la surface continentale est tenue à sa fraction, les plaques sont redécoupées à chaque réorganisation. La Terre reste entre 286 et 290 K sur 2 Ga.
+
+**Phosphore et oxygène.** L'enfouissement du carbone est plafonné par le phosphore profond (rapport C/P) ; l'altération du plancher océanique suit la température (énergie d'activation équivalente à 40 K) et libère du phosphore. L'O₂ ne monte plus à 360 % PAL.
+
+**Refuges sous la glace.** Les sources hydrothermales gardent une eau à 283 K sous la banquise : la petite planète survit à sa glaciation.
+
+**π gardé à 3·10⁻¹⁴.** Avec les tours de 300 ka, la porte au niveau 4 passe sur les six mondes sans recalage (ci-dessous).
+
+**Points de reprise.** `evonisium porte --reprise DOSSIER` sauve le monde et l'état de la porte tous les 50 pas ; une partie interrompue reprend de là et donne le même rapport qu'une partie d'un seul tenant (vérifié). Les parties au niveau 6 durent 30 à 100 minutes chacune.
+
+## La porte au niveau 6
+
+Maintien de l'O₂ au-dessus de 10⁻⁴ pendant 50 Ma, graine 2026, 4 fils.
+
+| Monde | Photosynthèse oxygénique | O₂ > 10⁻⁴ | O₂ en fin de maintien | Température | Vitesse de la partie | Verdict |
+|---|---|---|---|---|---|---|
+| Terre (Archéen) | 188 Ma | 1,21 Ga | 65 % PAL | 285 K | 390 ka/s | franchie |
+| Monde océan | 634 Ma | 646 Ma | 11 % PAL | 324 K | 373 ka/s | franchie |
+| Monde désertique | 583 Ma | 1,65 Ga | 110 % PAL | 276 K | 403 ka/s | franchie |
+| Super-Terre | 616 Ma | 635 Ma | 8 % PAL | 288 K | 240 ka/s | franchie |
+| Petite planète | 617 Ma | 1,64 Ga | 83 % PAL | 269 K | 315 ka/s | franchie |
+| Monde sans lune | 616 Ma | 1,63 Ga | 68 % PAL | 283 K | 277 ka/s | franchie |
+
+La photosynthèse oxygénique vient du moteur sur les six mondes (l'accélérateur aide ailleurs, compté au rapport). Carbone, phosphore et électrons conservés à 10⁻¹⁰ près ; rejeu identique sur les six.
+
+Au niveau 4 (même code, graine 2026), la porte passe aussi sur les six mondes : photosynthèse oxygénique entre 327 et 682 Ma, O₂ au seuil entre 347 Ma et 1,76 Ga, de 8 à 144 % PAL en fin de maintien.
+
+## Chronologie
+
+Repères terrestres, comptés depuis l'apparition de la vie (environ 3,8 Ga) : photosynthèse oxygénique vers +800 à +1 100 Ma (fenêtre à un facteur 3 : 300 Ma à 2,7 Ga), grande oxydation vers +1,4 Ga (fenêtre : 470 Ma à 4,2 Ga).
+
+- Photosynthèse oxygénique : 583 à 634 Ma sur cinq mondes, dans la fenêtre ; la Terre à 188 Ma (graine 2026, niveau 6), un peu tôt. Au niveau 4, la Terre l'a à 672 Ma.
+- Montée de l'O₂ : sur la Terre, le désert, la petite planète et le monde sans lune, 1 Ga environ après la photosynthèse oxygénique, comme sur Terre ; les puits réducteurs tiennent maintenant. Sur le monde océan et la super-Terre, encore 12 à 19 Ma après : **accélération déclarée**, la vraie cause revient au chantier Planète (étape 5).
+- Premières étapes (pigment, phototrophie simple, anoxygénique) : 2 à 16 Ma, bien trop tôt ; ce sont des mutations courantes, que π ne règle pas.
+
+## PR #8 : ce qui était fait
 
 **Bilan d'électrons exact.** La correction de l'étape 3 (jusqu'à 37 % sur la petite planète) est supprimée. Chaque cellule prolonge ses flux de surface sur le pas en fermant exactement carbone, phosphore et électrons (`steady_rates`) ; la croissance autotrophe est réglée voie par voie sur le réducteur réellement consommé. Quand une boîte globale vide freine un prélèvement, ce qu'il alimentait est freiné avec lui (`pair_throttled`). Écart restant : 3·10⁻¹³ à 1,2·10⁻¹¹ de la production d'O₂, arrondis seulement ; part non reprise : 0 %.
 
@@ -21,7 +66,7 @@ Mesures au niveau 4 (2 562 cellules physiques), graine 2026, sauf mention contra
 
 **Pas adaptatif.** Un pas qui s'achève sans événement notable (intérêt ≥ 0,5) ni variation de plus de 10 % de l'O₂ allonge le suivant d'un pas demandé, jusqu'à trois fois ; le moindre événement notable le ramène au pas demandé. La décision ne dépend que de l'état simulé (rejeu identique, testé). L'évolution garde un tour par 100 ka. `--pas-fixe` le désactive pour la porte ; l'équivalence compare des pas fixes.
 
-## La porte au niveau 4
+## PR #8 : la porte au niveau 4 (un tour par 100 ka)
 
 Rapport complet : [etape-4-porte-n4.md](etape-4-porte-n4.md). Maintien de l'O₂ au-dessus de 10⁻⁴ pendant 50 Ma.
 
@@ -36,7 +81,7 @@ Rapport complet : [etape-4-porte-n4.md](etape-4-porte-n4.md). Maintien de l'O₂
 
 Carbone, phosphore et registre des électrons conservés à 4·10⁻¹¹ près ; rejeu identique sur les six mondes. Vitesse des parties entières : 2,5 à 4,2 Ma/s sur 4 fils (mondes jeunes).
 
-## Chronologie
+## PR #8 : chronologie
 
 Repères terrestres, comptés depuis l'apparition de la vie (environ 3,8 Ga) : photosynthèse anoxygénique vers +400 Ma, oxygénique vers +800 à +1 100 Ma (fenêtre à un facteur 3 : 300 Ma à 2,7 Ga), grande oxydation vers +1,4 Ga (fenêtre : 470 Ma à 4,2 Ga).
 
@@ -57,19 +102,23 @@ La référence est saturée : chaque tour fixe presque toujours, et doubler les 
 
 ## Vitesse sur monde mûr
 
-Monde mûr : Terre, niveau 6, 250 pas depuis un ensemencement de tout l'océan (`chrono --prepare 250`), 61 000 populations. Pas adaptatif au maximum (300 ka, trois tours d'évolution).
+Monde mûr : Terre, niveau 6, 250 pas depuis un ensemencement de tout l'océan (`chrono --prepare 250`), 53 000 populations, pas adaptatif au maximum (300 ka, un tour d'évolution). Code mesuré : cette branche réunie avec celle des cellules complexes (construction incrémentale étendue, commit d9245cd).
 
 | Fils | Durée d'un pas | dont évolution | Vitesse |
 |---|---|---|---|
-| 1 | 3,64 s | 2,71 s | 82 ka/s |
-| 4 | 1,31 s | 0,92 s | 229 ka/s |
+| 1 | 3,44 s | 2,48 s | 87 ka/s |
+| 2 | 1,85 s | 1,25 s | 162 ka/s |
+| 3 | 1,32 s | 0,88 s | 227 ka/s |
+| 4 | 1,07 s | 0,68 s | 282 ka/s |
 
-Estimation sur 6 cœurs : environ 320 ka/s. **La cible de 1 Ma/s n'est pas atteinte.** L'évolution prend 70 % du pas (1,4 million d'évaluations génétiques par pas). Leviers restants : construction incrémentale des phénotypes (fil « cellules complexes », environ un tiers de l'évolution), moins de candidats ponctuels par génotype, gonflement des génomes (ci-dessous).
+Estimation sur 6 cœurs : environ 385 ka/s (partie série d'environ 130 ms, planète et registres ; le reste se partage avec une efficacité de 85 à 90 %). **La porte de vitesse (500 ka/s sur 6 cœurs) n'est pas atteinte**, ni la cible de 1 Ma/s. Avec un tour par 100 ka, la même mesure donnait 126 ka/s sur 4 fils : passer à 300 ka a plus que doublé la vitesse. L'évolution prend encore 64 % du pas (520 000 évaluations génétiques). Leviers restants : moins de candidats ponctuels par génotype, génomes plus courts (ci-dessous), registres et migration (17 %).
+
+Parties entières au niveau 6 (porte ci-dessus, mondes jeunes, 4 fils) : 240 à 403 ka/s.
 
 ## Limites connues
 
-- **Petite planète.** La montée de l'O₂ détruit le méthane, la planète gèle entière (eau à 271 K sous la glace) et toute la vie meurt en 8 Ma : les génomes gonflés (50 à 100 gènes, entretien jusqu'à 10⁵ kJ par mole de carbone et par an) ne paient plus leur entretien au froid. Deux corrections essayées puis retirées : compromis thermique au niveau de la voie (le gonflement ne vient pas de l'étalement des optimums) et Q10 de l'entretien (l'O₂ ne monte plus nulle part en 2 Ga). Il manque des refuges (sources chaudes, glace mince).
-- **Gonflement des génomes.** Copies de petite efficacité d'une même voie qui s'additionnent (jusqu'à 400 gènes) ; c'est aussi un coût de vitesse, toute l'évolution étant en O(gènes).
-- **Monde sans lune** à 401 % PAL à la fin du maintien, encore en montée ; **monde océan** à 25 bar de CO₂ et 372 K (sans terres, ni altération ni apport de phosphore continental).
-- **Électrons freinés** : 23 à 86 % de la production d'O₂ est déplacée quand une boîte vide freine un prélèvement ; tout est apparié, mais c'est le signe que le prolongement des flux sur le pas surestime les prélèvements.
-- **Saturation des cellules** sur les 100 derniers pas : 1,7 à 11 % juste après la montée de l'O₂ (renouvellement des communautés), au-dessus du seuil de 2 % ; 0 % sur le monde mûr.
+- **Gonflement des génomes.** Le biais de délétion purge les pseudogènes, mais certaines populations gardent jusqu'à 1 300 gènes fonctionnels (copies de petite efficacité d'une même voie qui s'additionnent) ; toute l'évolution étant en O(gènes), c'est aussi un coût de vitesse.
+- **Monde océan** à 324 K et 3,9 bar de CO₂ (sans terres, ni altération ni apport de phosphore continental) ; sa montée de l'O₂ et celle de la super-Terre restent trop rapides (accélération déclarée).
+- **Terre au niveau 6** : photosynthèse oxygénique à 188 Ma, sous la fenêtre (une graine).
+- **Électrons freinés** : 21 à 103 % de la production d'O₂ est déplacée quand une boîte vide freine un prélèvement ; tout est apparié, mais c'est le signe que le prolongement des flux sur le pas surestime les prélèvements.
+- **Saturation des cellules** sur les 100 derniers pas : 5 à 13 % au niveau 6 juste après la montée de l'O₂ (renouvellement des communautés, presque toutes en croissance), au-dessus du seuil de 2 % ; 3,5 % sur le monde mûr.

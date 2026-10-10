@@ -890,6 +890,32 @@ impl World {
                 sum / n.max(1e-30),
                 100.0 * silent / sum.max(1e-30)
             );
+            if std::env::var_os("EVO_DEBUG_GENOMES").is_some() {
+                // Le plus gros génome : familles, nombre et efficacité moyenne.
+                let big: f64 = self.communities.iter().flatten().filter(|p| p.genome.genes.len() > 300).map(|p| p.biomass).sum();
+                if let Some(p) = self.communities.iter().flatten().max_by_key(|p| p.genome.genes.len()) {
+                    let mut fam: std::collections::BTreeMap<String, (usize, f64, f64)> = Default::default();
+                    for g in p.genome.functional_genes() {
+                        let e = fam.entry(format!("{:?}", g.domain.family)).or_default();
+                        e.0 += 1;
+                        e.1 += g.domain.efficiency;
+                        e.2 = e.2.max(g.domain.efficiency);
+                    }
+                    let mut v: Vec<_> = fam.into_iter().collect();
+                    v.sort_by_key(|(_, (n, _, _))| std::cmp::Reverse(*n));
+                    let txt: Vec<String> =
+                        v.iter().take(8).map(|(k, (n, s, m))| format!("{k} {n}×(moy {:.2}, max {m:.2})", s / *n as f64)).collect();
+                    eprintln!(
+                        "GENOMES {:.1} Ma part >300 gènes {:.1} % ; plus gros {} gènes, biomasse {:.1e}, taille {:.2} : {}",
+                        self.years / 1e6,
+                        100.0 * big / n.max(1e-30),
+                        p.genome.genes.len(),
+                        p.biomass,
+                        p.phenotype.cell_size,
+                        txt.join(", ")
+                    );
+                }
+            }
             let pl = &self.planet;
             eprintln!(
                 "TERRES {:.1} Ma terres {:.3} océan {:.3} niveau {:.0} m CO2 {:.0} Pa T {:.1} K bilans C {:.1e} P {:.1e} e {:.1e}",

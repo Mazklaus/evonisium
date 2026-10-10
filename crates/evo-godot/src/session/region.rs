@@ -101,4 +101,37 @@ impl EvoSession {
         *slot = None;
         d
     }
+
+    /// Descente au sol sur `cell` : une scène de `total` individus, figurants
+    /// du milieu et espèces vraies de la cellule assez grandes pour se voir.
+    /// Construite en tâche de fond (`EvoGround.is_ready()`).
+    #[func]
+    fn open_ground(&mut self, cell: i64, total: i64) -> Option<Gd<crate::ground::EvoGround>> {
+        let (Some(g), Some(f)) = (&self.game, self.frame()) else { return None };
+        let site = evo_view::ground::Site::from_frame(&f, cell.max(0) as usize)?;
+        let rx = g.engine.query(Query::Cell { cell: cell as u32 });
+        let seed = f.planet.seed ^ (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let total = total.clamp(1, 1_000_000) as usize;
+        let mut ground = Gd::<crate::ground::EvoGround>::default();
+        let fr = self.lang == Lang::Fr;
+        ground.bind_mut().start(fr, move || {
+            // Les populations de la cellule, la plus abondante d'abord.
+            let mut list = Vec::new();
+            if let Ok(Answer::Cell(Some(d))) = rx.recv() {
+                let mut pops = d.populations.clone();
+                pops.sort_by(|a, b| b.biomass.total_cmp(&a.biomass));
+                for p in pops {
+                    if list.iter().any(|(s, _): &(evo_sim::history::SpeciesView, _)| s.signature == p.species) {
+                        continue;
+                    }
+                    if let Some(sv) = f.state.species.iter().find(|s| s.signature == p.species) {
+                        list.push((sv.clone(), Some(p)));
+                    }
+                }
+            }
+            let real = crate::ground::real_for(list, f.planet.seed, site.is_ocean);
+            crate::ground::build(site, real, total, seed)
+        });
+        Some(ground)
+    }
 }

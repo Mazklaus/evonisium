@@ -420,3 +420,85 @@ pub fn plate(plan: &BodyPlan, width: usize, height: usize) -> (Canvas, f32) {
     cv.scale_bar(width as f32 * 0.08, height as f32 * 0.88, bar / um_per_px);
     (cv, bar)
 }
+
+/// Vues d'imposteur : `views` vues tournant autour du corps (lacet de
+/// 360°/views, caméra un peu au-dessus), chacune de `size` × `size` pixels,
+/// côte à côte. RGBA en octets, fond transparent, lavis éclairé et contour
+/// d'encre (document Rendu du vivant : « images de l'espèce pré-rendues sous
+/// plusieurs angles »). La vue k regarde le corps depuis l'angle k·360/views
+/// mesuré depuis l'avant (+x) vers la droite (+z).
+pub fn impostor_views(plan: &BodyPlan, views: usize, size: usize) -> Vec<u8> {
+    let (w, h) = (views * size, size);
+    let mut out = vec![0u8; w * h * 4];
+    let shape: Shape = place(plan);
+    let (_, unit) = unit_scale(&shape.primitives);
+    let skin: Vec<Primitive> = unit.into_iter().filter(|p| !p.internal).collect();
+    if skin.is_empty() {
+        return out;
+    }
+    let (lo, hi) = bounds(&skin);
+    let c = lo.add(hi).mul(0.5);
+    let radius = hi.sub(lo).len() / 2.0;
+    let pitch: f32 = -0.3;
+    let light = V3(0.4, 0.8, 0.45).norm();
+    for k in 0..views {
+        let yaw = std::f32::consts::TAU * k as f32 / views as f32;
+        // Caméra : regarde vers le centre depuis la direction (cos yaw, ., sin yaw).
+        let back = V3(yaw.cos() * pitch.cos(), -pitch.sin(), yaw.sin() * pitch.cos()).norm();
+        let fwd = back.mul(-1.0);
+        let right = fwd.cross(V3::Y).norm();
+        let upv = right.cross(fwd).norm();
+        let mpp = 2.0 * radius / size as f32;
+        let mut mask = vec![0.0f32; size * size];
+        let mut colour = vec![[0.0f32; 3]; size * size];
+        for py in 0..size {
+            for px in 0..size {
+                let ox = (px as f32 + 0.5 - size as f32 / 2.0) * mpp;
+                let oy = -(py as f32 + 0.5 - size as f32 / 2.0) * mpp;
+                let origin = c.add(right.mul(ox)).add(upv.mul(oy)).add(back.mul(radius * 1.2));
+                let mut d_travel = 0.0;
+                while d_travel < radius * 2.6 {
+                    let p = origin.add(fwd.mul(d_travel));
+                    let (d, i, _) = field(&skin, p);
+                    if d < mpp * 0.3 {
+                        // Normale par différences centrées.
+                        let e = mpp * 0.5;
+                        let g = |q: V3| field(&skin, q).0;
+                        let n = V3(
+                            g(p.add(V3(e, 0.0, 0.0))) - g(p.sub(V3(e, 0.0, 0.0))),
+                            g(p.add(V3(0.0, e, 0.0))) - g(p.sub(V3(0.0, e, 0.0))),
+                            g(p.add(V3(0.0, 0.0, e))) - g(p.sub(V3(0.0, 0.0, e))),
+                        )
+                        .norm();
+                        let lambert = n.dot(light).max(0.0);
+                        let shade = 0.55 + 0.45 * lambert;
+                        let base = skin[i].colour;
+                        colour[py * size + px] = [base[0] * shade, base[1] * shade, base[2] * shade];
+                        mask[py * size + px] = 1.0;
+                        break;
+                    }
+                    d_travel += d.max(mpp * 0.4);
+                }
+            }
+        }
+        for py in 0..size {
+            for px in 0..size {
+                let i = py * size + px;
+                if mask[i] <= 0.0 {
+                    continue;
+                }
+                let edge = [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+                    let (nx, ny) = (px as isize + dx, py as isize + dy);
+                    nx < 0 || ny < 0 || nx as usize >= size || ny as usize >= size || mask[ny as usize * size + nx as usize] <= 0.0
+                });
+                let rgb = if edge { INK } else { colour[i] };
+                let o = (py * w + k * size + px) * 4;
+                for j in 0..3 {
+                    out[o + j] = (rgb[j].clamp(0.0, 1.0) * 255.0).round() as u8;
+                }
+                out[o + 3] = 255;
+            }
+        }
+    }
+    out
+}

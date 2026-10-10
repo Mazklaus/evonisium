@@ -21,11 +21,13 @@ pub mod generate;
 pub mod mesh;
 pub mod pattern;
 pub mod plan;
+pub mod rig;
 pub mod shape;
 
 pub use generate::{from_microbe, random_plan};
-pub use mesh::{build, extent_m, plate, silhouette, Body, Mesh, LOD_RESOLUTION};
+pub use mesh::{build, extent_m, impostor_views, plate, silhouette, Body, Mesh, LOD_RESOLUTION};
 pub use plan::{BodyPlan, Covering, EyeStage, Joint, Module, ModuleKind, Pattern, Symmetry, System, PLAN_VERSION};
+pub use rig::{pose, rig, Action, Affine, Locomotion, Motion, Rig};
 
 #[cfg(test)]
 mod tests {

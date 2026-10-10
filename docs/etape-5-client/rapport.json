@@ -1,0 +1,151 @@
+{
+  "actions": [
+    {
+      "action": "se_nourrir",
+      "ok": true
+    },
+    {
+      "action": "chasser",
+      "ok": true
+    },
+    {
+      "action": "fuir",
+      "ok": true
+    },
+    {
+      "action": "se_cacher",
+      "ok": true
+    },
+    {
+      "action": "s_accoupler",
+      "ok": true
+    },
+    {
+      "action": "pondre",
+      "ok": true
+    },
+    {
+      "action": "soigner",
+      "ok": true
+    },
+    {
+      "action": "migrer",
+      "ok": true
+    },
+    {
+      "action": "se_battre",
+      "ok": true
+    },
+    {
+      "action": "communiquer",
+      "ok": true
+    },
+    {
+      "action": "construire",
+      "ok": true
+    },
+    {
+      "action": "se_reposer",
+      "ok": true
+    }
+  ],
+  "animated": 1000,
+  "build_ms_land": 1166.021305,
+  "build_ms_sea": 1248.985089,
+  "captures": [
+    "01-suivi",
+    "02-se_nourrir",
+    "03-chasser",
+    "04-fuir",
+    "05-se_cacher",
+    "06-s_accoupler",
+    "07-pondre",
+    "08-soigner",
+    "09-migrer",
+    "10-se_battre",
+    "11-communiquer",
+    "12-construire",
+    "13-se_reposer",
+    "14-foule",
+    "15-mer",
+    "16-mer-meduse"
+  ],
+  "counts_ok": true,
+  "impostors": 100000,
+  "individuals": 101000,
+  "land": {
+    "fps": 2.31128902900437,
+    "frames": 12,
+    "step_ms": 3.587504,
+    "worst_frame_ms": 492.65
+  },
+  "passed": true,
+  "sea": {
+    "fps": 2.46364185772999,
+    "frames": 13,
+    "step_ms": 3.44737746153846,
+    "worst_frame_ms": 476.817
+  },
+  "species_land": [
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 11,
+      "individuals": 1340,
+      "locomotion": "marche (6 pattes)",
+      "name": "Figurant d'essai n° 1 (marcheur)",
+      "predator": true,
+      "size_m": 2.82228541374207
+    },
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 13,
+      "individuals": 26754,
+      "locomotion": "marche (8 pattes)",
+      "name": "Figurant d'essai n° 2 (marcheur)",
+      "predator": false,
+      "size_m": 0.111466251313686
+    },
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 9,
+      "individuals": 14966,
+      "locomotion": "vole",
+      "name": "Figurant d'essai n° 3 (voilier)",
+      "predator": false,
+      "size_m": 0.356240034103394
+    },
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 10,
+      "individuals": 29419,
+      "locomotion": "rampe",
+      "name": "Figurant d'essai n° 4 (ver)",
+      "predator": false,
+      "size_m": 0.0921868309378624
+    },
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 11,
+      "individuals": 15440,
+      "locomotion": "marche (6 pattes)",
+      "name": "Figurant d'essai n° 5 (marcheur)",
+      "predator": false,
+      "size_m": 0.334686636924744
+    },
+    {
+      "aquatic": false,
+      "bench": true,
+      "bones": 9,
+      "individuals": 13081,
+      "locomotion": "vole",
+      "name": "Figurant d'essai n° 6 (voilier)",
+      "predator": false,
+      "size_m": 0.466322958469391
+    }
+  ]
+}
