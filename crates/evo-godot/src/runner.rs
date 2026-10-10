@@ -216,10 +216,10 @@ impl Game {
         self.engine.submit(When::At(years), kind)
     }
 
-    /// Vitesse visée : seulement le frein du moteur. Le curseur de vitesse
-    /// ne change jamais l'histoire (règle de Vision du 2026-10-09) : la durée
-    /// du pas suit le temps simulé et l'état du monde, côté moteur ; le
-    /// client n'envoie plus d'ordre de pas.
+    /// Vitesse visée : le frein du moteur, rien d'autre. Le pas, les tours
+    /// d'évolution et le mode du climat dépendent du temps simulé et de
+    /// l'état du monde, jamais du curseur : deux parties identiques jouées à
+    /// des vitesses différentes ont la même histoire.
     pub fn set_speed(&mut self, years_per_second: f64) {
         self.pace = years_per_second.max(1.0);
         self.engine.set_throttle(Some(self.pace));
