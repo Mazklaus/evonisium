@@ -3,7 +3,8 @@ name = "evo-godot"
 description = "Pont entre le moteur Rust et le client Godot 4 (GDExtension) : session de jeu, globe, images du vivant."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

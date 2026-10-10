@@ -81,3 +81,31 @@ fn a_player_creates_seeds_intervenes_queries_and_saves() {
     assert_eq!(again[..n], hist[..n]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Le curseur de vitesse ne règle que le rythme d'affichage : deux parties
+/// identiques, l'une à toute vitesse, l'autre freinée puis relâchée à
+/// plusieurs reprises (et la caméra déplacée), arrivent au même état, bit
+/// pour bit.
+#[test]
+fn the_speed_cursor_never_changes_history() {
+    let stop = 3.0e6;
+    let run = |throttles: &[Option<f64>]| {
+        let engine = Engine::new_game(small_game(11)).unwrap();
+        engine.set_throttle(throttles[0]);
+        engine.submit(When::Now, OrderKind::SeedLife);
+        engine.submit(When::At(stop), OrderKind::Pause);
+        engine.submit(When::Now, OrderKind::Resume);
+        for (k, t) in throttles.iter().enumerate().skip(1) {
+            let at = stop * k as f64 / throttles.len() as f64;
+            wait_for(&engine, "étape du curseur", |e| e.frame().current.years >= at);
+            engine.set_throttle(*t);
+            engine.set_interest(Some(InterestZone { center_cell: 3 * k as u32, radius_km: 1500.0, zoom_band: (k % 4) as u8 }));
+        }
+        wait_for(&engine, "pause", |e| e.status().state_hash.is_some() && e.frame().current.years >= stop);
+        (engine.frame().current.years, engine.status().state_hash)
+    };
+    let fast = run(&[None]);
+    let varied = run(&[Some(4.0e6), None, Some(1.0e6), Some(1.0e7)]);
+    assert!(fast.1.is_some());
+    assert_eq!(fast, varied);
+}

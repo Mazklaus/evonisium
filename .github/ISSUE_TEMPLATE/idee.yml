@@ -1,0 +1,16 @@
+name: Proposer une idée
+description: Une mécanique, une amélioration scientifique, d'interface ou de rendu.
+labels: ["idée"]
+body:
+  - type: textarea
+    id: idee
+    attributes:
+      label: L'idée
+      description: Ce que tu proposes et ce que ça apporterait au jeu.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Références scientifiques ou exemples, si tu en as.

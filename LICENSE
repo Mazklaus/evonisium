@@ -1,0 +1,22 @@
+Evonisium
+Copyright (c) 2026 Abel Garnier. Tous droits réservés. All rights reserved.
+
+Le code source, les documents et les ressources de ce dépôt sont publiés pour
+être consultés. Sauf accord écrit du titulaire des droits, aucune licence n'est
+accordée pour les copier, les modifier, les redistribuer ou les exploiter, en
+tout ou en partie, au-delà de ce que permettent les conditions d'utilisation de
+GitHub (consulter le dépôt et en créer une copie sur GitHub).
+
+The source code, documents and assets in this repository are published for
+viewing only. Unless the copyright holder agrees in writing, no licence is
+granted to copy, modify, redistribute or otherwise use them, in whole or in
+part, beyond what the GitHub Terms of Service allow (viewing the repository and
+forking it on GitHub).
+
+Exceptions / Exceptions :
+- Les polices de client/fonts/ restent sous la SIL Open Font License 1.1, dont
+  le texte accompagne chacune (fichiers OFL-*.txt).
+  The fonts in client/fonts/ remain under the SIL Open Font License 1.1, whose
+  text accompanies each one (OFL-*.txt files).
+- Les dépendances tierces (crates Rust, Godot) gardent leurs propres licences.
+  Third-party dependencies (Rust crates, Godot) keep their own licences.

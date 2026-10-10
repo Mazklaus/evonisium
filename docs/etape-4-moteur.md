@@ -13,7 +13,7 @@ Mesures au niveau 4 (2 562 cellules physiques), graine 2026, sauf mention contra
 - le phosphore dissous a un puits indépendant de l'oxygène, l'apatite authigène (temps de séjour 100 ka) : sans lui, il montait à mille fois la Terre sous l'océan anoxique et l'O₂ s'emballait ensuite jusqu'à 390 % PAL ;
 - l'oxydation des roches réduites suit l'altération des silicates des terres (3 mol d'O₂ par mol de CO₂ à 1 PAL, exposant 0,5) au lieu de la surface des terres : l'érosion qui apporte le phosphore expose aussi le kérogène et la pyrite.
 
-**Innovations et tunnel.** Les mutants innovants (de novo, duplication suivie de divergence) apparaissent selon une loi de Poisson de paramètre apparitions × probabilité d'innovation (π = 10⁻¹³ par défaut) ; le tunnel de Weissman et coll. (2009) est calculé analytiquement pour chacun d'eux qui ne se fixe pas seul, sans borne d'essais.
+**Innovations et tunnel.** Les mutants innovants (de novo, duplication suivie de divergence) apparaissent selon une loi de Poisson de paramètre apparitions × probabilité d'innovation (π = 3·10⁻¹⁴ par défaut, recalé avec les fixations multiples) ; le tunnel de Weissman et coll. (2009) est calculé analytiquement pour chacun d'eux qui ne se fixe pas seul, sans borne d'essais.
 
 **Éviction sous le plafond.** Classer selon la fitness d'invasion (`--eviction invasion`) a été mesuré : 47 % de cellules saturées sur les 100 derniers pas contre 1,3 % avec la biomasse, et une production primaire divisée par cinq. À l'équilibre, chaque résident a un r proche de zéro, souvent un peu négatif, et un fondateur qui arrive un r positif : la règle évince les résidents établis. Vision a gardé la biomasse ; l'option reste, désactivée.
 
