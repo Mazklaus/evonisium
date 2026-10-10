@@ -22,15 +22,8 @@ use std::thread::JoinHandle;
 
 /// Vitesse de départ : 100 ka/s.
 pub const DEFAULT_SPEED: f64 = 1e5;
-/// Pas par seconde visés : la durée du pas est vitesse / 10.
-pub const STEPS_PER_SECOND: f64 = 10.0;
 /// Événements relevés par requête.
 const EVENTS_PER_POLL: usize = 500;
-
-/// Durée de pas pour une vitesse (bornes du monde microbien).
-pub fn step_years_for(speed: f64) -> f64 {
-    (speed / STEPS_PER_SECOND).clamp(100.0, 130_000.0)
-}
 
 /// Fils de calcul du moteur : deux cœurs restent à l'affichage
 /// (architecture : 2 cœurs sur 8 réservés).
@@ -177,8 +170,6 @@ impl Game {
         let mut g = Self::wrap(engine, meta.spec, meta.seed, meta.level, meta.seeding, sandbox);
         g.branch_of = path.to_string_lossy().into_owned();
         g.interventions = meta.interventions;
-        g.pace = g.engine.frame().current.step_years * STEPS_PER_SECOND;
-        g.engine.set_throttle(Some(g.pace));
         Ok(g)
     }
 
@@ -225,16 +216,13 @@ impl Game {
         self.engine.submit(When::At(years), kind)
     }
 
-    /// Vitesse visée : le frein du moteur, et la durée du pas par un ordre
-    /// (elle change l'histoire, donc le registre la garde).
+    /// Vitesse visée : seulement le frein du moteur. Le curseur de vitesse
+    /// ne change jamais l'histoire (règle de Vision du 2026-10-09) : la durée
+    /// du pas suit le temps simulé et l'état du monde, côté moteur ; le
+    /// client n'envoie plus d'ordre de pas.
     pub fn set_speed(&mut self, years_per_second: f64) {
         self.pace = years_per_second.max(1.0);
         self.engine.set_throttle(Some(self.pace));
-        let old = self.engine.frame().current.step_years;
-        let new = step_years_for(self.pace);
-        if (new - old).abs() > 1e-9 {
-            self.order(OrderKind::SetStepYears(new));
-        }
     }
 
     pub fn observe(&self, zone: InterestZone) {

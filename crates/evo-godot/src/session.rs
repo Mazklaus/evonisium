@@ -41,7 +41,7 @@ fn f32_bytes(v: &[f32]) -> PackedByteArray {
     PackedByteArray::from(&bytes[..])
 }
 
-fn image_rgbaf(w: usize, h: usize, data: &[f32]) -> Option<Gd<Image>> {
+pub(crate) fn image_rgbaf(w: usize, h: usize, data: &[f32]) -> Option<Gd<Image>> {
     Image::create_from_data(w as i32, h as i32, false, ImageFormat::RGBAF, &f32_bytes(data))
 }
 

@@ -66,7 +66,7 @@ jobs:
           wc -l empreinte-ubuntu-24.04.txt
 
   client-linux:
-    name: Client Godot (Linux) — portes des étapes 3 et 4
+    name: Client Godot (Linux) — portes des étapes 3 à 5
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
@@ -84,7 +84,7 @@ jobs:
       - run: cargo build --release -p evo-godot
       - name: Import du projet
         run: ./$GODOT --headless --path client --import || true
-      - name: Rejeu — deux chemins de caméra, un point de sauvegarde
+      - name: Rejeu — deux chemins de caméra et de curseur de vitesse, un point de sauvegarde
         run: ./$GODOT --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$PWD/porte/rejeu-linux
       # La partie jusqu'à l'oxygène dure une demi-heure : seulement sur main.
       - name: Partie jouée — créer, ensemencer, intervenir, voir l'oxygène monter
@@ -94,6 +94,9 @@ jobs:
       - name: Étape 4 — impact, « avec et sans », réseau, strates, régions, anatomie, comparateur
         timeout-minutes: 30
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --niveau=4 --sortie=$PWD/porte/etape4
+      - name: Étape 5 — scène au sol, 1 000 animés et 100 000 imposteurs, les 12 actions
+        timeout-minutes: 15
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte5 --sortie=$PWD/porte/etape5
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -117,7 +120,7 @@ jobs:
       - name: Import du projet
         shell: bash
         run: ./Godot_v4.6.1-stable_win64_console.exe --headless --path client --import || true
-      - name: Rejeu — deux chemins de caméra, un point de sauvegarde
+      - name: Rejeu — deux chemins de caméra et de curseur de vitesse, un point de sauvegarde
         shell: bash
         run: ./Godot_v4.6.1-stable_win64_console.exe --headless --path client -- --porte --rejeu --niveau=4 --pas=40 --sortie=$(cygpath -m "$PWD")/porte/rejeu-windows
       - uses: actions/upload-artifact@v4
