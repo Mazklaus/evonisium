@@ -37,7 +37,7 @@ func _charger() -> void:
 		muet = bool(cfg.get_value("son", "muet", false))
 	_appliquer()
 
-func _enregistrer() -> void:
+func enregistrer() -> void:
 	var cfg := ConfigFile.new()
 	for k in volumes:
 		cfg.set_value("volumes", k, volumes[k])
@@ -45,23 +45,26 @@ func _enregistrer() -> void:
 	cfg.save(CONFIG)
 
 func _appliquer() -> void:
+	if son == null:
+		return
 	son.volumes(volumes["general"], volumes["musique"], volumes["ambiances"], volumes["interface"])
 	son.muet(muet)
 
-## Règle un volume (« general », « musique », « ambiances », « interface »).
+## Règle un volume (« general », « musique », « ambiances », « interface »)
+## et l'entend aussitôt ; `enregistrer()` le garde ensuite.
 func regler(nom: String, valeur: float) -> void:
-	if son == null or not volumes.has(nom):
+	if not volumes.has(nom):
 		return
 	volumes[nom] = clampf(valeur, 0.0, 1.0)
 	_appliquer()
-	_enregistrer()
+
+func couper(on: bool) -> void:
+	muet = on
+	_appliquer()
+	enregistrer()
 
 func basculer_muet() -> void:
-	if son == null:
-		return
-	muet = not muet
-	_appliquer()
-	_enregistrer()
+	couper(not muet)
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey

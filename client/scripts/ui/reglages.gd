@@ -2,12 +2,15 @@ extends PanelContainer
 ## Réglages et accessibilité de base (document Fonctionnalités, « Réglages »
 ## et « Accessibilité ») : langue, taille de l'interface et du texte, vision
 ## des couleurs, police très lisible, unités, mouvements réduits, sauvegarde
-## automatique, rendu du globe, narrateur.
+## automatique, rendu du globe, narrateur, volumes du son (entendus
+## aussitôt, gardés par l'autoload Son dans user://son.cfg).
 
 var draft := {}
 
 func _ready() -> void:
 	draft = App.settings.duplicate()
+	# Les volumes s'appliquent pendant le réglage ; on les garde en sortant.
+	tree_exiting.connect(Son.enregistrer)
 	custom_minimum_size = Vector2(560, 0)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(540, 620)
@@ -36,6 +39,8 @@ func _ready() -> void:
 	_check(v, "terminator")
 	_check(v, "narrator")
 	_option(v, "profile", [App.t("profile_contemplatif"), App.t("profile_naturaliste"), App.t("profile_tout")], ["contemplatif", "naturaliste", "tout"], "stop_profile")
+	v.add_child(Atlas.hsep())
+	_son(v)
 	v.add_child(Atlas.hsep())
 	var h := HBoxContainer.new()
 	v.add_child(h)
@@ -85,6 +90,32 @@ func _fmt(x: float) -> String:
 	if is_equal_approx(x, round(x)):
 		return str(int(x))
 	return ("%.2f" % x).replace(".", "," if App.settings["lang"] == "fr" else ".")
+
+## Volumes : appliqués pendant le glissement pour qu'on les entende.
+func _son(parent: Control) -> void:
+	parent.add_child(Atlas.title(App.t("sound"), 22))
+	for nom in ["general", "musique", "ambiances", "interface"]:
+		var h := _row(parent, "vol_" + nom)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 5
+		sl.value = round(float(Son.volumes[nom]) * 100.0)
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.custom_minimum_size.x = 160
+		var value := Atlas.text(str(int(sl.value)))
+		value.custom_minimum_size.x = 50
+		value.autowrap_mode = TextServer.AUTOWRAP_OFF
+		sl.value_changed.connect(func(x):
+			Son.regler(nom, x / 100.0)
+			value.text = str(int(x)))
+		h.add_child(sl)
+		h.add_child(value)
+	var c := CheckBox.new()
+	c.text = App.t("mute")
+	c.button_pressed = Son.muet
+	c.toggled.connect(func(on): Son.couper(on))
+	parent.add_child(c)
 
 func _check(parent: Control, key: String) -> void:
 	var c := CheckBox.new()

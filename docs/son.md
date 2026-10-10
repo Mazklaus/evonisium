@@ -22,7 +22,7 @@ Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement u
 
 Le vent ne fait jamais de fond continu : des rafales de 5 à 12 s, séparées de 30 à 150 s de calme, plus rares quand le climat est froid ou pris par la glace (retour d'écoute de l'utilisateur du 10 octobre 2026 : vent et ressac trop présents). Les orages sont rares et tombent plutôt pendant les rafales.
 
-En pause, la musique se retire de moitié. **Ctrl+M** coupe ou rend le son. Les volumes (général, musique, ambiances, interface) sont gardés dans `user://son.cfg` ; leur réglage dans l'écran des réglages reste à ajouter côté client.
+En pause, la musique se retire de moitié. **Ctrl+M** coupe ou rend le son. Les volumes (général, musique, ambiances, interface) se règlent dans l'écran des réglages, s'entendent pendant le glissement et sont gardés dans `user://son.cfg`.
 
 ## Architecture
 
