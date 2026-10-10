@@ -109,3 +109,38 @@ fn the_speed_cursor_never_changes_history() {
     assert!(fast.1.is_some());
     assert_eq!(fast, varied);
 }
+
+/// Les individus échantillonnés ne changent pas l'histoire : une partie où
+/// le client tire et fait vivre des échantillons à chaque étape finit au même
+/// état, bit pour bit, qu'une partie sans eux (porte de l'étape 5).
+#[test]
+fn sampled_individuals_never_change_history() {
+    let stop = 3.0e6;
+    let run = |sample: bool| {
+        let engine = Engine::new_game(small_game(13)).unwrap();
+        engine.submit(When::Now, OrderKind::SeedLife);
+        engine.submit(When::At(stop), OrderKind::Pause);
+        engine.submit(When::Now, OrderKind::Resume);
+        let mut drawn = 0;
+        if sample {
+            for k in 1..6 {
+                wait_for(&engine, "étape", |e| e.frame().current.years >= stop * k as f64 / 6.0);
+                for cell in [0u32, 7, 21, 40] {
+                    engine.set_interest(Some(InterestZone { center_cell: cell, radius_km: 500.0, zoom_band: 6 }));
+                    let q = Query::Individuals { cell, species: 3, size: 60, microbes: true };
+                    let Answer::Individuals(mut ind) = engine.query(q).recv().unwrap() else { panic!() };
+                    for s in ind.samples.iter_mut() {
+                        s.advance(1e-3);
+                        drawn += s.members.len();
+                    }
+                }
+            }
+        }
+        wait_for(&engine, "pause", |e| e.status().state_hash.is_some() && e.frame().current.years >= stop);
+        (engine.frame().current.years, engine.status().state_hash, drawn)
+    };
+    let plain = run(false);
+    let watched = run(true);
+    assert!(watched.2 > 0, "aucun individu tiré");
+    assert_eq!((plain.0, plain.1), (watched.0, watched.1));
+}

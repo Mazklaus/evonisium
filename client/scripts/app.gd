@@ -60,7 +60,7 @@ const TEXT := {
 	"pause": ["Pause", "Pause"],
 	"ground_down": ["Descendre au sol", "Go down to the ground"],
 	"ground_title": ["Au sol", "On the ground"],
-	"ground_extras": ["Figurants d'essai : le moteur ne publie pas encore d'individus. Ces corps viennent de plans de construction de banc d'essai et leurs gestes ne changent pas l'histoire.", "Test extras: the engine does not publish individuals yet. These bodies come from bench body plans and what they do never changes history."],
+	"ground_extras": ["Les espèces de la cellule assez grandes pour se voir sont des individus tirés de leur population par le moteur ; les autres corps sont des figurants d'essai. Rien de ce qu'ils font ne change l'histoire.", "Species of this cell large enough to be seen are individuals the engine draws from their population; the other bodies are test extras. Nothing they do ever changes history."],
 	"ground_wait": ["Préparation de la scène…", "Preparing the scene…"],
 	"ground_up": ["Remonter", "Back up"],
 	"ground_free": ["Survol libre", "Free flight"],

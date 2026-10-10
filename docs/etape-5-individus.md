@@ -1,0 +1,46 @@
+# Étape 5, volet moteur : individus et comportements
+
+Feuille de route (document Vision, « Périmètre consolidé de l'étape 5 ») : des individus échantillonnés (niveau 4) dans les zones actives, calibrés pour reproduire les taux de naissance, de mort et de déplacement de leur population ; des agents détaillés (niveau 5) dans la zone observée ; des comportements paramétrés par le phénotype (sens, système nerveux, locomotion) ; la publication de l'action courante dans le lexique commun. Porte, pour ce volet : les individus reproduisent les taux de leur population aux fluctuations près, et leur présence ne change pas l'histoire (rejeu identique quels que soient la caméra et le curseur).
+
+**Verdict : ce volet de la porte est tenu dans les tests.** Les individus reproduisent les taux de leur population (naissances, morts, prédation, départs, arrivées), sur des échantillons d'essai comme sur une population d'un vrai monde. Une partie où le client tire des individus à chaque étape finit au même état, bit pour bit, qu'une partie sans eux. Il reste une limite de taille : à la fin de l'étape 4, les multicellulaires du moteur sont des colonies de moins d'un millimètre, trop petites pour la scène au sol. Les agents y apparaîtront quand le fil « Animaux et écosystèmes » produira des corps plus grands. En attendant, la scène garde ses figurants.
+
+| Critère | Résultat | Preuve |
+|---|---|---|
+| Naissances, morts, prédation, départs et arrivées aux taux de la population | oui, à 4 écarts types d'un compte de Poisson, sur des milliers d'individus-années | `evo-agents/tests/calibrage.rs`, `individuals_reproduce_the_population_rates` |
+| Mêmes taux sur une population d'un vrai monde | oui (Terre de niveau 3 après 8 pas, population la plus abondante) | `evo-agents/tests/monde.rs` |
+| Reproduction réelle | oui : enfants à deux parents chez les sexués, génomes recombinés puis mutés, chaque génome distinct développé une fois (cache) | `reproduction_is_real_genomes_recombine_and_mutate` |
+| Hors histoire : rejeu identique | oui : même date et même empreinte d'état avec ou sans échantillons tirés et vécus, et avec une caméra qui se promène | `evo-engine/tests/engine.rs`, `sampled_individuals_never_change_history` |
+| Un prédateur ne tue que lorsque le niveau 4 le dit | oui : 59 prises pour 59 morts par prédation tirées, les autres chasses échouent | `scene_kills_only_when_level_four_says_so` |
+| Agents dans la scène au sol | oui : une espèce vraie dont le moteur a tiré un échantillon devient une espèce d'agents ; la foule ne change jamais de taille | `evo-view`, `engine_agents_drive_their_species_in_the_crowd` |
+| Coût de la scène des agents | 0,37 ms par image pour 1 200 agents (4 espèces de 300) | `cargo run --release -p evo-agents --example cout_scene` |
+| Vitesse du moteur | inchangée : rien n'est calculé pendant le pas ; un échantillon se tire à la demande du client, entre deux pas | |
+
+## Comment c'est fait
+
+Tout le volet est dans une nouvelle crate, `evo-agents`. Elle lit le monde (`&World`) et ne l'écrit jamais : `evo-sim` n'en dépend pas, si bien que le moteur ne peut pas, par construction, sentir la présence d'un individu. Son hasard a son propre flux (`Stream::Individuals`), dérivé de la graine, de la cellule, de la lignée et de la date.
+
+**Échantillon du niveau 4** (`sample.rs`). Pour une population multicellulaire (les microbes restent des guildes, comme le prévoit Vision), le moteur tire jusqu'à 300 individus : âge selon la distribution stable (exponentielle de taux b), sexe, position dans la cellule, génome de la population portant quelques générations de mutations. L'échantillon vit ensuite par l'algorithme de Gillespie, chaque événement tiré à son taux exact :
+
+- naissances : un individu de valeur sélective w naît au taux b·w/w̄, si bien que l'échantillon entier naît exactement au taux N·b. La mère et le père sont tirés selon leur valeur sélective. Le génome de l'enfant recombine ceux des parents (cause « recombinaison » de l'interface unique de modification des génomes), puis mute selon le modèle du moteur. Le génome est développé (phénotype, plan de construction, traits) puis mis en cache. Sa valeur sélective vient de ses taux de croissance dans la cellule : s = (r_mutant − r_résident) × T, comme dans le moteur ;
+- morts : taux d de la population, dont la part due aux prédateurs ;
+- départs et arrivées : taux de migration du moteur. Les immigrants viennent de la population voisine de même espèce. Dans la cellule, les individus marchent au hasard avec D = m·R²/8, ce qui donne au disque un temps moyen de sortie de 1/m.
+
+**Agents du niveau 5** (`agents.rs`). Les individus d'un échantillon sont posés dans une scène locale avec un corps, des besoins et une action courante du lexique commun (les 12 actions, dans l'ordre de `evo_morph`). Chaque agent décide toutes les `reaction_s` secondes, voit à `perception_m` et va à l'allure de sa locomotion. Il fuit ou se cache devant un prédateur qui le chasse, chasse quand il a faim et qu'il est prédateur, se nourrit, se repose, suit son groupe, lance un cri d'alarme quand il est sociable, courtise et se bat pour un partenaire, pond, construit et soigne quand l'espèce soigne ses petits.
+
+La démographie de la scène est celle du niveau 4. Une naissance fait pondre la mère, avec le père à ses côtés s'il est en vue. Une mort par prédation envoie le prédateur libre le plus proche chasser la victime, et seule cette prise tue. Les autres chasses échouent, la proie s'échappe. Un départ fait partir l'individu vers le bord, une arrivée le fait entrer. La part du temps passée à se nourrir suit le bilan d'énergie de la population. L'horloge de la vie (années par seconde d'écran) est réglée pour montrer environ un événement toutes les deux secondes : c'est un choix d'affichage, sans effet sur le monde.
+
+**Traits** (`traits.rs`). Longueur et masse viennent du plan de construction, la locomotion de ses appendices articulés (marche, nage, vol), à défaut de sa forme (ondulation, cils, dérive, fixé). Les vitesses suivent une loi en √longueur par mode, modulée par les muscles quand le plan en porte. Le régime vient des taux (part des proies, part hétérotrophe). Les défenses viennent du revêtement et du squelette.
+
+**Zones actives** (`zones.rs`). Ce sont la cellule regardée (canal d'observation), les cellules des lignées que suit le joueur, et celles d'une innovation ou d'une nouvelle lignée récentes (2 Ma), quand elles portent des multicellulaires.
+
+**Branchement.** La requête `Query::Individuals { cell, species, size, microbes }` du moteur répond entre deux pas, sur l'état exact du dernier pas. La descente au sol (`EvoSession.open_ground`) la pose avec la requête de la cellule. Chaque espèce vraie assez grande pour la scène et échantillonnée devient une espèce d'agents de la foule (`Crowd::with_agents`), avec des places réservées, de taille nulle quand elles sont libres, pour que le nombre d'individus de la foule (et les tampons de Godot) ne change jamais.
+
+## Simplifications et limites
+
+- **Sens, système nerveux et muscles devinés.** Le phénotype n'a pas encore de familles de gènes pour eux. La perception, le système nerveux, la sociabilité et le soin des petits sont tirés du signal entre cellules, du nombre de cellules et des types cellulaires, et marqués comme devinés (`Traits::proxies`). Le fil « Animaux et écosystèmes » prévoit les familles `Sensor`, `Motor`, `Neural` et `Matrix`, et les champs `detection_range`, `speed`, `defense` et `neural` du phénotype (noms provisoires) ; `Traits::of` les lira directement quand ils existeront.
+- **Fenêtre de prédation fixe** dans la scène (proies de 1/50 à 4/5 de la longueur du prédateur). La prédation selon la taille, la vitesse, les sens et les défenses appartient au fil « Animaux et écosystèmes » ; la scène ne décide de toute façon que de la forme, pas du nombre des morts.
+- **Taux par tête.** Le taux de naissance du moteur est un taux de production de biomasse ; on le prend comme taux par tête, ce qui vaut pour une structure de tailles stable.
+- **Taille de l'échantillon.** Il est tenu entre un quart et deux fois sa taille nominale : éclairci au hasard au-delà, recruté dans la population en deçà. Ni l'un ni l'autre ne compte comme naissance ou mort.
+- **Scène compacte.** Le groupe d'une espèce occupe dans la scène un disque à l'échelle de ses corps (une douzaine de longueurs entre voisins), pas toute la cellule de 110 km.
+- **Pas encore de promotion automatique.** Vision prévoit qu'une innovation majeure apparue aux niveaux agrégés déclenche une promotion au niveau 4 « pour vérifier par le vrai développement qu'elle fonctionne ». Une telle vérification changerait l'histoire. Ici, les zones d'innovation sont échantillonnées, mais rien n'en remonte. Le retour vers le monde est une question pour Vision.
+- **Corps trop petits pour la scène** à la fin de l'étape 4 (colonies de moins d'un millimètre). La scène garde donc ses figurants.

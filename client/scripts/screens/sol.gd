@@ -3,10 +3,10 @@ extends Control
 ## autour du point visé, ses habitants animés près de la caméra et en
 ## imposteurs au loin, une caméra qui suit un individu ou survole librement.
 ##
-## Les individus sont des figurants : le moteur ne publie pas encore
-## d'individus, leurs corps viennent de plans de construction de banc
-## d'essai (et des espèces vraies de la cellule quand elles sont assez
-## grandes), et rien de ce qu'ils font ne change l'histoire.
+## Les espèces vraies de la cellule assez grandes pour se voir sont des
+## agents du moteur (individus tirés de leur population, comportements tirés
+## de leurs traits) ; les autres sont des figurants de banc d'essai. Rien de
+## ce qu'ils font ne change l'histoire.
 
 signal closed
 

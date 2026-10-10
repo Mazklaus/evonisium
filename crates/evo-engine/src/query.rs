@@ -47,6 +47,34 @@ pub enum Query {
     Strata { cell: u32, layers: usize },
     /// Registre des ordres reçus (branches « avec et sans »).
     Orders,
+    /// Individus échantillonnés (niveau 4) de la cellule du vivant qui
+    /// contient une cellule physique : au plus `species` populations, la plus
+    /// abondante d'abord, `size` individus chacune. Seules les populations
+    /// multicellulaires ont des individus ; `microbes` lève ce filtre (essais).
+    /// Hors histoire : l'échantillon est tiré d'un `&World`.
+    Individuals { cell: u32, species: usize, size: usize, microbes: bool },
+}
+
+/// Échantillons d'individus d'une cellule (réponse à [`Query::Individuals`]).
+#[derive(Clone, Debug)]
+pub struct Individuals {
+    /// Cellule du vivant.
+    pub bio_cell: u32,
+    pub samples: Vec<evo_agents::Sample>,
+}
+
+impl PartialEq for Individuals {
+    /// Deux réponses sont égales si elles viennent des mêmes populations à
+    /// la même date et ont les mêmes individus.
+    fn eq(&self, o: &Self) -> bool {
+        self.bio_cell == o.bio_cell
+            && self.samples.len() == o.samples.len()
+            && self
+                .samples
+                .iter()
+                .zip(&o.samples)
+                .all(|(a, b)| a.lineage == b.lineage && a.date_years == b.date_years && a.members == b.members)
+    }
 }
 
 /// Détail d'une cellule physique et de sa cellule du vivant.
@@ -170,6 +198,7 @@ pub enum Answer {
     StateHash(u64),
     Strata(Vec<Stratum>),
     Orders(Vec<evo_sim::orders::Order>),
+    Individuals(Individuals),
     /// La requête n'a pas pu aboutir (base illisible, …).
     Failed(String),
 }
@@ -331,6 +360,21 @@ impl Store {
             ),
             Query::StateHash => Answer::StateHash(world.state_hash()),
             Query::Orders => Answer::Orders(world.orders.log()),
+            Query::Individuals { cell, species, size, microbes } => {
+                let Some(&bio) = world.bio.parent.get(cell as usize) else {
+                    return Ok(Answer::Individuals(Individuals { bio_cell: u32::MAX, samples: Vec::new() }));
+                };
+                let samples = if microbes {
+                    let n = world.communities[bio as usize].len();
+                    let mut order: Vec<usize> = (0..n).collect();
+                    let pops = &world.communities[bio as usize];
+                    order.sort_by(|&a, &b| pops[b].biomass.total_cmp(&pops[a].biomass).then(a.cmp(&b)));
+                    order.into_iter().take(species).filter_map(|i| evo_agents::Sample::draw(world, bio as usize, i, size)).collect()
+                } else {
+                    evo_agents::zones::sample_cell(world, bio as usize, species, size)
+                };
+                Answer::Individuals(Individuals { bio_cell: bio, samples })
+            }
             Query::Strata { cell, layers } => {
                 let Some(region) = self.region_of_physical(world, cell) else { return Ok(Answer::Strata(Vec::new())) };
                 let history = self.regional(region, None)?;

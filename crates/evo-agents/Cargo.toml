@@ -1,0 +1,17 @@
+[package]
+name = "evo-agents"
+description = "Individus échantillonnés (niveau 4) et agents détaillés (niveau 5) : hors histoire, calibrés sur les taux des populations."
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+evo-core.workspace = true
+evo-planet.workspace = true
+evo-genetics.workspace = true
+evo-life.workspace = true
+evo-sim.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+libm.workspace = true

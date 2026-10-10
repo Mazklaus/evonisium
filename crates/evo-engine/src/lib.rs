@@ -31,7 +31,7 @@ pub mod strata;
 pub use branch::{Branch, BranchSpec, BranchStatus};
 pub use engine::{Engine, EngineStatus, Frame, NewGame, When};
 pub use geometry::GridGeometry;
-pub use query::{Answer, CellDetail, Habitat, LineageView, Query, RegionSample, SpeciesSample};
+pub use query::{Answer, CellDetail, Habitat, Individuals, LineageView, Query, RegionSample, SpeciesSample};
 
 pub use evo_core::events::EventKind;
 pub use evo_planet::{Gas, PlanetParams};

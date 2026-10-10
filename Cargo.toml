@@ -28,6 +28,7 @@ evo-sim = { path = "crates/evo-sim" }
 evo-engine = { path = "crates/evo-engine" }
 evo-morph = { path = "crates/evo-morph" }
 evo-view = { path = "crates/evo-view" }
+evo-agents = { path = "crates/evo-agents" }
 
 [profile.release]
 debug = 1

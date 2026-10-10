@@ -3,13 +3,19 @@
 //! kilomètres autour du point visé, son relief généré depuis la cellule, et
 //! des individus animés.
 //!
-//! Le moteur ne publie pas encore d'individus (volet moteur de l'étape 5,
-//! après la porte de l'étape 4). La scène est donc peuplée de **figurants** :
-//! des individus de banc d'essai dont les corps viennent de plans de
-//! construction au format du moteur (`evo_life::BodyPlan`, traduits par
-//! [`crate::anatomy::from_simulated`]) et dont les comportements sont tirés
-//! dans le client. Ils n'appartiennent pas à l'histoire simulée : rien de ce
-//! qu'ils font ne remonte au moteur, et le rejeu ne les voit pas.
+//! Les espèces vraies de la cellule assez grandes pour se voir sont des
+//! **agents** du moteur (crate `evo-agents`, niveaux 4 et 5) : leurs
+//! individus viennent de l'échantillon que le moteur tire de leur population
+//! (génomes, naissances, morts et départs calibrés sur ses taux), et leurs
+//! comportements de leurs traits ; leur action courante est celle que la
+//! scène des agents publie dans le lexique commun. Ailleurs, et tant que le
+//! vivant de la cellule est trop petit pour la scène, la scène est peuplée de
+//! **figurants** : des individus de banc d'essai dont les corps viennent de
+//! plans de construction au format du moteur (`evo_life::BodyPlan`, traduits
+//! par [`crate::anatomy::from_simulated`]) et dont les comportements sont
+//! tirés dans le client. Ni les uns ni les autres n'appartiennent à
+//! l'histoire simulée : rien de ce qu'ils font ne remonte au moteur, et le
+//! rejeu ne les voit pas.
 //!
 //! Les individus proches de la caméra sont animés (squelette et pose par
 //! action du lexique), les autres sont des imposteurs (vues pré-rendues).
@@ -547,6 +553,8 @@ pub struct SceneSpecies {
     /// 0 : solitaire, 1 : troupeau serré.
     pub social: f32,
     pub kind: Option<BenchKind>,
+    /// Espèce dont les individus sont des agents du moteur (`evo-agents`).
+    pub engine: bool,
 }
 
 impl SceneSpecies {
@@ -564,7 +572,7 @@ impl SceneSpecies {
             .collect();
         let rig = rig(&plan, &bones, aquatic);
         let foot = (centre[1] - lo[1]) * k;
-        SceneSpecies { name, signature, plan, body, rig, centre, size_m, foot, aquatic, predator: false, social: 0.5, kind }
+        SceneSpecies { name, signature, plan, body, rig, centre, size_m, foot, aquatic, predator: false, social: 0.5, kind, engine: false }
     }
 
     /// Nombre de nombres par os dans la texture des poses.
@@ -687,6 +695,29 @@ pub struct Crowd {
     pub clock: f32,
     is_near: Vec<bool>,
     tick: u32,
+    /// Agents du moteur et leurs places dans la foule.
+    agents: Option<AgentLink>,
+}
+
+/// Lien entre la scène des agents et la foule : chaque espèce d'agents a des
+/// places réservées (individus de taille nulle quand elles sont libres), si
+/// bien que le nombre d'individus de la foule ne change jamais.
+struct AgentLink {
+    scene: evo_agents::Scene,
+    /// Espèce de la foule de chaque espèce de la scène.
+    species: Vec<u16>,
+    /// Places libres de chaque espèce de la scène.
+    free: Vec<Vec<u32>>,
+    slot: std::collections::HashMap<u64, u32>,
+}
+
+/// Événements de vie montrés par minute dans une scène d'agents
+/// (horloge de la vie, affichage seul).
+pub const LIFE_EVENTS_PER_SECOND: f64 = 0.5;
+
+/// Action du lexique de la foule pour une action des agents (même ordre).
+pub fn action_of(a: evo_agents::Act) -> Action {
+    Action::from_index(a.index())
 }
 
 /// Les lointains avancent par tranches : une sur quatre à chaque image.
@@ -730,11 +761,121 @@ impl Crowd {
                 });
             }
         }
-        let mut c = Crowd { patch, species, individuals, near: Vec::new(), rng, clock: 0.0, is_near: Vec::new(), tick: 0 };
+        let mut c = Crowd { patch, species, individuals, near: Vec::new(), rng, clock: 0.0, is_near: Vec::new(), tick: 0, agents: None };
         for i in 0..c.individuals.len() {
             c.place_y(i);
         }
         c
+    }
+
+    /// Foule de figurants (`species`, `total` individus) à laquelle
+    /// s'ajoutent des espèces d'agents du moteur : chaque espèce vraie
+    /// arrive avec l'échantillon de sa population.
+    pub fn with_agents(
+        patch: Patch,
+        species: Vec<SceneSpecies>,
+        real: Vec<(SceneSpecies, evo_agents::Sample)>,
+        total: usize,
+        seed: u64,
+    ) -> Crowd {
+        let mut c = Crowd::new(patch, species, total, seed);
+        if real.is_empty() {
+            return c;
+        }
+        let half = PATCH_SIZE_M / 2.0 * 0.96;
+        let mut samples = Vec::new();
+        let mut map = Vec::new();
+        let mut free = Vec::new();
+        for (mut sp, sample) in real {
+            sp.engine = true;
+            sp.predator = sample.genotypes[0].traits.diet == evo_agents::Diet::Predator;
+            sp.social = sample.genotypes[0].traits.sociality as f32;
+            let k = c.species.len() as u16;
+            c.species.push(sp);
+            let cap = 2 * sample.nominal.max(sample.members.len()) + 16;
+            let mut slots = Vec::with_capacity(cap);
+            for _ in 0..cap {
+                slots.push(c.individuals.len() as u32);
+                c.individuals.push(Individual {
+                    species: k,
+                    x: 0.0,
+                    z: 0.0,
+                    y: 0.0,
+                    heading: 0.0,
+                    speed: 0.0,
+                    action: Action::Rest,
+                    timer: 0.0,
+                    time: 0.0,
+                    phase: c.rng.unit(),
+                    scale: 0.0,
+                    goal: (0.0, 0.0),
+                    other: u32::MAX,
+                    forced: false,
+                });
+            }
+            slots.reverse();
+            free.push(slots);
+            map.push(k);
+            samples.push(sample);
+        }
+        let scene = evo_agents::Scene::new(samples, half, seed, LIFE_EVENTS_PER_SECOND);
+        c.agents = Some(AgentLink { scene, species: map, free, slot: std::collections::HashMap::new() });
+        c.sync_agents(0.0);
+        c
+    }
+
+    /// Recopie l'état des agents dans leurs places de la foule.
+    fn sync_agents(&mut self, dt: f32) {
+        let Some(link) = self.agents.as_mut() else { return };
+        let mut seen = std::collections::HashSet::new();
+        for a in &link.scene.agents {
+            let k = evo_agents::agents::key(a.species, a.member);
+            seen.insert(k);
+            let slot = match link.slot.get(&k) {
+                Some(&s) => Some(s),
+                None => {
+                    let s = link.free[a.species as usize].pop();
+                    if let Some(s) = s {
+                        link.slot.insert(k, s);
+                    }
+                    s
+                }
+            };
+            let Some(slot) = slot else { continue };
+            let sp = &self.species[link.species[a.species as usize] as usize];
+            let t = link.scene.traits_of(a);
+            let ind = &mut self.individuals[slot as usize];
+            ind.x = a.x;
+            ind.z = a.z;
+            ind.heading = a.heading;
+            ind.speed = a.speed;
+            if !ind.forced {
+                ind.action = action_of(a.act);
+            }
+            ind.time += dt;
+            ind.scale = if matches!(a.fate, evo_agents::agents::Fate::Dead { .. }) {
+                0.0
+            } else {
+                (t.length_m as f32 / sp.size_m.max(1e-9)).clamp(0.3, 3.0)
+            };
+        }
+        let gone: Vec<(u64, u32)> = link.slot.iter().filter(|(k, _)| !seen.contains(k)).map(|(&k, &s)| (k, s)).collect();
+        for (k, s) in gone {
+            link.slot.remove(&k);
+            self.individuals[s as usize].scale = 0.0;
+            link.free[(k >> 32) as usize].push(s);
+        }
+    }
+
+    /// Scène des agents du moteur, s'il y en a.
+    pub fn agents(&self) -> Option<&evo_agents::Scene> {
+        self.agents.as_ref().map(|l| &l.scene)
+    }
+
+    /// Vrai pour une place d'agent libre (individu invisible).
+    pub fn is_vacant(&self, i: usize) -> bool {
+        let ind = &self.individuals[i];
+        self.species[ind.species as usize].engine && ind.scale == 0.0
     }
 
     fn place_y(&mut self, i: usize) {
@@ -779,12 +920,20 @@ impl Crowd {
     pub fn step(&mut self, dt: f32, camera: [f32; 3], animated: usize) {
         let dt = dt.clamp(0.0, 0.1);
         self.clock += dt;
+        if let Some(link) = self.agents.as_mut() {
+            link.scene.step(dt);
+        }
+        self.sync_agents(dt);
         // Les plus proches de la caméra.
         let mut order: Vec<(f32, u32)> = self
             .individuals
             .iter()
             .enumerate()
-            .map(|(i, p)| ((p.x - camera[0]).powi(2) + (p.y - camera[1]).powi(2) + (p.z - camera[2]).powi(2), i as u32))
+            .map(|(i, p)| {
+                let d = (p.x - camera[0]).powi(2) + (p.y - camera[1]).powi(2) + (p.z - camera[2]).powi(2);
+                // Places d'agents libres : jamais animées.
+                (if p.scale == 0.0 { f32::INFINITY } else { d }, i as u32)
+            })
             .collect();
         let k = animated.min(order.len());
         if k > 0 && k < order.len() {
@@ -793,8 +942,15 @@ impl Crowd {
         self.near = order[..k].iter().map(|o| o.1).collect();
         self.near.sort_unstable();
         // Proches : comportements complets ; prédateurs proches à portée.
-        let predators: Vec<u32> =
-            self.near.iter().copied().filter(|&i| self.species[self.individuals[i as usize].species as usize].predator).collect();
+        let predators: Vec<u32> = self
+            .near
+            .iter()
+            .copied()
+            .filter(|&i| {
+                let s = &self.species[self.individuals[i as usize].species as usize];
+                s.predator && !s.engine
+            })
+            .collect();
         let near = self.near.clone();
         for &i in &near {
             self.decide(i as usize, dt, &predators, &near);
@@ -812,6 +968,13 @@ impl Crowd {
         let slice = (self.tick % FAR_SLICES) as usize;
         for i in 0..self.individuals.len() {
             let close = self.is_near[i];
+            if self.species[self.individuals[i].species as usize].engine {
+                // Agents : déplacés par leur scène, posés au sol ici.
+                if close || i % FAR_SLICES as usize == slice {
+                    self.place_y(i);
+                }
+                continue;
+            }
             if !close && i % FAR_SLICES as usize != slice {
                 continue;
             }
@@ -848,7 +1011,7 @@ impl Crowd {
         let me = self.individuals[i];
         let s = &self.species[me.species as usize];
         let size = s.size_m * me.scale;
-        if me.forced {
+        if me.forced || s.engine {
             return;
         }
         let steer = |ind: &mut Individual, gx: f32, gz: f32, rate: f32| {
@@ -912,7 +1075,7 @@ impl Crowd {
             let prey = near.iter().copied().filter(|&j| j as usize != i).find(|&j| {
                 let o = &self.individuals[j as usize];
                 let os = &self.species[o.species as usize];
-                !os.predator && os.size_m < s.size_m && (o.x - me.x).hypot(o.z - me.z) < 60.0 * size
+                !os.predator && !os.engine && os.size_m < s.size_m && (o.x - me.x).hypot(o.z - me.z) < 60.0 * size
             });
             match (prey, r) {
                 (Some(p), r) if r < 0.6 => {
@@ -986,7 +1149,7 @@ impl Crowd {
                 let s = &self.species[p.species as usize];
                 let v = [p.x - origin[0], p.y - origin[1], p.z - origin[2]];
                 let t = v[0] * d[0] + v[1] * d[1] + v[2] * d[2];
-                if t <= 0.0 {
+                if t <= 0.0 || p.scale == 0.0 {
                     return None;
                 }
                 let q = [v[0] - t * d[0], v[1] - t * d[1], v[2] - t * d[2]];
@@ -1042,6 +1205,61 @@ mod tests {
             }
         }
         assert!(walkers >= 4, "{walkers}");
+    }
+
+    #[test]
+    fn engine_agents_drive_their_species_in_the_crowd() {
+        use evo_agents::bench::{sample, with_body};
+        use evo_agents::{Diet, PopRates};
+        let s = site(false);
+        let patch = Patch::new(s.clone(), 9);
+        let figurants = bench_species(&s, 9, 2);
+        let org = Organisation { body_cells: 1e6, cell_types: 3, eukaryote: true, multicellular: true, sexual: true, ..Default::default() };
+        let body = |kind, size: f32, seed| {
+            let plan = from_simulated(&bench_plan(kind, seed, size as f64), &org, seed);
+            SceneSpecies::new(format!("essai {seed}"), Some(seed as u32), plan, size, false, None)
+        };
+        let prey = with_body(
+            sample(PopRates { birth: 1.0, death: 1.0, predation: 0.7, emigration: 0.2 }, 80, 3, true),
+            0.2,
+            1.2,
+            4.0,
+            Diet::Grazer,
+        );
+        let pred = with_body(
+            sample(PopRates { birth: 0.3, death: 0.3, predation: 0.0, emigration: 0.05 }, 6, 4, true),
+            1.0,
+            3.0,
+            12.0,
+            Diet::Predator,
+        );
+        let real = vec![(body(BenchKind::Walker, 0.2, 11), prey), (body(BenchKind::Walker, 1.0, 12), pred)];
+        let mut crowd = Crowd::with_agents(patch, figurants, real, 500, 9);
+        let n = crowd.individuals.len();
+        let mut actions = std::collections::HashSet::new();
+        for _ in 0..1200 {
+            crowd.step(0.05, [0.0, 20.0, 0.0], 400);
+            assert_eq!(crowd.individuals.len(), n, "la foule ne change jamais de taille");
+            for (i, ind) in crowd.individuals.iter().enumerate() {
+                if crowd.species[ind.species as usize].engine && !crowd.is_vacant(i) {
+                    actions.insert(ind.action);
+                    assert!(ind.x.is_finite() && ind.y.is_finite());
+                }
+            }
+        }
+        let scene = crowd.agents().expect("agents");
+        let living = crowd
+            .individuals
+            .iter()
+            .enumerate()
+            .filter(|(i, ind)| crowd.species[ind.species as usize].engine && !crowd.is_vacant(*i))
+            .count();
+        let agents = scene.agents.iter().filter(|a| !matches!(a.fate, evo_agents::agents::Fate::Dead { .. })).count();
+        assert_eq!(living, agents, "chaque agent a une place visible");
+        assert!(scene.kills > 0, "aucune prise montrée");
+        for a in [Action::Feed, Action::Hunt, Action::Migrate] {
+            assert!(actions.contains(&a), "action {a:?} jamais montrée : {actions:?}");
+        }
     }
 
     #[test]

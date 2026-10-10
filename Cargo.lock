@@ -83,6 +83,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
+name = "evo-agents"
+version = "0.1.0"
+dependencies = [
+ "evo-core",
+ "evo-genetics",
+ "evo-life",
+ "evo-planet",
+ "evo-sim",
+ "libm",
+ "rand",
+ "rand_distr",
+]
+
+[[package]]
 name = "evo-core"
 version = "0.1.0"
 dependencies = [
@@ -97,6 +111,7 @@ name = "evo-engine"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "evo-agents",
  "evo-core",
  "evo-life",
  "evo-planet",
@@ -120,6 +135,7 @@ dependencies = [
 name = "evo-godot"
 version = "0.1.0"
 dependencies = [
+ "evo-agents",
  "evo-core",
  "evo-engine",
  "evo-life",
@@ -182,6 +198,7 @@ dependencies = [
 name = "evo-view"
 version = "0.1.0"
 dependencies = [
+ "evo-agents",
  "evo-core",
  "evo-engine",
  "evo-genetics",
