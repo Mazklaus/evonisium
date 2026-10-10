@@ -7,6 +7,11 @@ extends Node
 
 const CONFIG := "user://son.cfg"
 
+## Une phrase du narrateur vient de finir (ou a été interrompue).
+signal phrase_finie(id: int)
+## Texte de la phrase qui commence, pour un sous-titre.
+signal sous_titre(texte: String, id: int)
+
 var son: EvoSon
 var muet := false
 ## Réglages de 0 à 1, gardés dans user://son.cfg.
@@ -57,6 +62,21 @@ func regler(nom: String, valeur: float) -> void:
 		return
 	volumes[nom] = clampf(valeur, 0.0, 1.0)
 	_appliquer()
+
+## Narrateur vocal. Priorités : 0 conseil du guide, 1 moment clé de la
+## chronique, 2 demande du joueur (fiche, scène) ; une phrase plus
+## prioritaire interrompt les autres. Renvoie -1 quand rien ne sera dit
+## (pas de voix installée, ou pas de son). La voix arrive avec la livraison
+## du narrateur ; d'ici là, rien n'est dit.
+func dire(_texte: String, _priorite: int = 1) -> int:
+	return -1
+
+## Coupe la phrase en cours et vide la file.
+func taire() -> void:
+	pass
+
+func parle() -> bool:
+	return false
 
 func couper(on: bool) -> void:
 	muet = on
