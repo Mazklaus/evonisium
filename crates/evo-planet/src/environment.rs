@@ -56,6 +56,12 @@ pub struct CellEnvironment {
     pub vent_mn_supply: f64,
     /// Couverture de glace, de 0 à 1.
     pub ice_cover: f64,
+    /// Terre ferme (étape 5) : surface émergée hors des eaux et des glaces,
+    /// m² ; lumière utilisable au sol, W·m⁻² ; humidité du sol, de 0 à 1
+    /// (pluie face à l'évaporation potentielle).
+    pub dry_area_m2: f64,
+    pub land_light_par_w_m2: f64,
+    pub moisture: f64,
 }
 
 /// Concentrations de la couche d'eau, mol·m⁻³, indexées par [`WaterPool`].
@@ -243,6 +249,13 @@ impl Planet {
                 vent_fe_supply: if is_vent { p.vent_fe_flux * per_vent } else { 0.0 },
                 vent_mn_supply: if is_vent { p.vent_mn_flux * per_vent } else { 0.0 },
                 ice_cover,
+                dry_area_m2: if ocean { 0.0 } else { (areas[c] - water_area).max(0.0) * (1.0 - ice_cover) },
+                land_light_par_w_m2: if ocean {
+                    0.0
+                } else {
+                    cl.insolation_w_m2 * (1.0 - p.albedo) * self.climate.light_share * (1.0 - 0.95 * ice_cover)
+                },
+                moisture: soil_moisture(display[c].rain_mm_yr as f64, cl.temperature_k, p.potential_evaporation_mm),
             };
             if let Some(old) = self.cells.get(c) {
                 if old.is_ocean != ocean || old.water_volume_m3 != volume {
@@ -453,10 +466,23 @@ impl Planet {
             subduction_per_year: subduction,
             gravity: self.params.gravity(),
             area_m2: self.params.surface_area(),
+            biotic_weathering: 1.0,
         }
     }
 
     pub fn memory_bytes(&self) -> usize {
         self.grid.memory_bytes() + self.cells.capacity() * std::mem::size_of::<CellEnvironment>() + self.tectonics.memory_bytes()
     }
+}
+
+/// Humidité du sol, de 0 à 1 : pluie face à l'évaporation potentielle, qui
+/// croît avec la température au-dessus de −10 °C (`reference_mm` à 15 °C).
+/// [Simplification] Indice d'aridité annuel, sans saisons ni réserve du sol.
+pub fn soil_moisture(rain_mm_yr: f64, temperature_k: f64, reference_mm: f64) -> f64 {
+    let pet = reference_mm * ((temperature_k - 263.15) / 25.0).max(0.0);
+    let rain = rain_mm_yr.max(0.0);
+    if rain + pet <= 0.0 {
+        return 0.0;
+    }
+    rain / (rain + pet)
 }

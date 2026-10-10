@@ -122,6 +122,13 @@ pub struct PlanetParams {
     /// Temps de séjour du sulfate face à l'enfouissement en évaporites
     /// (gypse), ans.
     pub gypsum_burial_years: f64,
+    /// Évaporation potentielle des sols à 15 °C, mm·an⁻¹ (environ 1 000 mm
+    /// sous un climat tempéré terrestre).
+    pub potential_evaporation_mm: f64,
+    /// Accélération de l'altération des roches par une terre ferme entièrement
+    /// couverte de vie (racines, acides organiques, sols) : un facteur 4 à 7
+    /// selon GEOCARB et COPSE (Berner, 2006 ; Lenton et coll., 2016).
+    pub biotic_weathering_max: f64,
     /// Échange entre la couche de surface et l'océan profond, an⁻¹.
     pub upwelling_rate: f64,
 
@@ -339,6 +346,8 @@ impl PlanetParams {
             pyrite_burial_share: 0.15,
             pyrite_weathering_share: 0.2,
             gypsum_burial_years: 30e6,
+            potential_evaporation_mm: 1000.0,
+            biotic_weathering_max: 4.0,
             upwelling_rate: 0.01,
             plate_count: 14,
             plate_speed_cm_per_yr: 6.0,

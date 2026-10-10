@@ -166,6 +166,9 @@ pub struct BoxContext {
     /// Gravité et aire de la planète, pour la pression.
     pub gravity: f64,
     pub area_m2: f64,
+    /// Accélération de l'altération des silicates et du phosphore par la vie
+    /// de la terre ferme, 1 sans elle (étape 5).
+    pub biotic_weathering: f64,
 }
 
 impl GlobalReservoirs {
@@ -593,6 +596,11 @@ impl GlobalReservoirs {
                 * ctx.land_area_m2
                 * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
                 * co2_factor.dpowf(params.weathering_co2_exponent);
+            // Les racines, les acides organiques et les sols de la vie terrestre
+            // accélèrent l'altération des silicates et la libération du
+            // phosphore ; l'oxydation des roches suit l'érosion, pas la vie.
+            let bare = land;
+            let land = bare * ctx.biotic_weathering.max(1.0);
             let seafloor = params.seafloor_weathering_share
                 * params.outgassing_co2
                 * ctx.activity
@@ -615,7 +623,7 @@ impl GlobalReservoirs {
             let f_o2 = self.mixing_ratio(Gas::O2);
             let o2 = self.atmosphere[Gas::O2 as usize];
             let ow = (params.oxidative_weathering_per_weathered_c
-                * land
+                * bare
                 * (f_o2.max(0.0) / params.oxidative_weathering_reference).dpowf(params.oxidative_weathering_exponent)
                 * h)
                 .min(o2);
@@ -818,6 +826,7 @@ mod tests {
             subduction_per_year: 0.0,
             gravity: params.gravity(),
             area_m2: params.surface_area(),
+            biotic_weathering: 1.0,
         }
     }
 

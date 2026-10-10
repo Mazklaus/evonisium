@@ -78,6 +78,17 @@ pub struct Physiology {
     /// à 0,5 selon la taille du plancton, Laws et coll., 2000). Voir
     /// [`Physiology::sinking_share_of`].
     pub max_sinking_share: f64,
+    /// Résistance à la dessiccation à partir de laquelle un organisme vit
+    /// hors de l'eau (étape 5). [Simplification] Deux habitats tranchés,
+    /// l'eau et la terre ferme, sans amphibies.
+    pub terrestrial_tolerance: f64,
+    /// Mortalité par dessiccation hors de l'eau d'un organisme sans
+    /// protection, sur un sol sec, an⁻¹ ; elle baisse avec la résistance et
+    /// avec l'humidité du sol.
+    pub desiccation_mortality: f64,
+    /// Baisse de la croissance dans l'eau due à l'enveloppe protectrice, à
+    /// résistance 1 (elle freine les échanges avec l'eau).
+    pub cuticle_water_penalty: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
     /// Baisse relative du taux de croissance maximal par gène : répliquer un
@@ -184,6 +195,9 @@ impl Default for Physiology {
             phosphate_half: 1e-4,
             sinking_share: 0.15,
             max_sinking_share: 0.5,
+            terrestrial_tolerance: 0.5,
+            desiccation_mortality: 200.0,
+            cuticle_water_penalty: 0.5,
             max_growth: 6000.0,
             replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,
@@ -260,12 +274,44 @@ pub struct Conditions {
     /// Proies (taille, carbone dans l'eau) et prédateurs (taille, pression).
     pub prey: Trophic,
     pub predators: Trophic,
+    /// Terre ferme de la cellule (étape 5) : lumière disponible par mole de
+    /// carbone phototrophe terrestre, proies et prédateurs terrestres,
+    /// humidité du sol (de 0 à 1), et existence d'une terre ferme.
+    pub land_light_kj: f64,
+    pub land_prey: Trophic,
+    pub land_predators: Trophic,
+    pub moisture: f64,
+    pub has_land: bool,
+    /// Vrai une fois les conditions tournées vers la terre ferme
+    /// ([`Conditions::for_habitat`]).
+    pub on_land: bool,
 }
 
 impl Conditions {
     /// Conditions sans proie ni prédateur.
     pub fn new(temperature_k: f64, uv_w_m2: f64, light_kj: f64) -> Self {
-        Self { temperature_k, uv_w_m2, light_kj, prey: Trophic::default(), predators: Trophic::default() }
+        Self {
+            temperature_k,
+            uv_w_m2,
+            light_kj,
+            prey: Trophic::default(),
+            predators: Trophic::default(),
+            land_light_kj: 0.0,
+            land_prey: Trophic::default(),
+            land_predators: Trophic::default(),
+            moisture: 0.0,
+            has_land: false,
+            on_land: false,
+        }
+    }
+
+    /// Conditions vues par un organisme terrestre (`terrestrial`) ou
+    /// aquatique : la lumière, les proies et les prédateurs de son habitat.
+    pub fn for_habitat(&self, terrestrial: bool) -> Self {
+        if !terrestrial {
+            return *self;
+        }
+        Self { light_kj: self.land_light_kj, prey: self.land_prey, predators: self.land_predators, on_land: true, ..*self }
     }
 
     /// Carbone des proies qu'un prédateur de taille `size` peut englober,
@@ -402,6 +448,7 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
     if p.body.is_some() {
         return body_rates(p, cond, chem, physio);
     }
+    let cond = &cond.for_habitat(p.is_terrestrial());
     let prey = cond.edible_prey(p.cell_size, physio);
     let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, chem, physio);
     finish(p, &b, cond, chem, physio)
@@ -414,6 +461,7 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
 /// pondérés par leur part des cellules.
 fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
     let body = p.body.as_ref().expect("corps");
+    let cond = &cond.for_habitat(p.is_terrestrial());
     let mut total = Budget::default();
     let prey = cond.edible_prey(p.cell_size, physio);
     let caps: Vec<Capacities> = body.types.iter().map(|t| t.capacities(cond.temperature_k, physio)).collect();
@@ -553,7 +601,19 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     // Un déficit d'énergie consomme la biomasse : mortalité de famine.
     let starvation = (-surplus).max(0.0) / cost;
     let predation = cond.predation(p.body_size, physio);
-    let mortality = physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation;
+    // Hors de l'eau : dessiccation, qui baisse avec la résistance et avec
+    // l'humidité du sol ; pas de terre ferme, pas de vie terrestre. Dans
+    // l'eau, l'enveloppe protectrice freine les échanges.
+    let (birth, desiccation) = if cond.on_land {
+        if cond.has_land {
+            (birth, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * cond.moisture.clamp(0.0, 1.0)))
+        } else {
+            (0.0, physio.desiccation_mortality)
+        }
+    } else {
+        (birth * (1.0 - physio.cuticle_water_penalty * p.desiccation_tolerance), 0.0)
+    };
+    let mortality = physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation;
 
     out.energy_kj = carbon_energy + b.supplement;
     out.autotroph_energy_kj = b.auto;

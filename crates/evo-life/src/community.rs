@@ -57,41 +57,53 @@ impl CellContext<'_> {
     /// Lumière absorbée par mole de carbone phototrophe, kJ·molC⁻¹·an⁻¹,
     /// quand la biomasse phototrophe vaut `photo_biomass`.
     pub fn light_per_biomass(&self, photo_biomass: f64) -> f64 {
-        let b_ref = self.light_biomass_per_m2 * self.env.water_area_m2.max(1.0);
-        let incoming = watts_to_kj_per_year(self.env.light_par_w_m2 * self.env.water_area_m2);
-        let x = photo_biomass / b_ref;
-        if x < 1e-9 {
-            // Limite à faible biomasse : toute la lumière est disponible.
-            incoming / b_ref
-        } else {
-            incoming * (-(-x).dexp_m1()) / photo_biomass
+        shared_light(self.env.light_par_w_m2, self.env.water_area_m2, self.light_biomass_per_m2, photo_biomass)
+    }
+
+    /// Même partage pour la terre ferme : lumière du sol, sur sa surface.
+    pub fn land_light_per_biomass(&self, photo_biomass: f64) -> f64 {
+        shared_light(self.env.land_light_par_w_m2, self.env.dry_area_m2, self.light_biomass_per_m2, photo_biomass)
+    }
+
+    /// Biomasse phototrophe de chaque habitat : (eau, terre ferme).
+    pub fn photo_biomass(pops: &[Population]) -> (f64, f64) {
+        let mut b = (0.0, 0.0);
+        for p in pops.iter().filter(|p| p.phenotype.phototroph) {
+            if p.phenotype.is_terrestrial() {
+                b.1 += p.biomass;
+            } else {
+                b.0 += p.biomass;
+            }
         }
+        b
     }
 
-    pub fn photo_biomass(pops: &[Population]) -> f64 {
-        pops.iter().filter(|p| p.phenotype.phototroph).map(|p| p.biomass).sum()
-    }
-
-    /// Conditions physiques vues par les organismes quand la biomasse
-    /// phototrophe de la cellule vaut `photo_biomass`, sans proie ni
-    /// prédateur.
-    pub fn conditions(&self, photo_biomass: f64) -> Conditions {
-        Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(photo_biomass))
+    /// Conditions physiques vues par les organismes de la communauté `pops`,
+    /// lumière partagée dans chaque habitat, sans proie ni prédateur.
+    pub fn conditions(&self, pops: &[Population]) -> Conditions {
+        let (water, land) = Self::photo_biomass(pops);
+        let mut cond = Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(water));
+        cond.land_light_kj = self.land_light_per_biomass(land);
+        cond.moisture = self.env.moisture;
+        cond.has_land = self.env.dry_area_m2 > 0.0 && !self.env.is_ocean;
+        cond
     }
 
     /// Conditions vues par les organismes de la communauté `pops` : lumière
     /// partagée, proies et pression des prédateurs (d'après leur dernière
-    /// évaluation).
+    /// évaluation), chaque habitat pour soi.
     pub fn conditions_of(&self, pops: &[Population], physio: &Physiology) -> Conditions {
-        let mut cond = self.conditions(Self::photo_biomass(pops));
+        let mut cond = self.conditions(pops);
         let v = self.env.water_volume_m3;
         if v <= 0.0 {
             return cond;
         }
         // Les proies sont toujours listées : un mutant phagotrophe jugé dans
-        // une cellule qui n'en a pas encore doit les voir.
+        // une cellule qui n'en a pas encore doit les voir. Sur la terre
+        // ferme, elles sont rapportées au même volume (simple échelle).
         for p in pops {
-            cond.prey.push(p.phenotype.body_size, p.biomass / v);
+            let list = if p.phenotype.is_terrestrial() { &mut cond.land_prey } else { &mut cond.prey };
+            list.push(p.phenotype.body_size, p.biomass / v);
         }
         for (j, p) in pops.iter().enumerate() {
             let demand = p.rates.prey_demand() * p.biomass;
@@ -100,10 +112,28 @@ impl CellContext<'_> {
             }
             let edible = edible_biomass(pops, j, physio);
             if edible > 0.0 {
-                cond.predators.push(p.phenotype.cell_size, demand / edible);
+                let list = if p.phenotype.is_terrestrial() { &mut cond.land_predators } else { &mut cond.predators };
+                list.push(p.phenotype.cell_size, demand / edible);
             }
         }
         cond
+    }
+}
+
+/// Lumière absorbée par mole de carbone phototrophe, kJ·molC⁻¹·an⁻¹, quand
+/// `photo_biomass` se partage `light_w_m2` sur `area_m2`.
+fn shared_light(light_w_m2: f64, area_m2: f64, light_biomass_per_m2: f64, photo_biomass: f64) -> f64 {
+    if area_m2 <= 0.0 || light_w_m2 <= 0.0 {
+        return 0.0;
+    }
+    let b_ref = light_biomass_per_m2 * area_m2.max(1.0);
+    let incoming = watts_to_kj_per_year(light_w_m2 * area_m2);
+    let x = photo_biomass / b_ref;
+    if x < 1e-9 {
+        // Limite à faible biomasse : toute la lumière est disponible.
+        incoming / b_ref
+    } else {
+        incoming * (-(-x).dexp_m1()) / photo_biomass
     }
 }
 
@@ -111,7 +141,12 @@ impl CellContext<'_> {
 /// excepté), pondérée par la facilité à englober chaque proie.
 fn edible_biomass(pops: &[Population], j: usize, physio: &Physiology) -> f64 {
     let size = pops[j].phenotype.cell_size;
-    pops.iter().enumerate().filter(|&(q, _)| q != j).map(|(_, q)| q.biomass * edibility(size, q.phenotype.body_size, physio)).sum()
+    let land = pops[j].phenotype.is_terrestrial();
+    pops.iter()
+        .enumerate()
+        .filter(|&(q, p)| q != j && p.phenotype.is_terrestrial() == land)
+        .map(|(_, q)| q.biomass * edibility(size, q.phenotype.body_size, physio))
+        .sum()
 }
 
 /// Évalue toutes les populations d'une cellule dans l'état courant.
@@ -215,7 +250,8 @@ pub fn substep_with(
             }
             let size = pops[j].phenotype.cell_size;
             for q in 0..n {
-                let e = if q == j { 0.0 } else { edibility(size, pops[q].phenotype.body_size, physio) };
+                let same = pops[q].phenotype.is_terrestrial() == pops[j].phenotype.is_terrestrial();
+                let e = if q == j || !same { 0.0 } else { edibility(size, pops[q].phenotype.body_size, physio) };
                 if e > 0.0 {
                     let a = want * e * pops[q].biomass / edible;
                     alloc.push((j, q, a));
@@ -405,6 +441,9 @@ mod tests {
             vent_fe_supply: 0.0,
             vent_mn_supply: 0.0,
             ice_cover: 0.0,
+            dry_area_m2: 0.0,
+            land_light_par_w_m2: 0.0,
+            moisture: 0.0,
         }
     }
 

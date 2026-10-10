@@ -93,6 +93,9 @@ impl BioGrid {
                     vent_fe_supply: sum(|e| e.vent_fe_supply),
                     vent_mn_supply: sum(|e| e.vent_mn_supply),
                     ice_cover: mean(|e| e.ice_cover),
+                    dry_area_m2: all.iter().map(|e| e.dry_area_m2).sum(),
+                    land_light_par_w_m2: weighted(&all, |e| e.dry_area_m2, |e| e.land_light_par_w_m2),
+                    moisture: weighted(&all, |e| e.dry_area_m2, |e| e.moisture),
                     flushing_per_year: mean(|e| e.flushing_per_year),
                     rain_mm_yr: mean(|e| e.rain_mm_yr),
                 }
@@ -138,4 +141,13 @@ mod tests {
         let same = BioGrid::new(&fine, 4);
         assert!(same.parent.iter().enumerate().all(|(c, &p)| p as usize == c));
     }
+}
+
+/// Moyenne de `f` pondérée par `w` (zéro sans poids).
+fn weighted(set: &[&CellEnvironment], w: fn(&CellEnvironment) -> f64, f: fn(&CellEnvironment) -> f64) -> f64 {
+    let total: f64 = set.iter().map(|e| w(e)).sum();
+    if total <= 0.0 {
+        return 0.0;
+    }
+    set.iter().map(|e| w(e) * f(e)).sum::<f64>() / total
 }

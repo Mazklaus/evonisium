@@ -355,7 +355,7 @@ pub fn complexity_bits(p: &Phenotype, on_land: bool) -> u8 {
     bits |= u8::from(p.is_multicellular()) << 4;
     bits |= u8::from(types) << 5;
     bits |= u8::from(types && p.is_eukaryote()) << 6;
-    bits |= u8::from(types && p.is_eukaryote() && on_land) << 7;
+    bits |= u8::from(types && p.is_eukaryote() && on_land && p.is_terrestrial()) << 7;
     bits
 }
 
@@ -418,6 +418,25 @@ pub struct World {
 }
 
 impl World {
+    /// Accélération de l'altération par la vie de la terre ferme : 1 sans
+    /// elle, `biotic_weathering_max` quand toute la terre ferme est couverte
+    /// (couverture d'une cellule : 1 − e^(−B/B₀), B₀ la biomasse qui absorbe
+    /// 63 % de la lumière).
+    pub fn biotic_weathering(&self) -> f64 {
+        let b0 = self.config.light_biomass_per_m2;
+        let (mut covered, mut total) = (0.0, 0.0);
+        for (env, pops) in self.bio.env.iter().zip(&self.communities) {
+            if env.is_ocean || env.dry_area_m2 <= 0.0 {
+                continue;
+            }
+            let land: f64 = pops.iter().filter(|p| p.phenotype.is_terrestrial() && p.phenotype.phototroph).map(|p| p.biomass).sum();
+            covered += env.dry_area_m2 * -(-land / (b0 * env.dry_area_m2)).dexp_m1();
+            total += env.dry_area_m2;
+        }
+        let cover = if total > 0.0 { covered / total } else { 0.0 };
+        1.0 + (self.planet.params.biotic_weathering_max - 1.0).max(0.0) * cover
+    }
+
     pub fn new(mut config: WorldConfig) -> Self {
         let planet = generate(config.planet.clone(), config.level, config.seed);
         // Les pigments sont jugés sous l'étoile de cette partie, dans l'eau.
@@ -1124,7 +1143,8 @@ impl World {
         // Pendant l'écologie rapide, elles sont mesurées ; le reste du pas,
         // les boîtes inscrivent ce qu'elles reçoivent des couches prolongées.
         self.flux.exchange(Element::Electrons, vents * t_eco.min(dt));
-        let ctx = self.planet.box_context(years);
+        let mut ctx = self.planet.box_context(years);
+        ctx.biotic_weathering = self.biotic_weathering();
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le
@@ -1273,7 +1293,7 @@ impl World {
                 }
                 let residents = &communities[target];
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
-                let cond = ctx.conditions(CellContext::photo_biomass(residents));
+                let cond = ctx.conditions(residents);
                 for src in bio.grid.neighbours_of(target) {
                     if disturbances.blocked(bio.grid.centers[src], bio.grid.centers[target]) {
                         continue;

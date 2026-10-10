@@ -54,13 +54,18 @@ pub enum DomainFamily {
     /// l'ADN par recombinaison homologue ; chez un eucaryote, elle ouvre la
     /// reproduction sexuée.
     Meiosis,
+    /// Enveloppe protectrice (équivalent des polysaccharides extracellulaires
+    /// des croûtes microbiennes, de la cuticule cireuse et de la paroi des
+    /// spores) : elle retient l'eau hors de l'eau, mais freine les échanges
+    /// dans l'eau (étape 5).
+    Cuticle,
 }
 
 impl DomainFamily {
     /// Famille lue par la physiologie de la cellule, sans voie métabolique
     /// propre (structure, adhésion, signal, régulation, méiose).
     pub fn is_cellular(self) -> bool {
-        matches!(self, Self::Cytoskeleton | Self::Adhesion | Self::Signalling | Self::Regulator | Self::Meiosis)
+        matches!(self, Self::Cytoskeleton | Self::Adhesion | Self::Signalling | Self::Regulator | Self::Meiosis | Self::Cuticle)
     }
 }
 

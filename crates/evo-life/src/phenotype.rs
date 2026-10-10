@@ -46,6 +46,8 @@ pub const PHAGOTROPH: u32 = 1 << 16;
 pub const EUKARYOTE: u32 = 1 << 17;
 pub const PLASTID: u32 = 1 << 18;
 pub const MULTICELLULAR: u32 = 1 << 19;
+/// Vit hors de l'eau, sur les terres émergées (étape 5).
+pub const TERRESTRIAL: u32 = 1 << 20;
 /// Bits des voies métaboliques dans une signature.
 pub const PATHWAY_MASK: u32 = (1 << REACTION_COUNT) - 1;
 
@@ -151,6 +153,10 @@ pub struct Phenotype {
     pub adhesion: f64,
     pub signalling: f64,
     pub meiosis: f64,
+    /// Résistance à la dessiccation donnée par l'enveloppe protectrice, de 0
+    /// à 1. Au-delà de `Physiology::terrestrial_tolerance`, l'organisme vit
+    /// hors de l'eau (bit `TERRESTRIAL`).
+    pub desiccation_tolerance: f64,
     /// Organites, dont plastes (organites photosynthétiques).
     pub organelles: u8,
     pub plastids: u8,
@@ -232,6 +238,7 @@ struct Organisation {
     signalling: f64,
     signalling_reach: f64,
     meiosis: f64,
+    cuticle: f64,
 }
 
 fn organisation(genome: &Genome) -> Organisation {
@@ -249,6 +256,7 @@ fn organisation(genome: &Genome) -> Organisation {
                 o.signalling_reach += d.efficiency * d.affinity;
             }
             DomainFamily::Meiosis => o.meiosis += d.efficiency,
+            DomainFamily::Cuticle => o.cuticle += d.efficiency,
             _ => {}
         }
     }
@@ -698,6 +706,10 @@ impl Phenotype {
         if organelles > 0 {
             signature |= EUKARYOTE;
         }
+        let desiccation_tolerance = -(-org.cuticle).dexp_m1();
+        if desiccation_tolerance >= physio.terrestrial_tolerance {
+            signature |= TERRESTRIAL;
+        }
         if plastids > 0 {
             signature |= PLASTID;
         }
@@ -722,6 +734,7 @@ impl Phenotype {
             adhesion: org.adhesion,
             signalling: org.signalling,
             meiosis: org.meiosis,
+            desiccation_tolerance,
             organelles,
             plastids,
             sexual: organelles > 0 && org.meiosis >= physio.sex_meiosis_threshold,
@@ -751,6 +764,11 @@ impl Phenotype {
 
     pub fn is_multicellular(&self) -> bool {
         self.signature & MULTICELLULAR != 0
+    }
+
+    /// Vit hors de l'eau.
+    pub fn is_terrestrial(&self) -> bool {
+        self.signature & TERRESTRIAL != 0
     }
 
     pub fn is_phagotroph(&self) -> bool {

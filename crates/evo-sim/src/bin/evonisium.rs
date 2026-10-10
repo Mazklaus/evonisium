@@ -326,7 +326,10 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
     let d = |now: f64, before: f64| (now - before) / dt;
     let l = &r.last;
     println!(
-        "    O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
+        "    terre ferme : {:.2} % de la biomasse, altération ×{:.2} | O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
+        100.0 * world.communities.iter().flatten().filter(|p| p.phenotype.is_terrestrial()).map(|p| p.biomass).sum::<f64>()
+            / world.communities.iter().flatten().map(|p| p.biomass).sum::<f64>().max(1e-300),
+        world.biotic_weathering(),
         d(b.surface_release, previous.surface_release),
         d(b.deep_respiration, previous.deep_respiration),
         d(b.reduced_gases, previous.reduced_gases),

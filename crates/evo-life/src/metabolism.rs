@@ -261,6 +261,11 @@ pub fn domain_relations() -> Vec<DomainRelation> {
         rel(Signalling, Regulator, 0.1),
         rel(Regulator, Regulator, 0.5),
         rel(Repair, Meiosis, 0.3),
+        // Vie hors de l'eau (étape 5) : l'enveloppe protectrice dérive des
+        // enzymes des sucres (polysaccharides extracellulaires) et des
+        // protéines de la matrice d'adhésion.
+        rel(Catalytic(FERMENTATION), Cuticle, 0.05),
+        rel(Adhesion, Cuticle, 0.1),
     ];
     // Les centres anoxygéniques changent de donneur entre eux, et chacun peut
     // donner le centre oxygénique (photosystème II).
