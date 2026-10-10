@@ -111,7 +111,7 @@ impl Default for EvolutionParams {
         Self {
             candidates_per_kind: [4, 1, 1, 1, 1, 2, 2, 1],
             innovation_probability: 3e-14,
-            structural_probability: 1e-13,
+            structural_probability: 1e-12,
             tunnel: true,
             tunnel_min_selection: -0.05,
             hgt_rate: 1e-7,
