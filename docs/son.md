@@ -10,7 +10,7 @@ Conception : doc « Evonisium : design sonore » (choix de l'utilisateur du 10 o
 | Loupe de l'inspecteur | Monde liquide : bulles, cliquetis des flagelles, battement des divisions ; musique en retrait | Lignées vivantes |
 | Au sol | Musique et vent, en attendant les voix des espèces (livraison 2) | — |
 | Menus | Musique seule, plus douce | — |
-| Interface | Petites lames de bois et kalimba accordées à la musique : clic des boutons, deux notes à l'ouverture et à la fermeture d'une fiche, accord au changement d'écran, coup sourd quand un point de sauvegarde est écrit | Mode et tonique de la musique |
+| Interface | Plume à l'ouverture d'une fiche, page tournée au changement d'écran, tampon quand un point de sauvegarde est écrit | — |
 
 Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des cloches de verre, des bulles et de rares phrases de kalimba.
 
