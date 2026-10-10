@@ -7,7 +7,8 @@
 //! (trois texels RGBAF par os, une ligne par instance) que le shader des
 //! animaux lit avec `INSTANCE_ID`.
 //!
-//! Les individus sont des figurants (voir `evo_view::ground`) : rien de ce
+//! Les individus sont des agents du moteur pour les espèces vraies assez
+//! grandes, des figurants ailleurs (voir `evo_view::ground`) : rien de ce
 //! qu'ils font ne remonte au moteur.
 
 use crate::session::{image_rgba8, image_rgbaf};
@@ -49,18 +50,30 @@ impl IRefCounted for EvoGround {
     }
 }
 
-/// Construit la scène : figurants du milieu, puis les espèces vraies.
-pub fn build(site: Site, real: Vec<SceneSpecies>, total: usize, seed: u64) -> Built {
+/// Construit la scène : figurants du milieu, puis les espèces vraies. Une
+/// espèce vraie dont le moteur a tiré un échantillon (`samples`, par
+/// signature) devient une espèce d'agents ; les autres gardent les gestes
+/// des figurants.
+pub fn build(site: Site, real: Vec<SceneSpecies>, samples: Vec<evo_agents::Sample>, total: usize, seed: u64) -> Built {
     let t0 = Instant::now();
     let patch = Patch::new(site.clone(), seed);
     let mut species = bench_species(&site, seed, 6);
-    species.extend(real);
-    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * species.len() * 4];
-    let row = IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * 4;
-    for (k, s) in species.iter().enumerate() {
-        atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(&s.plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
+    let mut samples: Vec<Option<evo_agents::Sample>> = samples.into_iter().map(Some).collect();
+    let mut agents = Vec::new();
+    for sp in real {
+        let found = samples.iter_mut().find(|x| x.as_ref().is_some_and(|x| Some(x.signature) == sp.signature)).and_then(|x| x.take());
+        match found {
+            Some(sample) => agents.push((sp, sample)),
+            None => species.push(sp),
+        }
     }
-    let crowd = Crowd::new(patch, species, total, seed);
+    let plans: Vec<_> = species.iter().chain(agents.iter().map(|a| &a.0)).map(|s| s.plan.clone()).collect();
+    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * plans.len() * 4];
+    let row = IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * 4;
+    for (k, plan) in plans.iter().enumerate() {
+        atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
+    }
+    let crowd = Crowd::with_agents(patch, species, agents, total, seed);
     Built { crowd, atlas, ms: t0.elapsed().as_secs_f64() * 1000.0 }
 }
 
@@ -142,7 +155,7 @@ impl EvoGround {
         };
         let mut g = Gd::<EvoGround>::default();
         let (seed, total) = (seed as u64, total.clamp(1, 1_000_000) as usize);
-        g.bind_mut().start(true, move || build(site, Vec::new(), total, seed));
+        g.bind_mut().start(true, move || build(site, Vec::new(), Vec::new(), total, seed));
         g
     }
 
@@ -206,6 +219,7 @@ impl EvoGround {
         d.set("name", s.name.as_str());
         d.set("size_m", s.size_m as f64);
         d.set("bench", s.signature.is_none());
+        d.set("agents", s.engine);
         d.set("predator", s.predator);
         d.set("aquatic", s.aquatic);
         d.set("locomotion", locomotion_label(s.rig.locomotion, s.aquatic, self.fr).as_str());
@@ -349,7 +363,7 @@ impl EvoGround {
         c.individuals
             .iter()
             .enumerate()
-            .filter(|(_, i)| i.species as i64 == k)
+            .filter(|(_, i)| i.species as i64 == k && i.scale > 0.0)
             .min_by(|a, b| (a.1.x.hypot(a.1.z)).total_cmp(&b.1.x.hypot(b.1.z)))
             .map_or(-1, |(i, _)| i as i64)
     }

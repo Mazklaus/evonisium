@@ -17,6 +17,7 @@ evo-sim.workspace = true
 evo-engine.workspace = true
 evo-view.workspace = true
 evo-morph.workspace = true
+evo-agents.workspace = true
 mimalloc.workspace = true
 rayon.workspace = true
 godot = { version = "0.5", features = ["api-4-6"] }

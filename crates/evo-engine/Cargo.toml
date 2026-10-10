@@ -11,6 +11,7 @@ evo-core.workspace = true
 evo-planet.workspace = true
 evo-life.workspace = true
 evo-sim.workspace = true
+evo-agents.workspace = true
 rayon.workspace = true
 rusqlite.workspace = true
 bincode.workspace = true
