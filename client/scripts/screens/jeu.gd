@@ -21,6 +21,7 @@ const Reseau := preload("res://scripts/ui/reseau.gd")
 const Strates := preload("res://scripts/ui/strates.gd")
 const Anatomie := preload("res://scripts/ui/anatomie.gd")
 const Comparateur := preload("res://scripts/ui/comparateur.gd")
+const Sol := preload("res://scripts/screens/sol.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -38,6 +39,7 @@ var autosave_clock := 0.0
 var info := {}
 var recent: Array = []
 var o2_seen := false
+var sol: Control
 
 func setup(params: Dictionary) -> void:
 	var g = App.globe
@@ -265,13 +267,46 @@ func open_with_without() -> void:
 
 ## Outils d'une cellule ouverts depuis l'inspecteur.
 func open_tool(tool: String, cell: int) -> void:
-	if tool == "reseau":
+	if tool == "sol":
+		descend(cell)
+	elif tool == "reseau":
 		var f = _open(Reseau.new())
 		f.open(cell)
 		f.species_requested.connect(open_species)
 	else:
 		var f = _open(Strates.new())
 		f.open(cell)
+
+## Descente au sol : le globe plonge vers la cellule, puis la scène locale
+## se pose par-dessus ; « Remonter » rend le globe.
+func descend(cell: int) -> void:
+	if cell < 0 or sol != null:
+		return
+	if fiche and is_instance_valid(fiche):
+		fiche.queue_free()
+	var g = App.session.open_ground(cell, 100000)
+	if g == null:
+		return
+	App.globe.go_to_cell(cell, 1.03)
+	var s = Sol.new()
+	s.modulate.a = 0.0
+	add_child(s)
+	s.open(g)
+	s.closed.connect(ascend)
+	sol = s
+	var tw := create_tween()
+	tw.tween_interval(0.0 if bool(App.settings["reduce_motion"]) else 0.9)
+	tw.tween_property(s, "modulate:a", 1.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.6)
+
+func ascend() -> void:
+	if sol == null:
+		return
+	var s := sol
+	sol = null
+	App.globe.target_distance = 1.4
+	var tw := create_tween()
+	tw.tween_property(s, "modulate:a", 0.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.4)
+	tw.tween_callback(s.queue_free)
 
 func open_save() -> void:
 	_open(Sauvegarde.new())

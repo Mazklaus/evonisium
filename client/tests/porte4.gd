@@ -97,6 +97,23 @@ func _g3_only() -> void:
 	await _shot("g3-paysage")
 	_finish(ok)
 
+## Essai de la descente au sol (étape 5) depuis une partie : le globe
+## plonge sur un massif, la scène locale se construit depuis la cellule,
+## puis « Remonter » rend le globe.
+func _ground_only() -> void:
+	await _run_to(2.0e5)
+	var cell: int = App.session.highest_cell(true)
+	var jeu = _screen()
+	jeu.descend(cell)
+	var ok := await _until(func(): return jeu.sol != null and jeu.sol.ready_done, 120.0)
+	await _wait(2.0)
+	report["sol_individus"] = jeu.sol.ground.individual_count() if ok else 0
+	await _shot("sol-descente")
+	jeu.ascend()
+	await _wait(1.0)
+	ok = ok and jeu.sol == null
+	_finish(ok)
+
 ## Essai des corps simulés : la Terre tourne jusqu'à sa première colonie
 ## pluricellulaire, dont on ouvre la fiche, l'anatomie et le comparateur.
 func _colony_only() -> void:
@@ -157,6 +174,9 @@ func _scenario() -> void:
 	App.session.set_speed(1.0e6)
 	if opts.get("seul", "") == "g3":
 		await _g3_only()
+		return
+	if opts.get("seul", "") == "sol":
+		await _ground_only()
 		return
 	if opts.get("seul", "") == "colonie":
 		await _colony_only()

@@ -121,6 +121,7 @@ func _fill(with_loupe: bool = true) -> void:
 	body.add_child(tools)
 	tools.add_child(Atlas.button(App.t("food_web"), tool_requested.emit.bind("reseau", cell)))
 	tools.add_child(Atlas.button(App.t("strata"), tool_requested.emit.bind("strates", cell)))
+	tools.add_child(Atlas.button(App.t("ground_down"), tool_requested.emit.bind("sol", cell)))
 	if keep_loupe:
 		body.add_child(Atlas.hsep())
 		body.add_child(loupe_caption)

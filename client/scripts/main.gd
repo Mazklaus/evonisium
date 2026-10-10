@@ -27,7 +27,12 @@ func _ready() -> void:
 	var first := "accueil"
 	var args := OS.get_cmdline_user_args()
 	# Le scénario de la porte pilote le client depuis la ligne de commande.
-	if "--porte4" in args:
+	if "--porte5" in args:
+		var porte5 = load("res://tests/porte5.gd").new()
+		porte5.name = "Porte5"
+		add_child(porte5)
+		return
+	elif "--porte4" in args:
 		var porte4 = load("res://tests/porte4.gd").new()
 		porte4.name = "Porte4"
 		add_child(porte4)

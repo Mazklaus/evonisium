@@ -325,7 +325,7 @@ func _run_path(path: int, steps: int) -> Array:
 	App.session.intervene("phosphate", 1.0e14, 0, 1500.0)
 	App.session.pause_at(steps * 1.0e5)
 	App.session.resume()
-	# Deux caméras : l'une tourne autour de l'équateur de loin, l'autre
+	# Deux caméras et deux trajectoires du curseur : l'une tourne autour de l'équateur de loin, l'autre
 	# plonge sur un pôle de près. Le canal d'observation ne doit rien changer.
 	var t := 0.0
 	var done := func():
@@ -335,6 +335,11 @@ func _run_path(path: int, steps: int) -> Array:
 		t += get_process_delta_time()
 		var dir := Vector3(cos(t), 0.2, sin(t)) if path == 0 else Vector3(0.1 * cos(3.0 * t), 1.0, 0.1 * sin(3.0 * t))
 		App.session.observe(dir.normalized(), 1.2 if path == 0 else 0.05, 1 if path == 0 else 6)
+		# Le second chemin joue aussi du curseur de vitesse : il ne règle que
+		# le rythme d'affichage, jamais l'histoire (règle de Vision du
+		# 2026-10-09).
+		if path == 1:
+			App.session.set_speed([3.0e5, 1.0e7, 1.0e6][int(t * 2.0) % 3])
 		if App.session.has_new_frame():
 			App.session.frame_textures(false)
 		await get_tree().process_frame
