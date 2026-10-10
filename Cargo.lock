@@ -142,6 +142,7 @@ dependencies = [
  "evo-morph",
  "evo-planet",
  "evo-sim",
+ "evo-son",
  "evo-view",
  "godot",
  "mimalloc",
@@ -193,6 +194,10 @@ dependencies = [
  "rayon",
  "serde",
 ]
+
+[[package]]
+name = "evo-son"
+version = "0.1.0"
 
 [[package]]
 name = "evo-view"
