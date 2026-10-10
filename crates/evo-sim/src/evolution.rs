@@ -151,7 +151,7 @@ impl Default for AcceleratorParams {
     fn default() -> Self {
         Self {
             enabled: true,
-            patience_years: 600e6,
+            patience_years: 800e6,
             boost: 100.0,
             complexity_patience_years: 1.0e9,
             complexity_escalation_years: 100e6,
