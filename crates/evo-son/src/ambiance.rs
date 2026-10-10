@@ -1,9 +1,14 @@
-//! Ambiances des vues : souffle du globe (vent, grondement, orages
-//! lointains réglés par le climat publié) et monde liquide de la loupe
-//! (bulles, cliquetis des flagelles, battement lent des divisions).
+//! Ambiances des vues : souffle du globe (rafales de vent, grondement,
+//! orages lointains réglés par le climat publié) et monde liquide de la
+//! loupe (bulles, cliquetis des flagelles, battement lent des divisions).
+//!
+//! Le vent n'est pas un fond continu : il passe en rafales séparées de longs
+//! calmes, plus rares quand le climat est calme. Sur une partie de 20 à 60
+//! heures, un souffle permanent devient vite pénible (retour d'écoute de
+//! l'utilisateur, 10 octobre 2026).
 
 use crate::musique::Lecture;
-use crate::synth::{Bed, Bus, FilterKind, Make, Rng, Voice};
+use crate::synth::{Bed, Bus, FilterKind, Make, Rng, Smooth, Voice};
 use std::f32::consts::TAU;
 
 pub struct Globe {
@@ -12,16 +17,24 @@ pub struct Globe {
     rumble_phase: f32,
     pub level: f32,
     thunder_acc: f32,
+    /// Rafale en cours (true) ou calme (false), et temps restant.
+    pub gusting: bool,
+    gust_left: f32,
+    /// Enveloppe de la rafale, de 0 (calme) à 1.
+    pub gust: Smooth,
 }
 
 impl Globe {
     pub fn new(rate: f32) -> Self {
         Self {
-            wind: Bed::new(true, FilterKind::BandPass, 350.0, 0.8, rate).breathe_freq(0.07, 160.0).breathe_gain(0.11, 0.4),
-            hiss: Bed::new(false, FilterKind::BandPass, 1800.0, 0.6, rate).breathe_gain(0.09, 0.6),
+            wind: Bed::new(true, FilterKind::BandPass, 350.0, 0.8, rate).breathe_freq(0.07, 160.0),
+            hiss: Bed::new(false, FilterKind::BandPass, 1800.0, 0.6, rate),
             rumble_phase: 0.0,
             level: 0.0,
             thunder_acc: 0.0,
+            gusting: false,
+            gust_left: 12.0,
+            gust: Smooth::new(0.0),
         }
     }
     /// Agitation du climat, de 0 à 1 : chaleur et océan libre de glace.
@@ -30,10 +43,23 @@ impl Globe {
     }
     pub fn set(&mut self, l: &Lecture, level: f32) {
         let c = Self::storminess(l);
+        let g = self.gust.value;
         self.level = level;
-        self.wind.gain.target = (0.12 + 0.3 * c) * level;
-        self.wind.freq.target = 240.0 + 520.0 * c;
-        self.hiss.gain.target = (0.004 + 0.02 * c) * level;
+        // Au calme, un souffle à peine audible ; la rafale le porte au plus haut.
+        self.wind.gain.target = (0.008 + (0.08 + 0.2 * c) * g) * level;
+        self.wind.freq.target = 240.0 + 520.0 * c * (0.5 + 0.5 * g);
+        self.hiss.gain.target = (0.012 * c * g) * level;
+    }
+    /// Rafales : 5 à 12 s, séparées de 30 à 150 s de calme selon le climat.
+    fn gusts(&mut self, dt: f32, l: &Lecture, rng: &mut Rng) {
+        let c = Self::storminess(l);
+        self.gust_left -= dt;
+        if self.gust_left <= 0.0 {
+            self.gusting = !self.gusting;
+            self.gust_left = if self.gusting { rng.range(5.0, 12.0) } else { rng.range(30.0, 90.0) * (1.6 - c) };
+        }
+        self.gust.target = if self.gusting { 1.0 } else { 0.0 };
+        self.gust.step(dt, 2.5);
     }
     #[inline]
     pub fn run(&mut self, rng: &mut Rng, dt: f32, rate: f32) -> f32 {
@@ -43,10 +69,12 @@ impl Globe {
     }
     /// Orages lointains, tirés une fois par seconde.
     pub fn tick(&mut self, dt: f32, l: &Lecture, mk: &Make, rng: &mut Rng, out: &mut Vec<Voice>) {
+        self.gusts(dt, l, rng);
         self.thunder_acc += dt;
         while self.thunder_acc >= 1.0 {
             self.thunder_acc -= 1.0;
-            if self.level > 0.05 && rng.chance(0.004 + 0.05 * Self::storminess(l)) {
+            // Rares, et plutôt pendant les rafales.
+            if self.level > 0.05 && rng.chance((0.001 + 0.012 * Self::storminess(l)) * (0.3 + self.gust.value)) {
                 let v = rng.range(0.3, 0.6) * self.level;
                 let pan = rng.bipolar() * 0.7;
                 out.push(
@@ -72,7 +100,7 @@ impl Micro {
     }
     pub fn set(&mut self, level: f32) {
         self.level = level;
-        self.liquid.gain.target = 0.22 * level;
+        self.liquid.gain.target = 0.12 * level;
     }
     #[inline]
     pub fn run(&mut self, rng: &mut Rng, dt: f32, rate: f32) -> f32 {
@@ -109,6 +137,36 @@ impl Micro {
             self.beat = 0.0;
             out.push(Voice::new(mk.thump(58.0, 0.5), Bus::Ambiance, 0.22 * self.level));
             out.push(Voice::new(mk.thump(52.0, 0.6), Bus::Ambiance, 0.16 * self.level).at(0.32, r));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wind_blows_in_rare_gusts() {
+        let rate = 48_000.0;
+        let mut g = Globe::new(rate);
+        let mut rng = Rng::new(7);
+        let mk = Make { rate };
+        let mut out = Vec::new();
+        for (temp, ice) in [(0.2, 0.6), (0.5, 0.0), (1.0, 0.0)] {
+            let l = Lecture { temp, o2: 0.3, bio: 0.3, ice };
+            let dt = 256.0 / rate;
+            let (mut windy, mut total) = (0.0, 0.0);
+            while total < 1800.0 {
+                g.set(&l, 1.0);
+                g.tick(dt, &l, &mk, &mut rng, &mut out);
+                if g.gust.value > 0.3 {
+                    windy += dt;
+                }
+                total += dt;
+            }
+            let share = windy / total;
+            assert!(share > 0.03 && share < 0.3, "part de vent {share} pour {temp}");
+            out.clear();
         }
     }
 }

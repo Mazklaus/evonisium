@@ -1,7 +1,7 @@
 extends Node
 ## Son du jeu (livraison 1 du doc « Design sonore ») : musique des ères
 ## microbiennes, souffle du globe, monde liquide de la loupe, bruits de
-## papier et d'encre. Toute la synthèse est en Rust (classe EvoSon, crate
+## bois et de kalimba de l'interface. Toute la synthèse est en Rust (classe EvoSon, crate
 ## evo-son) ; ce script ne fait que dire où est le joueur et ce qu'il ouvre.
 ## Il observe l'interface sans la modifier. Ctrl+M coupe ou rend le son.
 
@@ -74,6 +74,9 @@ func _on_screen(_name: String, _params: Dictionary) -> void:
 	son.oublier()
 
 func _on_node_added(node: Node) -> void:
+	if node is BaseButton:
+		# Petit coup de bois sous chaque bouton.
+		(node as BaseButton).pressed.connect(func() -> void: son.bruit("clic"))
 	var s: Script = node.get_script()
 	if s == null:
 		return
@@ -83,8 +86,9 @@ func _on_node_added(node: Node) -> void:
 	elif path.ends_with("screens/sol.gd"):
 		_sol = weakref(node)
 	elif node.has_signal("closed") and node is PanelContainer:
-		# Une fiche de l'Atlas s'ouvre : la plume gratte.
+		# Une fiche de l'Atlas s'ouvre, puis se referme.
 		son.bruit("plume")
+		node.connect("closed", func() -> void: son.bruit("fermer"))
 
 func _visible(ref: WeakRef) -> Node:
 	if ref == null:

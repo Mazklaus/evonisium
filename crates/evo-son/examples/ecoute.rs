@@ -69,9 +69,10 @@ fn main() -> std::io::Result<()> {
     let mut son = Son::new(rate as f32, 9);
     son.ordre(Ordre::Volumes([0.8, 0.0, 0.0, 1.0]));
     let mut buf = Vec::new();
-    for b in [Bruit::Plume, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
+    for b in [Bruit::Clic, Bruit::Clic, Bruit::Page, Bruit::Plume, Bruit::Fermer, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
         son.ordre(Ordre::Bruit(b));
-        let mut part = vec![[0.0f32; 2]; (rate as f32 * 2.5) as usize];
+        let secs = if b == Bruit::Etape { 3.0 } else { 1.3 };
+        let mut part = vec![[0.0f32; 2]; (rate as f32 * secs) as usize];
         son.rendre(&mut part);
         buf.extend(part);
     }

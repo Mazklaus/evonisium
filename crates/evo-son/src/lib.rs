@@ -7,7 +7,8 @@
 //! change jamais l'histoire. Tout est synthétisé : aucun fichier audio.
 //!
 //! Livraison 1 : musique des ères microbiennes, souffle du globe, monde
-//! liquide de la loupe, bruits de papier et d'encre de l'interface.
+//! liquide de la loupe, bruits de l'interface (bois et kalimba accordés à la
+//! musique).
 
 // Affichage seulement : rien de ce crate n'entre dans l'état simulé, les
 // mathématiques de la plateforme y suffisent (voir clippy.toml).
@@ -56,12 +57,17 @@ impl Vue {
     }
 }
 
-/// Bruits de papier et d'encre de l'interface.
+/// Bruits de l'interface : petits sons de bois et de kalimba, accordés au
+/// mode et à la tonique de la musique en cours pour s'y fondre.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bruit {
-    /// Ouverture d'une fiche : plume qui gratte.
+    /// Ouverture d'une fiche : deux notes montantes.
     Plume,
-    /// Changement d'écran : page tournée.
+    /// Fermeture d'une fiche : deux notes descendantes, plus douces.
+    Fermer,
+    /// Bouton pressé : petit coup de bois.
+    Clic,
+    /// Changement d'écran : accord de bois et souffle de page.
     Page,
     /// Tampon (point de sauvegarde, ordre confirmé).
     Tampon,
@@ -75,6 +81,8 @@ impl Bruit {
     pub fn from_name(s: &str) -> Option<Self> {
         Some(match s {
             "plume" => Bruit::Plume,
+            "fermer" => Bruit::Fermer,
+            "clic" => Bruit::Clic,
             "page" => Bruit::Page,
             "tampon" => Bruit::Tampon,
             "cloche" => Bruit::Cloche,
@@ -201,27 +209,33 @@ impl Son {
     pub fn bruit(&mut self, b: Bruit) {
         let mk = Make { rate: self.rate };
         let r = self.rate;
+        let sc = musique::MODES[self.musique.mode].1;
+        let base = self.musique.base + 12;
+        let note = |d: i32| synth::degree(base, &sc, d);
         let rng = &mut self.rng;
         let mut v: Vec<Voice> = Vec::new();
         match b {
             Bruit::Plume => {
-                let mut t = 0.0;
-                for _ in 0..(3 + (rng.u() * 3.0) as usize) {
-                    let len = rng.range(0.07, 0.17);
-                    let k =
-                        mk.burst(FilterKind::BandPass, rng.range(2600.0, 4200.0), rng.range(2000.0, 5200.0), 1.6, len * 0.3, len, false);
-                    v.push(Voice::new(k, Bus::Interface, 0.3).at(t, r).send(0.1));
-                    t += len + rng.range(0.03, 0.12);
-                }
+                v.push(Voice::new(mk.wood(note(0)), Bus::Interface, 0.1).pan(-0.1).send(0.2));
+                v.push(Voice::new(mk.wood(note(2)), Bus::Interface, 0.08).at(0.08, r).pan(0.1).send(0.25));
+                v.push(Voice::new(mk.pluck(rng, note(4), 0.3, 0.8), Bus::Interface, 0.05).at(0.08, r).send(0.3));
+            }
+            Bruit::Fermer => {
+                v.push(Voice::new(mk.wood(note(2)), Bus::Interface, 0.06).pan(0.1).send(0.2));
+                v.push(Voice::new(mk.wood(note(0)), Bus::Interface, 0.05).at(0.07, r).pan(-0.1).send(0.2));
+            }
+            Bruit::Clic => {
+                v.push(Voice::new(mk.wood(note(4) + 12.0), Bus::Interface, 0.045).send(0.1));
             }
             Bruit::Page => {
-                v.push(Voice::new(mk.burst(FilterKind::BandPass, 700.0, 3800.0, 0.9, 0.2, 0.45, false), Bus::Interface, 0.4).send(0.1));
-                v.push(Voice::new(mk.thump(180.0, 0.08), Bus::Interface, 0.12).at(0.4, r));
+                v.push(Voice::new(mk.wood(note(-7)), Bus::Interface, 0.1).send(0.3));
+                v.push(Voice::new(mk.wood(note(-3)), Bus::Interface, 0.06).at(0.02, r).send(0.3));
+                v.push(Voice::new(mk.burst(FilterKind::LowPass, 1600.0, 500.0, 0.7, 0.06, 0.3, true), Bus::Interface, 0.25).send(0.1));
             }
             Bruit::Tampon => {
-                v.push(Voice::new(mk.thump(120.0, 0.14), Bus::Interface, 0.7));
-                v.push(Voice::new(mk.burst(FilterKind::LowPass, 900.0, 900.0, 1.0, 0.002, 0.06, true), Bus::Interface, 0.35));
-                v.push(Voice::new(mk.burst(FilterKind::BandPass, 2200.0, 2200.0, 1.0, 0.001, 0.03, false), Bus::Interface, 0.12));
+                v.push(Voice::new(mk.thump(95.0, 0.12), Bus::Interface, 0.2));
+                v.push(Voice::new(mk.wood(note(-7)), Bus::Interface, 0.1).send(0.2));
+                v.push(Voice::new(mk.pluck(rng, note(0), 0.35, 1.2), Bus::Interface, 0.07).at(0.12, r).send(0.35));
             }
             Bruit::Cloche => {
                 v.push(Voice::new(mk.bell(91.0, 3.5, 1.6, 2.6), Bus::Interface, 0.12).send(0.3));
@@ -364,7 +378,7 @@ mod tests {
     fn interface_sounds_play_and_end() {
         let mut son = Son::new(44_100.0, 3);
         son.ordre(Ordre::Volumes([1.0, 0.0, 0.0, 1.0]));
-        for b in [Bruit::Plume, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
+        for b in [Bruit::Plume, Bruit::Fermer, Bruit::Clic, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
             son.ordre(Ordre::Bruit(b));
         }
         let (peak, _) = render(&mut son, 1.0);

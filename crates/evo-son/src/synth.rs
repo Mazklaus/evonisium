@@ -311,6 +311,11 @@ impl Make {
     pub fn burst(&self, kind: FilterKind, f0: f32, f1: f32, q: f32, att: f32, len: f32, brown: bool) -> Kind {
         Kind::Burst { filt: Biquad::new(kind, f0, q, self.rate), kind, f0, f1, q, att, len, brown: brown.then(Brown::default) }
     }
+    /// Lame de bois frappée (marimba feutré) : partiel à 3,9 fois la
+    /// fondamentale, vite éteint.
+    pub fn wood(&self, midi: f32) -> Kind {
+        self.bell(midi, 3.9, 0.6, 0.45)
+    }
     pub fn thump(&self, f0: f32, dec: f32) -> Kind {
         Kind::Thump { f0, dec, phase: 0.0 }
     }
