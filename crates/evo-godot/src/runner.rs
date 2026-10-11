@@ -139,8 +139,10 @@ pub struct Game {
     strata_rx: Pending<(u32, u64)>,
     next_event: u64,
     events_rx: Pending<()>,
-    lineages_rx: Pending<u64>,
+    /// Lignées converties hors du fil de l'affichage, avec le pas demandé.
+    lineages_rx: Option<Receiver<(Arc<Vec<LineageFrame>>, u64)>>,
     lineages_step: Option<u64>,
+    lineages_asked: Option<std::time::Instant>,
     history_rx: Pending<()>,
     history_step: Option<u64>,
     cell_rx: Pending<(u32, u64)>,
@@ -199,8 +201,9 @@ impl Game {
             strata_rx: Pending::new((0, 0)),
             next_event: 0,
             events_rx: Pending::new(()),
-            lineages_rx: Pending::new(0),
+            lineages_rx: None,
             lineages_step: None,
+            lineages_asked: None,
             history_rx: Pending::new(()),
             history_step: None,
             cell_rx: Pending::new((0, 0)),
@@ -312,7 +315,8 @@ impl Game {
     /// Relève les réponses arrivées et relance les requêtes périodiques.
     /// Renvoie le nombre d'événements nouveaux.
     pub fn pump(&mut self) -> usize {
-        let step = self.engine.status().steps;
+        let status = self.engine.status();
+        let step = status.steps;
         let mut new_events = 0;
         if let Some((Answer::Events(list), ())) = self.events_rx.take() {
             let full = list.len() >= EVENTS_PER_POLL;
@@ -335,15 +339,33 @@ impl Game {
         if self.events_rx.idle() {
             self.ask_events();
         }
-        if let Some((Answer::Lineages(list), at)) = self.lineages_rx.take() {
-            self.lineages = Arc::new(list.iter().map(LineageFrame::from).collect());
-            self.lineages_step = Some(at);
+        if let Some(rx) = &self.lineages_rx {
+            match rx.try_recv() {
+                Ok((list, at)) => {
+                    self.lineages = list;
+                    self.lineages_step = Some(at);
+                    self.lineages_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => self.lineages_rx = None,
+            }
         }
-        // L'arbre du vivant n'a pas besoin de chaque pas quand les lignées se
-        // comptent par centaines de milliers.
-        let every = if self.lineages.len() > 200_000 { 20 } else { 1 };
-        if self.lineages_rx.idle() && self.lineages_step.is_none_or(|s| step >= s + every) {
-            self.lineages_rx.ask(&self.engine, Query::Lineages { since_years: f64::NEG_INFINITY }, step);
+        // Toutes les lignées depuis le début : des centaines de milliers après
+        // l'arrivée de l'oxygène. Le moteur les liste sur son fil, entre deux
+        // pas ; on les demande donc au plus une fois par seconde (à chaque
+        // pas en pause ou au début), et la conversion se fait sur un fil à
+        // part, jamais sur celui de l'affichage.
+        let due = self.lineages_asked.is_none_or(|t| t.elapsed().as_secs_f64() >= 1.0) || status.paused || self.lineages.len() < 1000;
+        if self.lineages_rx.is_none() && self.lineages_step != Some(step) && due {
+            let answer = self.engine.query(Query::Lineages { since_years: f64::NEG_INFINITY });
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                if let Ok(Answer::Lineages(list)) = answer.recv() {
+                    let _ = tx.send((Arc::new(list.iter().map(LineageFrame::from).collect()), step));
+                }
+            });
+            self.lineages_rx = Some(rx);
+            self.lineages_asked = Some(std::time::Instant::now());
         }
         if let Some((Answer::GlobalHistory(list), ())) = self.history_rx.take() {
             for s in list {
@@ -363,7 +385,6 @@ impl Game {
         if let Some((Answer::Strata(list), (cell, at))) = self.strata_rx.take() {
             self.strata = Some((cell, at, list));
         }
-        let status = self.engine.status();
         if let Some(b) = &mut self.branch {
             let mut log = None;
             if let Some((Answer::Orders(list), ())) = b.orders_rx.take() {

@@ -1138,10 +1138,21 @@ impl EvoSession {
         if self.events_polled >= events.len() {
             return out;
         }
+        // Après l'arrivée de l'oxygène, les naissances et extinctions de
+        // lignées se comptent par centaines à chaque pas. L'écran de jeu ne
+        // fait rien des événements de routine simplement notés (ils restent
+        // dans la chronique) : seuls partent ceux qu'il signale, avec au plus
+        // 200 par appel.
+        let wanted: Vec<&Event> = events[self.events_polled..]
+            .iter()
+            .filter(|e| {
+                chronicle::level(e, g.pace) >= chronicle::Level::Notable
+                    || g.rules.decide(e, g.pace) >= Action::Alert
+                    || matches!(e.kind, EventKind::OrderRefused { .. })
+            })
+            .collect();
         let lineages = self.lineages();
-        // Au plus 200 par appel : le reste reste dans la chronique.
-        let start = self.events_polled.max(events.len().saturating_sub(200));
-        for e in &events[start..] {
+        for e in &wanted[wanted.len().saturating_sub(200)..] {
             out.push(&self.event_dict(e, &lineages, Some(&g.rules), g.pace).to_variant());
         }
         self.events_polled = events.len();
