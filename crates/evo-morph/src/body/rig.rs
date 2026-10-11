@@ -37,10 +37,16 @@ pub enum Action {
     Communicate,
     Build,
     Rest,
+    /// Actions culturelles de l'étape 6 (animations provisoires, à reprendre
+    /// avec le palier 3 d'evo-morph).
+    MakeTool,
+    Teach,
+    Trade,
+    Rite,
 }
 
 impl Action {
-    pub const ALL: [Action; 12] = [
+    pub const ALL: [Action; 16] = [
         Action::Feed,
         Action::Hunt,
         Action::Flee,
@@ -53,6 +59,10 @@ impl Action {
         Action::Communicate,
         Action::Build,
         Action::Rest,
+        Action::MakeTool,
+        Action::Teach,
+        Action::Trade,
+        Action::Rite,
     ];
 
     pub fn index(self) -> usize {
@@ -77,6 +87,10 @@ impl Action {
             Action::Communicate => "communiquer",
             Action::Build => "construire",
             Action::Rest => "se_reposer",
+            Action::MakeTool => "fabriquer_un_outil",
+            Action::Teach => "enseigner",
+            Action::Trade => "echanger",
+            Action::Rite => "celebrer_un_rite",
         }
     }
 
@@ -106,6 +120,14 @@ impl Action {
             (Action::Build, false) => "building",
             (Action::Rest, true) => "se repose",
             (Action::Rest, false) => "resting",
+            (Action::MakeTool, true) => "fabrique un outil",
+            (Action::MakeTool, false) => "making a tool",
+            (Action::Teach, true) => "enseigne",
+            (Action::Teach, false) => "teaching",
+            (Action::Trade, true) => "échange",
+            (Action::Trade, false) => "trading",
+            (Action::Rite, true) => "célèbre un rite",
+            (Action::Rite, false) => "performing a rite",
         }
     }
 
@@ -118,8 +140,9 @@ impl Action {
             Action::Migrate => 1.0,
             Action::Fight => 0.25,
             Action::Mate | Action::Communicate => 0.15,
-            Action::Feed | Action::Build => 0.1,
-            Action::Care | Action::Lay | Action::Hide | Action::Rest => 0.0,
+            Action::Feed | Action::Build | Action::Trade => 0.1,
+            Action::Teach | Action::Rite => 0.05,
+            Action::Care | Action::Lay | Action::Hide | Action::Rest | Action::MakeTool => 0.0,
         }
     }
 }
@@ -156,6 +179,10 @@ fn style(a: Action) -> Style {
         Action::Communicate => Style { head_pitch: -0.35, head_bob: (2.0, 0.18), spread: 0.25, ..base },
         Action::Build => Style { head_pitch: 0.6, head_bob: (2.2, 0.25), ..base },
         Action::Rest => Style { crouch: 0.45, head_pitch: 0.25, ..base },
+        Action::MakeTool => Style { head_pitch: 0.7, head_bob: (3.0, 0.2), crouch: 0.25, ..base },
+        Action::Teach => Style { head_pitch: 0.2, head_bob: (1.0, 0.12), spread: 0.15, ..base },
+        Action::Trade => Style { head_pitch: 0.1, head_bob: (1.5, 0.1), spread: 0.2, ..base },
+        Action::Rite => Style { sway: (0.6, 0.15), head_pitch: -0.3, spread: 0.35, ..base },
     }
 }
 
