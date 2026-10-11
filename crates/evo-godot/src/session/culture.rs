@@ -27,7 +27,7 @@ impl EvoSession {
     }
 
     /// L'état culturel prêt, s'il est celui de la partie en cours.
-    fn culture(&mut self) -> Option<Arc<CulturalState>> {
+    pub(super) fn culture(&mut self) -> Option<Arc<CulturalState>> {
         let key = self.culture_key();
         let slot = &mut self.culture;
         if slot.key != key {

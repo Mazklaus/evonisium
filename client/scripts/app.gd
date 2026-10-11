@@ -296,6 +296,7 @@ const TEXT := {
 	"people_sheet": ["Fiche du peuple", "People sheet"],
 	"people_species": ["Espèce", "Species"],
 	"people_born": ["Apparu", "Arose"],
+	"camp_notice": ["Campement des %s, un peuple d'essai : ses gens sont des figurants primates en attendant les vrais corps des espèces intelligentes.", "Camp of the %s, a test people: its folk are primate stand-ins until intelligent species get their real bodies."],
 	"notable_born": ["Né", "Born"],
 	"people_ended": ["disparu", "ended"],
 	"population": ["Effectif", "Population"],

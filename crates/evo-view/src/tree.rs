@@ -88,7 +88,9 @@ fn build_with(lineages: &[LineageFrame], now: f64, max_leaves: usize, own_rows: 
         let l = by_id[&id];
         let own_end = l.extinct_years.unwrap_or(now);
         let (count, end) = match children.get(&id) {
-            Some(cs) => cs.iter().fold((usize::from(own_rows && l.extinct_years.is_none()), own_end), |(n, e), c| (n + leaf_count[c], e.max(last_end[c]))),
+            Some(cs) => cs
+                .iter()
+                .fold((usize::from(own_rows && l.extinct_years.is_none()), own_end), |(n, e), c| (n + leaf_count[c], e.max(last_end[c]))),
             None => (1, own_end),
         };
         leaf_count.insert(id, count);

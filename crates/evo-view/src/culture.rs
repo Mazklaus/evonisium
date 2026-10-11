@@ -15,7 +15,7 @@ use evo_culture::cognition::presets;
 use evo_culture::state::{GroupView, NotableView, PeopleView};
 use evo_culture::traits::TraitKind;
 use evo_culture::world::NotableKind;
-use evo_culture::{CultureWorld, CulturalState, Organ, Phenomenon};
+use evo_culture::{CulturalState, CultureWorld, Organ, Phenomenon};
 use evo_planet::grid::GeodesicGrid;
 use evo_sim::history::CellView;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -276,7 +276,13 @@ pub fn labels(state: &CulturalState) -> Vec<PeopleLabel> {
         .peoples
         .iter()
         .filter(|p| p.ended_year.is_none() && p.groups > 0)
-        .map(|p| PeopleLabel { id: p.id, name: p.name.clone(), cell: p.core_cell, population: p.population, colour: people_colour(state, p.id) })
+        .map(|p| PeopleLabel {
+            id: p.id,
+            name: p.name.clone(),
+            cell: p.core_cell,
+            population: p.population,
+            colour: people_colour(state, p.id),
+        })
         .collect()
 }
 
@@ -402,10 +408,31 @@ fn people_summary(p: &PeopleView, techniques: &[TraitLine], language: Option<&st
     let n = number_in(lang, p.population.round() as f64, 0);
     let tech = techniques.len();
     match (lang, language) {
-        (Lang::Fr, Some(l)) => format!("{} : {n} individus en {} groupes ({species}), qui parlent le {l} et connaissent {tech} technique{}.", p.name, p.groups, if tech > 1 { "s" } else { "" }),
-        (Lang::Fr, None) => format!("{} : {n} individus en {} groupes ({species}), {tech} technique{} transmise{}.", p.name, p.groups, if tech > 1 { "s" } else { "" }, if tech > 1 { "s" } else { "" }),
-        (Lang::En, Some(l)) => format!("{}: {n} individuals in {} groups ({species}), speaking {l}, with {tech} technique{}.", p.name, p.groups, if tech == 1 { "" } else { "s" }),
-        (Lang::En, None) => format!("{}: {n} individuals in {} groups ({species}), {tech} technique{} handed down.", p.name, p.groups, if tech == 1 { "" } else { "s" }),
+        (Lang::Fr, Some(l)) => format!(
+            "{} : {n} individus en {} groupes ({species}), qui parlent le {l} et connaissent {tech} technique{}.",
+            p.name,
+            p.groups,
+            if tech > 1 { "s" } else { "" }
+        ),
+        (Lang::Fr, None) => format!(
+            "{} : {n} individus en {} groupes ({species}), {tech} technique{} transmise{}.",
+            p.name,
+            p.groups,
+            if tech > 1 { "s" } else { "" },
+            if tech > 1 { "s" } else { "" }
+        ),
+        (Lang::En, Some(l)) => format!(
+            "{}: {n} individuals in {} groups ({species}), speaking {l}, with {tech} technique{}.",
+            p.name,
+            p.groups,
+            if tech == 1 { "" } else { "s" }
+        ),
+        (Lang::En, None) => format!(
+            "{}: {n} individuals in {} groups ({species}), {tech} technique{} handed down.",
+            p.name,
+            p.groups,
+            if tech == 1 { "" } else { "s" }
+        ),
     }
 }
 
@@ -501,13 +528,27 @@ pub fn tree_lineages(state: &CulturalState, languages: bool) -> Vec<LineageFrame
         state
             .languages
             .iter()
-            .map(|l| LineageFrame { id: l.id, parent: l.parent.unwrap_or(l.id), born_years: l.born_year, extinct_years: l.ended_year, origin_cell: 0, signature: l.id })
+            .map(|l| LineageFrame {
+                id: l.id,
+                parent: l.parent.unwrap_or(l.id),
+                born_years: l.born_year,
+                extinct_years: l.ended_year,
+                origin_cell: 0,
+                signature: l.id,
+            })
             .collect()
     } else {
         state
             .peoples
             .iter()
-            .map(|p| LineageFrame { id: p.id, parent: p.parent.unwrap_or(p.id), born_years: p.born_year, extinct_years: p.ended_year, origin_cell: p.core_cell, signature: p.id })
+            .map(|p| LineageFrame {
+                id: p.id,
+                parent: p.parent.unwrap_or(p.id),
+                born_years: p.born_year,
+                extinct_years: p.ended_year,
+                origin_cell: p.core_cell,
+                signature: p.id,
+            })
             .collect()
     };
     out.sort_by_key(|l| l.id);
@@ -652,14 +693,27 @@ mod tests {
         let t0 = std::time::Instant::now();
         let cw = bench_world(&grid, &state.cells, BenchSpec::default()).unwrap();
         let st = CulturalState::of(&cw);
-        eprintln!("{:?} ; {} peuples, {} langues, {} notables, {} mythes, {} groupes, historique {}", t0.elapsed(), st.peoples.len(), st.languages.len(), st.notables.len(), st.myths.len(), st.groups.len(), st.historical);
+        eprintln!(
+            "{:?} ; {} peuples, {} langues, {} notables, {} mythes, {} groupes, historique {}",
+            t0.elapsed(),
+            st.peoples.len(),
+            st.languages.len(),
+            st.notables.len(),
+            st.myths.len(),
+            st.groups.len(),
+            st.historical
+        );
         for p in &st.peoples {
             eprintln!("{} {} parent {:?} {} groupes {} né {}", p.id, p.name, p.parent, p.groups, p.population, p.born_year);
         }
-        for m in &st.myths { eprintln!("{} : {}", m.title, m.text); }
+        for m in &st.myths {
+            eprintln!("{} : {}", m.title, m.text);
+        }
         let s = people_sheet(&st, st.peoples[0].id, Lang::Fr).unwrap();
         eprintln!("{s:#?}");
-        if let Some(n) = st.notables.first() { eprintln!("{:#?}", notable_sheet(&st, n.id, Lang::Fr)); }
+        if let Some(n) = st.notables.first() {
+            eprintln!("{:#?}", notable_sheet(&st, n.id, Lang::Fr));
+        }
     }
 
     #[test]

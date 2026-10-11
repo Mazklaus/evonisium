@@ -13,6 +13,7 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod anatomy;
+pub mod camp;
 pub mod chronicle;
 pub mod compare;
 pub mod culture;

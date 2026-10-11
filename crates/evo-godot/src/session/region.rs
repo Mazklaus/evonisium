@@ -114,6 +114,12 @@ impl EvoSession {
             g.engine.query(Query::Individuals { cell: cell as u32, species: 4, size: evo_agents::SAMPLE_SIZE, microbes: false });
         let seed = f.planet.seed ^ (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let total = total.clamp(1, 1_000_000) as usize;
+        // Étape 6 : un peuple (d'essai) dans la cellule pose son campement.
+        let camp = self.culture().and_then(|st| {
+            let v = evo_view::culture::camp(&st, cell as u32)?;
+            let name = st.peoples.iter().find(|p| p.id == v.people).map(|p| p.name.clone()).unwrap_or_default();
+            Some((v, name))
+        });
         let mut ground = Gd::<crate::ground::EvoGround>::default();
         let fr = self.lang == Lang::Fr;
         ground.bind_mut().start(fr, move || {
@@ -136,7 +142,7 @@ impl EvoSession {
                 Ok(Answer::Individuals(i)) => i.samples,
                 _ => Vec::new(),
             };
-            crate::ground::build(site, real, samples, total, seed)
+            crate::ground::build(site, real, samples, total, seed, camp)
         });
         Some(ground)
     }

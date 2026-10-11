@@ -143,6 +143,33 @@ func _peoples_only() -> void:
 	await _shot("peuples-mythes")
 	jeu.fiche.close()
 	ok = labels.size() >= 2 and not myths.is_empty() and report["mode_historique"] and int(report["techniques"]) > 0
+	# Palier 3 : le campement du peuple au sol, ses objets et ses gestes.
+	jeu.descend(core)
+	var down := await _until(func(): return jeu.sol != null and jeu.sol.ready_done, 180.0)
+	report["sol_pret"] = down
+	if down:
+		var sol = jeu.sol
+		var cinfo: Dictionary = sol.ground.camp_info()
+		report["campement"] = cinfo
+		await _wait(20.0)
+		await _shot("campement")
+		var props := 0
+		for buf in sol.ground.camp_instances(false):
+			props += (buf as PackedFloat32Array).size() / 12
+		report["objets_tenus"] = props
+		sol.follow_species(int(cinfo.get("folk_species", 0)))
+		for key in ["fabriquer_un_outil", "celebrer_un_rite"]:
+			sol.force(key)
+			sol.target_distance = 5.0
+			sol.pitch = 0.75
+			await _wait(3.0)
+			await _shot("campement-" + key)
+		sol.force("")
+		ok = ok and not cinfo.is_empty() and int(cinfo.get("fixed", 0)) >= 3 and props > 0
+		jeu.ascend()
+		await _wait(1.0)
+	else:
+		ok = false
 	_finish(ok)
 
 ## Essai court du globe G3 : un massif vu en région puis en paysage.
