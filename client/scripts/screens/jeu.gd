@@ -39,6 +39,16 @@ var autosave_clock := 0.0
 var info := {}
 var recent: Array = []
 var o2_seen := false
+## Outil souligné par le narrateur, et son cadre.
+var highlighted := ""
+var highlight_frame: Panel
+var menu_buttons := {}
+## « Pendant votre absence » : dernière date regardée par le joueur.
+var absence_card: PanelContainer
+var absence_label: Label
+var absence_events: Array = []
+var idle := 0.0
+var looked_years := -1.0
 var sol: Control
 
 func setup(params: Dictionary) -> void:
@@ -57,7 +67,10 @@ func setup(params: Dictionary) -> void:
 	calques = Calques.new()
 	calques.position = Vector2(10, 96)
 	add_child(calques)
-	calques.layer_changed.connect(func(l): App.globe.set_layer(l))
+	calques.layer_changed.connect(func(l):
+		App.globe.set_layer(l)
+		if not l.is_empty():
+			narrateur.tool_opened("calques"))
 	calques.raw_toggled.connect(func(on): App.globe.set_tiles(on))
 
 	inspecteur = Inspecteur.new()
@@ -76,6 +89,7 @@ func setup(params: Dictionary) -> void:
 	frise.event_clicked.connect(go_to_event)
 	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
 		var b := Atlas.button(App.t(m[0]), m[2], App.t(m[0]) + ("" if m[1] == "" else " (%s)" % m[1]))
+		menu_buttons[m[0]] = b
 		b.add_theme_font_size_override("font_size", int(17 * App.text_scale()))
 		frise.menu.add_child(b)
 
@@ -94,6 +108,13 @@ func setup(params: Dictionary) -> void:
 	narrateur.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	narrateur.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(narrateur)
+	narrateur.highlight.connect(_highlight)
+	narrateur.go_to.connect(go_to_event)
+	if params.get("guided", false):
+		narrateur.restart()
+
+	absence_card = _absence_card()
+	add_child(absence_card)
 
 	notice = Atlas.text("", 16, true)
 	notice.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -109,9 +130,115 @@ func setup(params: Dictionary) -> void:
 	add_child(overlay)
 
 	App.session.set_rules_profile(App.settings["stop_profile"])
-	if params.get("new", false):
-		narrateur.trigger("temps")
 	App.settings_changed.connect(_settings_changed)
+
+# ----------------------------------------------------------------------
+# Narrateur : l'outil présenté est souligné d'un cadre vermillon.
+
+func _highlight(tool: String) -> void:
+	highlighted = tool
+	if highlight_frame == null:
+		highlight_frame = Panel.new()
+		highlight_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var box := StyleBoxFlat.new()
+		box.bg_color = Color(0, 0, 0, 0)
+		box.border_color = Atlas.VERMILION
+		box.set_border_width_all(3)
+		box.set_corner_radius_all(4)
+		highlight_frame.add_theme_stylebox_override("panel", box)
+		add_child(highlight_frame)
+	highlight_frame.visible = _highlight_target() != null
+
+## Le contrôle qui porte l'outil présenté.
+func _highlight_target() -> Control:
+	match highlighted:
+		"temps", "oxygene":
+			return bar
+		"frise":
+			return frise
+		"calques":
+			return calques
+		"inspecteur", "loupe", "reseau", "strates", "sol", "fiche", "anatomie":
+			return inspecteur if inspecteur.visible else null
+		"arbre":
+			return menu_buttons.get("tree")
+		"chronique":
+			return menu_buttons.get("chronicle")
+		"interventions":
+			return menu_buttons.get("interventions")
+		"avec_sans":
+			return menu_buttons.get("with_without")
+	return null
+
+func _place_highlight() -> void:
+	if highlight_frame == null or highlighted == "":
+		if highlight_frame:
+			highlight_frame.visible = false
+		return
+	var t := _highlight_target()
+	if t == null or not t.is_visible_in_tree():
+		highlight_frame.visible = false
+		return
+	var r := t.get_global_rect().grow(5.0)
+	highlight_frame.visible = true
+	highlight_frame.global_position = r.position
+	highlight_frame.size = r.size
+	# Une pulsation lente, discrète.
+	var k := 0.55 + 0.45 * sin(Time.get_ticks_msec() / 260.0)
+	highlight_frame.modulate.a = 1.0 if bool(App.settings["reduce_motion"]) else k
+
+# ----------------------------------------------------------------------
+# « Pendant votre absence » : après une longue avance sans que le joueur
+# touche à rien, un résumé de ce qui a changé l'attend à son retour.
+
+## Secondes sans geste du joueur avant de le tenir pour absent.
+const ABSENT_AFTER := 45.0
+
+func _absence_card() -> PanelContainer:
+	var p := Atlas.panel()
+	p.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	p.offset_top = 120
+	p.offset_left = -330
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var v := VBoxContainer.new()
+	p.add_child(v)
+	v.add_child(Atlas.title(App.t("while_away"), 22))
+	absence_label = Atlas.text("", 16)
+	absence_label.custom_minimum_size.x = 620
+	v.add_child(absence_label)
+	var h := HBoxContainer.new()
+	v.add_child(h)
+	h.add_child(Atlas.button(App.t("go_see"), func():
+		if not absence_events.is_empty():
+			go_to_event(absence_events[0])
+		absence_card.visible = false))
+	h.add_child(Atlas.button(App.t("chronicle"), func():
+		absence_card.visible = false
+		open_chronicle()))
+	h.add_child(Atlas.button("×", func(): absence_card.visible = false, App.t("close")))
+	p.visible = false
+	return p
+
+func _watch_absence(delta: float) -> void:
+	idle += delta
+	if looked_years < 0.0:
+		looked_years = float(info["years"])
+
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton or event is InputEventKey) or not event.is_pressed():
+		return
+	var back := idle >= ABSENT_AFTER
+	idle = 0.0
+	if info.is_empty():
+		return
+	var now := float(info["years"])
+	if back and looked_years >= 0.0 and now > looked_years:
+		var d: Dictionary = App.session.absence(looked_years)
+		if not d.is_empty():
+			absence_label.text = d["text"]
+			absence_events = d["events"]
+			absence_card.visible = true
+	looked_years = now
 
 func _settings_changed() -> void:
 	# Les textes changent de langue ou de taille : on reconstruit l'écran.
@@ -137,15 +264,8 @@ func _process(delta: float) -> void:
 			autosave_clock = 0.0
 			App.session.save(App.save_path(App.t("autosave_name")), App.t("autosave_name"))
 	if not info.is_empty():
-		if int(info["photosynthesis_stage"]) >= 1:
-			narrateur.trigger("pigment")
-		if float(info["o2"]) > 1.0e-4 and not o2_seen:
-			o2_seen = true
-			narrateur.trigger("oxygene")
-		if float(info["years"]) > 3.0e6:
-			narrateur.trigger("cellule")
-		if float(info["years"]) > 2.0e7 and App.globe.selected_cell >= 0:
-			narrateur.trigger("calque")
+		_watch_absence(delta)
+	_place_highlight()
 
 func _handle_events() -> void:
 	var events: Array = App.session.poll_events()
@@ -158,8 +278,7 @@ func _handle_events() -> void:
 		var action := int(e["action"])
 		if level >= 1:
 			frise.add_mark(e)
-		if e["family"] == "speciation":
-			narrateur.trigger("espece")
+			narrateur.consider(e)
 		if bool(e.get("refused", false)):
 			alertes.push(e, true)
 			_flash(App.t("refused"))
@@ -219,6 +338,8 @@ func go_to_event(e: Dictionary) -> void:
 
 func _on_cell_selected(cell: int) -> void:
 	inspecteur.show_cell(cell)
+	narrateur.cell_selected = cell >= 0
+	narrateur.tool_opened("inspecteur")
 
 # ----------------------------------------------------------------------
 # Fiches
@@ -231,6 +352,7 @@ func _open(f: Control) -> Control:
 	return f
 
 func open_species(species: int) -> void:
+	narrateur.tool_opened("fiche")
 	var f = FicheEspece.new()
 	_open(f)
 	f.open(species)
@@ -239,6 +361,7 @@ func open_species(species: int) -> void:
 	f.compare_requested.connect(open_comparator)
 
 func open_anatomy(species: int) -> void:
+	narrateur.tool_opened("anatomie")
 	var f = _open(Anatomie.new())
 	f.open(species)
 	f.compare_requested.connect(open_comparator)
@@ -249,24 +372,29 @@ func open_comparator(species: int, other := -1) -> void:
 	f.species_requested.connect(open_species)
 
 func open_tree() -> void:
+	narrateur.tool_opened("arbre")
 	var f = _open(Arbre.new())
 	f.species_requested.connect(open_species)
 
 func open_chronicle() -> void:
+	narrateur.tool_opened("chronique")
 	var f = _open(Chronique.new())
 	f.go_to.connect(func(e):
 		f.close()
 		go_to_event(e))
 
 func open_interventions() -> void:
+	narrateur.tool_opened("interventions")
 	var f = _open(Interventions.new())
 	f.intervened.connect(func(_k, _m): _flash(App.t("sent")))
 
 func open_with_without() -> void:
+	narrateur.tool_opened("avec_sans")
 	_open(AvecSans.new())
 
 ## Outils d'une cellule ouverts depuis l'inspecteur.
 func open_tool(tool: String, cell: int) -> void:
+	narrateur.tool_opened(tool)
 	if tool == "sol":
 		descend(cell)
 	elif tool == "reseau":

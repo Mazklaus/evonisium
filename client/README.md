@@ -31,7 +31,7 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | `shaders/corps_atlas.gdshader`, `corps_contour.gdshader`, `organe.gdshader` | Corps du vivant (palier 2) : lavis du pigment, hachures dans l'ombre, irisation, contour à la plume, voile de la vue anatomie, organes colorés par appareil. |
 | `shaders/atmosphere.gdshader` | Limbe de l'atmosphère (couleur tirée de sa composition) et contour du globe en double filet. |
 | `scripts/screens/` | Accueil, création de la planète, ensemencement, partie, chargement. |
-| `scripts/ui/` | Barre du temps, frise, calques et légende, inspecteur et loupe, fiche d'espèce, arbre du vivant, chronique et règles d'arrêt, alertes, interventions, sauvegarde, réglages, narrateur ; à l'étape 4 : « avec et sans » (`avec_sans.gd`), réseau trophique (`reseau.gd`), colonne stratigraphique (`strates.gd`), portrait 3D (`portrait.gd`), anatomie (`anatomie.gd`), comparateur (`comparateur.gd`). |
+| `scripts/ui/` | Barre du temps, frise, calques et légende, inspecteur et loupe, fiche d'espèce, arbre du vivant, chronique (événements, récit en chapitres, règles d'arrêt), alertes, interventions, sauvegarde, réglages, narrateur (guide de la première partie, puis conseiller ; voir `docs/guide-et-recit.md`) ; à l'étape 4 : « avec et sans » (`avec_sans.gd`), réseau trophique (`reseau.gd`), colonne stratigraphique (`strates.gd`), portrait 3D (`portrait.gd`), anatomie (`anatomie.gd`), comparateur (`comparateur.gd`). |
 | `tests/porte.gd`, `tests/porte4.gd` | Scénarios des portes des étapes 3 et 4 (voir plus bas). |
 
 ## Commandes
@@ -68,6 +68,10 @@ godot --path client --resolution 1600x900 -- --porte4 --niveau=4 --sortie=/tmp/p
 
 # Essai court du globe G3 seul : un massif vu en région puis en paysage
 godot --path client --resolution 1600x900 -- --porte4 --seul=g3 --sortie=/tmp/g3
+
+# Première partie guidée, de l'accueil à 900 Ma : phrases du guide, récit,
+# retour d'absence (--arrets=non : sans les pauses du guide, même empreinte)
+godot --path client --resolution 1600x900 -- --porte4 --seul=guide --sortie=/tmp/guide
 ```
 
 Le scénario écrit `rapport.json` et une capture par écran ; code de sortie 0 si la porte est franchie. Rapport complet : `docs/etape-4-client.md`.

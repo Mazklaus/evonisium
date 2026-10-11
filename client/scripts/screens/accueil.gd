@@ -49,13 +49,30 @@ func _build() -> void:
 			b.tooltip_text = "%s — %s" % [d["name"], d["date"]]
 		menu.add_child(b)
 		b.grab_focus.call_deferred()
+	# La première partie guidée vient en tête tant que le guide n'a pas été
+	# suivi jusqu'au bout.
+	var guided := Atlas.button(App.t("guided_game"), _guided, App.t("guided_tip"))
 	var n := Atlas.button(App.t("new_game"), func(): App.goto("creation"))
+	var fresh: bool = not App.session.guide_finished(PackedStringArray(App.settings.get("guide_vu", [])))
+	if fresh:
+		menu.add_child(guided)
 	menu.add_child(n)
+	if not fresh:
+		menu.add_child(guided)
 	if saves.is_empty():
-		n.grab_focus.call_deferred()
+		(guided if fresh else n).grab_focus.call_deferred()
 	menu.add_child(Atlas.button(App.t("load"), _show_saves))
 	menu.add_child(Atlas.button(App.t("settings"), _show_settings))
 	menu.add_child(Atlas.button(App.t("quit"), func(): get_tree().quit()))
+
+## Première partie guidée : la Terre, graine connue, ensemencée près des
+## sources chaudes ; le narrateur repart du début.
+const GUIDED_SEED := 2026
+
+func _guided() -> void:
+	App.session.start("terre", GUIDED_SEED, int(App.settings["level"]), 1.0, 1.0, 0.0)
+	App.globe.reset()
+	App.goto("ensemencement", {"guided": true})
 
 func _process(delta: float) -> void:
 	var g = App.globe

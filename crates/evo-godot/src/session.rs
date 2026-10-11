@@ -9,6 +9,7 @@
 mod bodies;
 mod region;
 mod son;
+mod story;
 mod tools;
 
 use crate::jobs::Jobs;
