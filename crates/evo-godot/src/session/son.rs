@@ -6,9 +6,27 @@
 use super::*;
 use evo_son::recit::{self, Chemin, Espece, Fait, Lieu, Metab, Presence, Tendance};
 
-/// Monde publié, familles et scores des nouveaux événements, et ce que le
-/// narrateur peut en raconter.
-pub(crate) type Ecoute = (evo_son::Monde, Vec<(&'static str, f64)>, Vec<Recit>);
+/// Monde publié, familles et scores des nouveaux événements, ce que le
+/// narrateur peut en raconter, et l'ère la plus avancée qu'ils annoncent.
+pub(crate) type Ecoute = (evo_son::Monde, Vec<(&'static str, f64)>, Vec<Recit>, Option<u8>);
+
+/// Ère du fond musical (`evo_son::fond::ERES`) qu'annonce un événement ; les
+/// mêmes jalons que les chapitres de la chronique (`evo_view::story`).
+/// L'âge des géants et les premiers peuples n'ont pas encore de jalon dans
+/// le moteur.
+fn ere(e: &Event) -> Option<u8> {
+    match &e.kind {
+        EventKind::LifeSeeded { .. } => Some(0),
+        EventKind::OxygenThreshold { rising: true, .. } => Some(1),
+        EventKind::Innovation { pathway, stage, .. } if pathway.as_ref() == evo_sim::world::COMPLEXITY_PATHWAY => match stage {
+            0..2 => None,
+            2..5 => Some(2),
+            5..8 => Some(3),
+            _ => Some(4),
+        },
+        _ => None,
+    }
+}
 
 impl EvoSession {
     /// Monde publié et familles des événements arrivés depuis `cursor`
@@ -32,12 +50,14 @@ impl EvoSession {
             Some(c) if c <= n => c,
             _ => n,
         };
+        // Au premier appel, toute l'histoire dit l'ère où l'on en est.
+        let ere = g.events[if cursor.is_some() { from } else { 0 }..].iter().filter_map(ere).max();
         // Au plus 50 par image : un rattrapage ne doit pas tout faire sonner.
         let fresh = &g.events[from.max(n.saturating_sub(50))..];
         let events = fresh.iter().map(|e| (Family::of(e).key(), e.interest)).collect();
         let recits = self.recits(fresh);
         *cursor = Some(n);
-        Some((monde, events, recits))
+        Some((monde, events, recits, ere))
     }
 }
 

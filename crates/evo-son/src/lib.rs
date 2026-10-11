@@ -4,7 +4,8 @@
 //!
 //! Le son lit seulement l'état publié par le moteur et la chronique ; il
 //! n'écrit jamais dans le moteur et n'utilise pas son hasard, donc il ne
-//! change jamais l'histoire. Tout est synthétisé : aucun fichier audio.
+//! change jamais l'histoire. Tout est synthétisé, sauf le fond musical de
+//! chaque ère (`fond`) : des boucles enregistrées, sous les couches générées.
 //!
 //! Livraison 1 : musique des ères microbiennes, souffle du globe, monde
 //! liquide de la loupe, bruits de papier et d'encre de l'interface.
@@ -14,12 +15,14 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod ambiance;
+pub mod fond;
 pub mod musique;
 pub mod peuples;
 pub mod recit;
 pub mod synth;
 
 use ambiance::{Globe, Micro};
+use fond::{Boucle, Fond};
 use musique::{Lecture, Musique};
 use peuples::{Chant, Peuple, Rumeur};
 use std::collections::VecDeque;
@@ -141,6 +144,10 @@ pub enum Ordre {
     Rite(usize),
     /// Dit un mot dans la langue du peuple regardé (un nom propre).
     Prononcer(String),
+    /// Ère de la partie pour le fond musical (indice de `fond::ERES`).
+    Ere(u8),
+    /// Une boucle du fond musical, déjà décodée au taux du son.
+    Boucle(Boucle),
 }
 
 /// Ce que le son signale au fil principal (sous-titres, fin de phrase).
@@ -185,6 +192,7 @@ pub struct Son {
     annonces: Vec<Annonce>,
     rumeur: Option<Rumeur>,
     chant: Option<Chant>,
+    pub fond: Fond,
 }
 
 /// Pas de contrôle, en échantillons.
@@ -219,6 +227,7 @@ impl Son {
             annonces: Vec::new(),
             rumeur: None,
             chant: None,
+            fond: Fond::new(rate),
         }
     }
 
@@ -250,6 +259,8 @@ impl Son {
                 }
             }
             Ordre::Rite(i) => self.chanter(i),
+            Ordre::Ere(e) => self.fond.changer_ere(e),
+            Ordre::Boucle(b) => self.fond.ajouter(b),
             Ordre::Prononcer(mot) => {
                 if let Some(r) = &self.rumeur {
                     let loc = peuples::Locuteur::homme(&mut self.rng);
@@ -353,6 +364,8 @@ impl Son {
         for f in self.music_lp.iter_mut() {
             f.set(FilterKind::LowPass, lp, 0.6, self.rate);
         }
+        self.fond.tick(dt, &mut self.rng);
+        self.musique.cle = self.fond.cle();
         let mut fresh = std::mem::take(&mut self.fresh);
         self.musique.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
         self.globe.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
@@ -413,6 +426,7 @@ impl Son {
             let amb = self.globe.run(rng, dt, rate) + self.micro.run(rng, dt, rate);
             bus[1][0] += amb;
             bus[1][1] += amb;
+            let fond = self.fond.run(dt, rng);
             let mm = self.mix_music.step(dt, 2.0);
             let [vg, vm, va, vi, vn] = self.volumes;
             let voix = self.parler();
@@ -422,7 +436,9 @@ impl Son {
             let w = self.verb.run(send + voix * 0.06);
             let mute = self.mute.step(dt, 0.3);
             for ch in 0..2 {
-                let music = self.music_lp[ch].run(bus[0][ch]) * mm * vm;
+                // Le fond garde son timbre : seules les couches générées
+                // passent par le filtre qui suit l'oxygène.
+                let music = (self.music_lp[ch].run(bus[0][ch]) + fond[ch]) * mm * vm;
                 let x = (music + bus[1][ch] * va + bus[2][ch] * vi + w[ch] * (vm + va) * 0.5) * vg * mute * GAIN + voix * vn * vg * mute;
                 // Limiteur doux : jamais de saturation dure.
                 frame[ch] = x.tanh() * 0.95;
@@ -588,6 +604,24 @@ mod tests {
         assert_eq!(son.annonces(), vec![Annonce::Fin(2)]);
         render(&mut son, 3.0);
         assert!(!son.parle() && son.duck.value < 0.2);
+    }
+
+    #[test]
+    fn a_background_loop_plays_in_its_key_under_the_generated_layers() {
+        let mut son = Son::new(48_000.0, 4);
+        son.ordre(Ordre::Monde(Monde { o2: 1e-6, temperature_k: 290.0, lineages: 40, ..Default::default() }));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        let pcm: Vec<[f32; 2]> = (0..48_000 * 20).map(|k| [(k as f32 * 0.02).sin() * 0.3; 2]).collect();
+        son.ordre(Ordre::Boucle(Boucle { ere: 2, pcm, tonique: 45, mode: 2, gain: 1.0 }));
+        // Pas de boucle pour l'ère 0 : tout reste généré.
+        render(&mut son, 10.0);
+        assert!(!son.fond.joue() && son.musique.cle.is_none());
+        son.ordre(Ordre::Ere(2));
+        render(&mut son, 15.0);
+        assert!(son.fond.joue());
+        assert_eq!(son.musique.cle, Some((45, 2)));
+        render(&mut son, 30.0);
+        assert_eq!((son.musique.base, son.musique.mode), (57, 2), "les couches suivent la tonalité de la boucle");
     }
 
     #[test]

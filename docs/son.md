@@ -47,6 +47,32 @@ Volet « peuples » de la livraison 3 (`evo-son/src/peuples.rs`), lu dans l'éta
 
 [Simplification] Une voix humaine de synthèse quelle que soit l'espèce ; pas de grammaire ni d'intonation propre à chaque langue au-delà de l'accent de mot. Les espèces qui ne parlent pas par le son auront leurs voix propres avec la livraison 2.
 
+## Fond musical par ère (boucles enregistrées)
+
+Sur demande de l'utilisateur (2026-10-11), le fond de chaque ère n'est plus
+seulement généré : des morceaux composés avec Suno, découpés en boucles,
+jouent sous les couches générées (cloches, kalimba, bulles, motifs de la
+chronique), qui restent pilotées par l'état de la planète.
+
+- Les boucles sont dans `client/musique/fond/` (Ogg Vorbis, dossier ignoré
+  par l'import de Godot), listées dans `boucles.txt` avec leur ère, leur
+  tonique, leur mode et leur gain. `EvoSon.fond(dossier)` les décode sur un
+  fil à part (`lewton`) au taux du son.
+- `evo_son::fond::Fond` joue une boucle de l'ère en cours, reprise pour
+  durer deux à quatre minutes, avec fondus de 5 s, puis 20 à 60 s de
+  silence où ne restent que les couches générées, puis une autre boucle de
+  la même ère. Pendant une boucle, la nappe grave générée se tait et les
+  couches générées passent dans la tonalité de la boucle.
+- L'ère suit les jalons de la chronique : vie (archéen), montée de
+  l'oxygène (grande oxydation), cellule complexe aux étapes 2 à 4, 5 à 7,
+  puis 8 et plus (cellules complexes, explosion animale, terres et forêts).
+  L'âge des géants et les premiers peuples attendent leurs jalons dans le
+  moteur.
+- Sans boucle pour l'ère en cours, la musique reste entièrement générée.
+- Droits : les morceaux doivent venir d'un abonnement Suno payant (Pro ou
+  Premier) pour un usage commercial ; ceux du plan gratuit n'y ouvrent pas
+  droit, même après coup.
+
 ## Architecture
 
 - `crates/evo-son` : toute la synthèse, sans Godot et testable (tests : chaque vue sonne sans saturer, le vent ne souffle qu'en rafales rares, les bruits d'interface finissent, la vie et l'O₂ changent la musique, la musique se repose, la coupure fait taire). Aucun fichier audio ; hasard propre, jamais celui du moteur.

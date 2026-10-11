@@ -1,0 +1,12 @@
+# Fond musical par ère : boucles tirées des morceaux générés avec Suno
+# (consignes dans le doc « Musique de fond par ère : consignes Suno »),
+# jouées sous les couches générées par le code (crate evo-son, module fond).
+#
+# Une boucle par ligne : fichier ère tonique mode gain
+#   ère : 0 archéen, 1 grande oxydation, 2 cellules complexes,
+#         3 explosion animale, 4 terres et forêts, 5 âge des géants,
+#         6 premiers peuples
+#   tonique : note MIDI (50 = ré, 57 = la) ; mode : phrygien, éolien,
+#   dorien, mixolydien ou lydien ; gain : niveau de la boucle (1 = tel quel).
+# Le dossier porte un .gdignore : Godot ne l'importe pas, le son lit les
+# fichiers Ogg lui-même.

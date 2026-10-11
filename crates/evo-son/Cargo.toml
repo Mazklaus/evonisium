@@ -7,6 +7,8 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Décodage des boucles du fond musical (Ogg Vorbis, pur Rust).
+lewton.workspace = true
 
 [dev-dependencies]
 # Peuples d'essai du banc de la culture, pour l'exemple `peuples`.
