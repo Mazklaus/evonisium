@@ -22,7 +22,18 @@ Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement u
 
 Le vent ne fait jamais de fond continu : des rafales de 5 à 12 s, séparées de 30 à 150 s de calme, plus rares quand le climat est froid ou pris par la glace (retour d'écoute de l'utilisateur du 10 octobre 2026 : vent et ressac trop présents). Les orages sont rares et tombent plutôt pendant les rafales.
 
-En pause, la musique se retire de moitié. **Ctrl+M** coupe ou rend le son. Les volumes (général, musique, ambiances, interface) se règlent dans l'écran des réglages, s'entendent pendant le glissement et sont gardés dans `user://son.cfg`.
+En pause, la musique se retire de moitié. **Ctrl+M** coupe ou rend le son. Les volumes (général, musique, ambiances, interface, narrateur) se règlent dans l'écran des réglages, s'entendent pendant le glissement et sont gardés dans `user://son.cfg`.
+
+## Narrateur vocal
+
+Choix de l'utilisateur du 10 et du 11 octobre 2026 : une voix masculine de synthèse, « gilles » (Piper, domaine public), qui raconte comme un documentaire et ne parle qu'aux moments clés ; textes écrits par gabarits (`crates/evo-son/src/recit.rs`).
+
+- **Moments clés** (activés par défaut) : vie déposée, étapes de la photosynthèse et de la cellule complexe, rhodopsine, seuils d'oxygène, glaciations globales. Seulement les événements de score d'intérêt ≥ 0,75, au plus un toutes les 150 s, jamais par-dessus une autre narration. La musique et les ambiances s'effacent pendant qu'il parle.
+- **Scène** (option) : quand la loupe s'ouvre sur une cellule, le lieu, la température et les espèces présentes, de la plus abondante à la plus discrète.
+- **Fiche** (option) : quand une fiche d'espèce s'ouvre, son histoire (âge, origine, espèce mère), ses traits, son aire et sa tendance, puis une anecdote inventée là où elle est la plus abondante, tirée du milieu réel (source chaude, banquise, tapis de surface, grand fond) et de ses voisines.
+- Sous-titres en bas de l'écran (option). Le narrateur ne parle qu'en français pour l'instant.
+
+La voix n'est pas dans le dépôt : un bouton des réglages télécharge depuis GitHub le moteur sherpa-onnx v1.12.14 (Apache 2.0, 27 Mo) et la voix (67 Mo), puis les déplie avec `tar` dans `user://voix/`. Le jeu lance le moteur phrase par phrase sur un fil à part, en avance sur la lecture ; sans voix installée, rien n'est dit. Le guide du client peut faire parler le narrateur par l'autoload `Son` : `dire(texte, priorité)`, `taire()`, `parle()`, signaux `sous_titre` et `phrase_finie`.
 
 ## Architecture
 
