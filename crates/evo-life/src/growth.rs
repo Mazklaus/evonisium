@@ -706,6 +706,11 @@ fn budget(p: &Phenotype, caps: &Capacities, light_kj: f64, uv: f64, prey: f64, c
 
 /// Naissances, morts et r à partir du bilan d'énergie de l'organisme.
 fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    // Une forme dormante (organisme terrestre sans terre ferme) ne prélève
+    // rien, ne produit rien et ne mange pas.
+    if cond.on_land && !cond.has_land {
+        return GrowthRates { r: -physio.desiccation_mortality, ..Default::default() };
+    }
     let mut out = GrowthRates { reaction: b.reaction, reaction_energy: b.reaction_energy, ..Default::default() };
     let het = b.het_doc + b.het_prey;
     let carbon_energy = het + b.auto;

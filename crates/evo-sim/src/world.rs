@@ -375,8 +375,8 @@ pub const ANIMAL_STAGES: [&str; ANIMAL_STAGE_COUNT] =
 /// l'ordre de [`ANIMAL_STAGES`]).
 pub fn animal_bits(p: &Phenotype) -> u8 {
     let a = &p.animal;
-    // Un corps organisé est un corps d'eucaryote.
-    let multi = p.is_multicellular() && p.is_eukaryote();
+    // Un corps organisé : eucaryote, aux cellules différenciées.
+    let multi = p.is_multicellular() && p.is_eukaryote() && p.cell_types() >= 2;
     let animal = multi && a.motility > 0.0 && p.engulfment > 0.0;
     let mut bits = 0u8;
     bits |= u8::from(animal);
@@ -1243,6 +1243,13 @@ impl World {
                 // À l'équilibre, la couche rend le phosphore que les sols lui
                 // apportent (`steady_rates` annule son export net).
                 r.rates[WaterPool::Po4 as usize] += planet.vent_supply(env, WaterPool::Po4);
+                if debug_rates() && r.rates[WaterPool::O2 as usize].abs() > 1e15 {
+                    let o2 = WaterPool::O2 as usize;
+                    eprintln!(
+                        "  cellule {c} : O2 {:.2e}/an, exact O2 {:.2e} DIC {:.2e}, O2 eau {:.2e} → {:.2e} mol/m³, volume {:.2e}, biomasse Δ {:.2e} terre Δ {:.2e} (de {:.2e}), {} populations, terre ferme {:.2e} m²",
+                        r.rates[o2], r.exact[o2], r.exact[WaterPool::Dic as usize], start[o2], chem[o2], v, biomass_change, land_change, land_start, pops.len(), env.dry_area_m2
+                    );
+                }
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
                 pops.retain(|p| {

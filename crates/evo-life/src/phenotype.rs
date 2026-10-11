@@ -197,7 +197,8 @@ fn coordination(org: &Organisation, cells: f64, physio: &Physiology) -> f64 {
 
 /// Circulation interne d'un corps : ses muscles brassent ses fluides.
 fn circulation(org: &Organisation, cells: f64, physio: &Physiology) -> f64 {
-    if cells <= 1.0 || !org.eukaryote {
+    // Il faut des tissus différents (des régulateurs) pour un cœur.
+    if cells <= 1.0 || !org.eukaryote || org.regulators == 0 {
         return 0.0;
     }
     org.motor.min(1.0) * coordination(org, cells, physio)
@@ -220,8 +221,9 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
         Some((Shape::Sheet, n)) => (cell_m * (n / 2.0).sqrt(), 2.0 * cell_m, n),
     };
     let multicellular = body.is_some();
-    // Segments, appendices et organes : un corps d'eucaryote.
-    let organised = multicellular && org.eukaryote;
+    // Segments, appendices, circulation et organes : un corps d'eucaryote
+    // aux cellules différenciées (muscles, nerfs, épithéliums).
+    let organised = multicellular && org.eukaryote && p.cell_types() >= 2;
     let support = org.matrix.min(3.0);
     let coord = coordination(org, cells, physio);
     let segments = if organised && org.motor > 0.0 { org.regulators.clamp(1, 16) as u8 } else { 1 };
@@ -229,7 +231,7 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
         if organised && org.motor >= physio.limb_motor { segments.min(1 + ((org.motor - physio.limb_motor) * 4.0) as u8) } else { 0 };
     let motility = org.motor.min(3.0) * coord * if limb_pairs > 0 { 1.5 } else { 1.0 };
     let sensing = org.sensor.min(3.0) * if multicellular { 0.5 + 0.5 * coord } else { 1.0 };
-    let circulation = circulation(org, cells, physio);
+    let circulation = if organised { circulation(org, cells, physio) } else { 0.0 };
     let gape =
         if organised && org.motor > 0.0 && p.engulfment > 0.0 { (p.body_size * physio.mouth_share).max(p.cell_size) } else { p.cell_size };
     let mass_length = if multicellular { cell_m * 1.24 * cells.dcbrt() } else { length };
@@ -1208,6 +1210,10 @@ mod tests {
                 gene(Cytoskeleton, 1.0, 1.0, 500.0),
                 gene(Signalling, 1.0, 1.0, 500.0),
                 gene(Adhesion, adhesion, 1.0, 600.0),
+                // Un régulateur inverse : son bloc (un pigment) ne s'exprime
+                // qu'au centre, ce qui fait deux types cellulaires.
+                gene(Regulator, 1.0, 0.5, 750.0),
+                gene(Pigment, 0.2, 1.0, 500.0),
             ];
             genes.extend(extra.iter().map(|&(f, e)| gene(f, e, 1.0, 620.0)));
             let mut g = Genome::new(genes, [0; 32]);

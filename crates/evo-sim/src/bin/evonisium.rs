@@ -210,9 +210,21 @@ fn complexity(args: &[String]) {
     let max_years: f64 = arg(args, "--max-years", 3e9);
     let every: f64 = arg(args, "--every-years", 50e6);
     let start = Instant::now();
-    let mut world = World::new(cfg);
-    world.orders.submit(0.0, OrderKind::SeedLife);
-    let mut next = every;
+    // `--reprendre CHEMIN` : repart d'une sauvegarde ; `--sauver-a Y CHEMIN` :
+    // sauvegarde une fois la date Y passée (pour étudier un moment précis).
+    let mut world = match opt(args, "--reprendre") {
+        Some(path) => World::load_file(std::path::Path::new(&path)).expect("lecture de la sauvegarde"),
+        None => {
+            let mut w = World::new(cfg);
+            w.orders.submit(0.0, OrderKind::SeedLife);
+            w
+        }
+    };
+    let mut save_at = args.iter().position(|a| a == "--sauver-a").map(|i| {
+        let y: f64 = args.get(i + 1).and_then(|v| v.parse().ok()).expect("date invalide");
+        (y, args.get(i + 2).cloned().expect("chemin manquant"))
+    });
+    let mut next = (world.years() / every).floor() * every + every;
     let (mut previous_budget, mut previous_years) = (evo_planet::geochem::OxygenBudget::default(), 0.0);
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
     let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
@@ -220,6 +232,11 @@ fn complexity(args: &[String]) {
     let mut seen_oxygenic = false;
     while world.years() < max_years {
         world.step();
+        if let Some((y, path)) = save_at.as_ref().filter(|(y, _)| world.years() >= *y) {
+            world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
+            eprintln!("sauvegarde à {} (demandée à {})", format_years(world.years()), format_years(*y));
+            save_at = None;
+        }
         if world.progress.complex_accelerator_on != accelerated {
             accelerated = world.progress.complex_accelerator_on;
             println!(
