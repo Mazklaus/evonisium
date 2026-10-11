@@ -35,6 +35,18 @@ Choix de l'utilisateur du 10 et du 11 octobre 2026 : une voix masculine de synth
 
 La voix n'est pas dans le dépôt : un bouton des réglages télécharge depuis GitHub le moteur sherpa-onnx v1.12.14 (Apache 2.0, 27 Mo) et la voix (67 Mo), puis les déplie avec `tar` dans `user://voix/`. Le jeu lance le moteur phrase par phrase sur un fil à part, en avance sur la lecture ; sans voix installée, rien n'est dit. Le guide du client peut faire parler le narrateur par l'autoload `Son` : `dire(texte, priorité)`, `taire()`, `parle()`, signaux `sous_titre` et `phrase_finie`.
 
+## Peuples (étape 6, sur données d'essai)
+
+Volet « peuples » de la livraison 3 (`evo-son/src/peuples.rs`), lu dans l'état culturel publié par `evo-culture` (format `CulturalState`, version 1), sans rien écrire dans le moteur.
+
+- **Langues parlées.** Les mots de chaque langue (générateur de noms d'`evo-culture`, écrits pour un lecteur français) sont découpés en sons et en syllabes, puis dits par une voix de synthèse à formants : source glottale de Rosenberg, trois résonances du conduit vocal qui glissent d'un son à l'autre, bruit filtré pour les consonnes (occlusives, fricatives, *r* roulé). Une langue qui n'a pas les mêmes sons ne sonne pas pareil, et un changement de son s'entend dans tous ses mots. L'accent tombe sur la première, l'avant-dernière ou la dernière syllabe selon la langue ; la voix descend au fil de la phrase. Hommes, femmes et enfants ont leur hauteur et leur conduit ; la taille du corps de l'espèce les décale.
+- **Rumeur.** Au sol, devant un peuple, des gens se parlent dans sa langue : des mots faits de ses syllabes, à quelques pas ou au loin, plus souvent quand le peuple est grand (quatre voix à la fois au plus).
+- **Chants rituels.** Le peuple fixe une tradition, la même pour tous ses rites : gamme (le plus souvent sans demi-tons), mesure, façon de chanter à plusieurs (unisson, hétérophonie, bourdon, quartes parallèles), hochets, mains, bâtons. L'objet du rite fixe le caractère : lent et grave pour les morts et les ancêtres, vif et frappé pour la chasse, doux et aigu pour la lune, les étoiles et les rêves. Un meneur lance l'appel, le chœur (3 à 9 voix, selon la population) répond sur les syllabes de la langue en commençant par le mot du rite, quatre à six fois ; le tambour entre après le premier appel. La musique du jeu s'efface pendant le chant.
+- **Interface pour le client** (`EvoSon`) : `peuple(nom, mots, rites, population, taille, cle)` pour le peuple regardé au sol, `sans_peuple()`, `rite(i)` quand ses agents célèbrent un rite (sinon un chant vient de lui-même toutes les deux à cinq minutes), `prononcer(nom)` pour dire un nom propre dans sa langue.
+- **Essai** : `cargo run --release -p evo-son --example peuples -- dossier 3` rend la rumeur, le nom et deux chants de trois peuples du banc d'essai. Coût d'un chant : environ 5 % d'un cœur (11 voix chantées et les percussions).
+
+[Simplification] Une voix humaine de synthèse quelle que soit l'espèce ; pas de grammaire ni d'intonation propre à chaque langue au-delà de l'accent de mot. Les espèces qui ne parlent pas par le son auront leurs voix propres avec la livraison 2.
+
 ## Architecture
 
 - `crates/evo-son` : toute la synthèse, sans Godot et testable (tests : chaque vue sonne sans saturer, le vent ne souffle qu'en rafales rares, les bruits d'interface finissent, la vie et l'O₂ changent la musique, la musique se repose, la coupure fait taire). Aucun fichier audio ; hasard propre, jamais celui du moteur.
@@ -59,4 +71,4 @@ Moyenne 2,1 %, sous le budget de 5 à 10 % d'un cœur fixé par Vision (pris sur
 ## Suite
 
 - Livraison 2, avec l'étape 5 : voix des espèces tirées de l'organe sonore (paramètres demandés au fil Animaux et écosystèmes), scène au sol, cycle jour et nuit, budget de densité sonore par scène, ères animales de la musique, narrateur (voix masculine à choisir, textes par gabarits).
-- Livraison 3, avec les étapes 6 et 7 : sociétés.
+- Livraison 3, coupée en deux par Vision : le volet peuples avec l'étape 6 (langues et chants, ci-dessus, à brancher sur l'état culturel publié une fois l'étape intégrée au moteur) ; le volet villes avec l'étape 7.

@@ -378,6 +378,44 @@ impl EvoSon {
         self.send(Ordre::Muet(on));
     }
 
+    /// Peuple regardé au sol (étape 6) : sa rumeur dans sa langue et, de
+    /// temps en temps, un de ses chants rituels. `mots` : les mots publiés
+    /// de sa langue (`LanguageView.words`) ; `rites` : les noms de ses rites
+    /// (« rite du Kalo, pour les morts »), les plus portés d'abord ;
+    /// `taille` : corps de l'espèce par rapport à un humain ; `cle` :
+    /// identifiant stable du peuple. Lu seulement : rien ne remonte au moteur.
+    #[func]
+    fn peuple(&mut self, nom: GString, mots: PackedStringArray, rites: PackedStringArray, population: f64, taille: f64, cle: i64) {
+        let p = evo_son::peuples::Peuple {
+            nom: nom.to_string(),
+            langue: evo_son::peuples::Langue { mots: mots.as_slice().iter().map(|m| m.to_string()).collect(), cle: cle as u64 },
+            rites: rites.as_slice().iter().map(|r| evo_son::peuples::Rite::depuis_nom(&r.to_string())).collect(),
+            population: population as f32,
+            taille: taille as f32,
+            cle: cle as u64,
+        };
+        self.send(Ordre::Peuple(Some(p)));
+    }
+
+    /// Plus aucun peuple regardé.
+    #[func]
+    fn sans_peuple(&mut self) {
+        self.send(Ordre::Peuple(None));
+    }
+
+    /// Le peuple regardé célèbre son rite numéro `rite` (dans l'ordre donné
+    /// à `peuple`), par exemple quand ses agents font l'action Rite.
+    #[func]
+    fn rite(&mut self, rite: i64) {
+        self.send(Ordre::Rite(rite.max(0) as usize));
+    }
+
+    /// Dit un nom propre dans la langue du peuple regardé.
+    #[func]
+    fn prononcer(&mut self, mot: GString) {
+        self.send(Ordre::Prononcer(mot.to_string()));
+    }
+
     /// Quand la partie change (nouvelle partie, chargement) : l'histoire
     /// déjà écrite ne doit pas sonner.
     #[func]
@@ -385,6 +423,7 @@ impl EvoSon {
         self.cursor = None;
         self.last = None;
         self.taire();
+        self.send(Ordre::Peuple(None));
     }
 }
 
