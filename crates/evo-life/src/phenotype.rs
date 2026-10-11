@@ -191,7 +191,7 @@ fn coordination(org: &Organisation, cells: f64, physio: &Physiology) -> f64 {
         return 1.0;
     }
     let need = physio.neural_half * cells.dln() / (12.0 * std::f64::consts::LN_2);
-    let own = org.neural + 0.05 * org.signalling.min(1.0);
+    let own = org.neural.min(3.0) + 0.05 * org.signalling.min(1.0);
     own / (own + need)
 }
 
@@ -236,13 +236,15 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
     let mut a = AnimalTraits {
         motor: org.motor,
         sensor: org.sensor,
-        neural: org.neural,
+        neural: org.neural.min(3.0),
         support,
         coordination: coord,
         motility,
-        speed_m_s: physio.speed_m_s * motility * (length * 1e3).dpowf(physio.speed_exponent),
+        // Vitesse et portée suivent la taille du corps (la sphère de même
+        // volume : un long filament n'est pas un grand nageur).
+        speed_m_s: physio.speed_m_s * motility * (mass_length * 1e3).dpowf(physio.speed_exponent),
         sensing,
-        detection_m: length * physio.detection_lengths * sensing,
+        detection_m: mass_length * physio.detection_lengths * sensing,
         defense: -(-support).dexp_m1(),
         circulation,
         gape,
