@@ -68,10 +68,21 @@ chronique), qui restent pilotées par l'état de la planète.
   puis 8 et plus (cellules complexes, explosion animale, terres et forêts).
   L'âge des géants et les premiers peuples attendent leurs jalons dans le
   moteur.
+- Les boucles restent compressées en mémoire (35 Mo) ; chacune n'est
+  décodée, sur un fil à part, qu'au moment où le fond la choisit, pendant le
+  silence qui précède (décodées toutes ensemble, elles prendraient plus d'un
+  gigaoctet).
+- Livrées le 2026-10-11 : 49 boucles de 47 à 80 s tirées des 27 morceaux de
+  l'utilisateur (3 à 4 par ère), coupées sur les temps à des endroits qui se
+  ressemblent et raccordées par un fondu de 1,5 s, ramenées à environ
+  -29 dB efficaces ; tonalité et tempo mesurés (librosa) et notés dans
+  `boucles.txt`. L'exemple `cargo run --release -p evo-son --example fond`
+  rend le mélange du globe pour chaque ère.
 - Sans boucle pour l'ère en cours, la musique reste entièrement générée.
-- Droits : les morceaux doivent venir d'un abonnement Suno payant (Pro ou
-  Premier) pour un usage commercial ; ceux du plan gratuit n'y ouvrent pas
-  droit, même après coup.
+- Droits : ces morceaux viennent du plan gratuit de Suno, pour un usage non
+  commercial seulement. Avant toute vente du jeu, il faudra les remplacer
+  par des morceaux générés avec un abonnement payant (Pro ou Premier), qui
+  ne couvre pas après coup les morceaux du plan gratuit.
 
 ## Architecture
 

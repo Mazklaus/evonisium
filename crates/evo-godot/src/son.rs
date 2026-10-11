@@ -427,23 +427,24 @@ impl EvoSon {
     }
 
     /// Charge les boucles du fond musical listées dans `dossier/boucles.txt`
-    /// (voir `evo_son::fond::liste`), décodées sur un fil à part : elles
-    /// arrivent au son une à une. Renvoie le nombre de boucles listées.
+    /// (voir `evo_son::fond::liste`), lues sur un fil à part et gardées
+    /// compressées : le son décode chacune quand il la choisit. Renvoie le
+    /// nombre de boucles listées.
     #[func]
     fn fond(&mut self, dossier: GString) -> i64 {
         let dossier = PathBuf::from(dossier.to_string());
         let Ok(texte) = std::fs::read_to_string(dossier.join("boucles.txt")) else { return 0 };
         let entrees = evo_son::fond::liste(&texte);
         let n = entrees.len() as i64;
-        let (Some(tx), rate) = (self.tx.clone(), self.rate) else { return 0 };
+        let Some(tx) = self.tx.clone() else { return 0 };
         let _ = std::thread::Builder::new().name("evo-son-fond".into()).spawn(move || {
             for e in entrees {
-                let pcm = std::fs::read(dossier.join(&e.fichier)).map_err(|x| x.to_string()).and_then(|b| evo_son::fond::decoder(&b, rate));
-                match pcm {
-                    Ok(pcm) => {
+                match std::fs::read(dossier.join(&e.fichier)) {
+                    Ok(ogg) => {
+                        let son = evo_son::fond::Contenu::Ogg(Arc::new(ogg));
                         let _ = tx.send(Ordre::Boucle(evo_son::fond::Boucle {
                             ere: e.ere,
-                            pcm,
+                            son,
                             tonique: e.tonique,
                             mode: e.mode,
                             gain: e.gain,

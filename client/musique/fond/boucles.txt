@@ -7,6 +7,63 @@
 #         3 explosion animale, 4 terres et forêts, 5 âge des géants,
 #         6 premiers peuples
 #   tonique : note MIDI (50 = ré, 57 = la) ; mode : phrygien, éolien,
-#   dorien, mixolydien ou lydien ; gain : niveau de la boucle (1 = tel quel).
+#   dorien, mixolydien, lydien ou ionien ; gain : niveau de la boucle (1 = tel quel).
+# Les gains amènent chaque boucle à environ -29 dB efficaces, sous les
+# couches générées.
+#
+# Provenance : morceaux générés par Maitre Sentient avec le plan gratuit de
+# Suno (2026-10-11), usage non commercial seulement. À remplacer par des
+# morceaux générés avec un abonnement payant avant toute vente du jeu.
+#
 # Le dossier porte un .gdignore : Godot ne l'importe pas, le son lit les
 # fichiers Ogg lui-même.
+
+archeen-1a.ogg   0 50 éolien     0.25  # ré mineur, 60 bpm, 36-109 s du morceau
+archeen-2a.ogg   0 48 éolien     0.25  # do mineur, 118 bpm, 38-109 s du morceau
+archeen-3a.ogg   0 50 éolien     0.27  # ré mineur, 123 bpm, 37-108 s du morceau
+archeen-3b.ogg   0 50 éolien     0.29  # ré mineur, 123 bpm, 102-171 s du morceau
+oxydation-1a.ogg 1 50 ionien     0.22  # ré majeur, 136 bpm, 30-83 s du morceau
+oxydation-1b.ogg 1 50 ionien     0.24  # ré majeur, 136 bpm, 92-167 s du morceau
+oxydation-2a.ogg 1 50 ionien     0.24  # ré majeur, 129 bpm, 36-109 s du morceau
+oxydation-2b.ogg 1 50 ionien     0.24  # ré majeur, 129 bpm, 91-171 s du morceau
+oxydation-3a.ogg 1 50 ionien     0.27  # ré majeur, 129 bpm, 10-90 s du morceau
+oxydation-3b.ogg 1 50 ionien     0.26  # ré majeur, 129 bpm, 87-157 s du morceau
+oxydation-4a.ogg 1 50 ionien     0.24  # ré majeur, 136 bpm, 35-93 s du morceau
+oxydation-4b.ogg 1 50 ionien     0.26  # ré majeur, 136 bpm, 94-165 s du morceau
+cellules-1a.ogg  2 51 ionien     0.27  # mi♭ majeur, 136 bpm, 18-96 s du morceau
+cellules-1b.ogg  2 51 ionien     0.29  # mi♭ majeur, 136 bpm, 84-154 s du morceau
+cellules-2a.ogg  2 48 ionien     0.27  # do majeur, 70 bpm, 24-104 s du morceau
+cellules-2b.ogg  2 48 ionien     0.30  # do majeur, 70 bpm, 90-147 s du morceau
+cellules-3a.ogg  2 58 ionien     0.28  # si♭ majeur, 136 bpm, 34-108 s du morceau
+cellules-3b.ogg  2 58 ionien     0.25  # si♭ majeur, 136 bpm, 88-150 s du morceau
+cellules-4a.ogg  2 57 éolien     0.27  # la mineur, 136 bpm, 15-85 s du morceau
+cellules-4b.ogg  2 57 éolien     0.24  # la mineur, 136 bpm, 65-134 s du morceau
+explosion-1a.ogg 3 55 mixolydien 0.34  # sol majeur, 112 bpm, 19-74 s du morceau
+explosion-1b.ogg 3 55 mixolydien 0.26  # sol majeur, 112 bpm, 81-135 s du morceau
+explosion-2a.ogg 3 55 mixolydien 0.29  # sol majeur, 83 bpm, 18-65 s du morceau
+explosion-2b.ogg 3 55 mixolydien 0.29  # sol majeur, 83 bpm, 60-107 s du morceau
+explosion-3a.ogg 3 55 ionien     0.27  # sol majeur, 112 bpm, 22-84 s du morceau
+explosion-3b.ogg 3 55 ionien     0.28  # sol majeur, 112 bpm, 65-129 s du morceau
+explosion-4a.ogg 3 55 ionien     0.30  # sol majeur, 112 bpm, 10-76 s du morceau
+explosion-4b.ogg 3 55 ionien     0.27  # sol majeur, 112 bpm, 66-125 s du morceau
+forets-1a.ogg    4 50 ionien     0.28  # ré majeur, 152 bpm, 21-98 s du morceau
+forets-1b.ogg    4 50 ionien     0.30  # ré majeur, 152 bpm, 101-170 s du morceau
+forets-2a.ogg    4 50 ionien     0.30  # ré majeur, 152 bpm, 29-101 s du morceau
+forets-2b.ogg    4 50 ionien     0.27  # ré majeur, 152 bpm, 101-174 s du morceau
+forets-3a.ogg    4 50 ionien     0.31  # ré majeur, 152 bpm, 24-103 s du morceau
+forets-4a.ogg    4 50 ionien     0.29  # ré majeur, 152 bpm, 18-85 s du morceau
+forets-4b.ogg    4 50 ionien     0.29  # ré majeur, 152 bpm, 96-164 s du morceau
+geants-1a.ogg    5 48 éolien     0.28  # do mineur, 144 bpm, 20-90 s du morceau
+geants-1b.ogg    5 48 éolien     0.24  # do mineur, 144 bpm, 73-143 s du morceau
+geants-2a.ogg    5 48 éolien     0.21  # do mineur, 144 bpm, 76-155 s du morceau
+geants-3a.ogg    5 48 éolien     0.28  # do mineur, 144 bpm, 29-99 s du morceau
+geants-3b.ogg    5 48 éolien     0.25  # do mineur, 144 bpm, 99-167 s du morceau
+geants-4a.ogg    5 48 éolien     0.25  # do mineur, 144 bpm, 31-94 s du morceau
+geants-4b.ogg    5 48 éolien     0.20  # do mineur, 144 bpm, 84-143 s du morceau
+peuples-1a.ogg   6 48 éolien     0.30  # do mineur, 162 bpm, 13-92 s du morceau
+peuples-1b.ogg   6 48 éolien     0.27  # do mineur, 162 bpm, 101-176 s du morceau
+peuples-2a.ogg   6 48 éolien     0.27  # do mineur, 78 bpm, 27-107 s du morceau
+peuples-2b.ogg   6 48 éolien     0.24  # do mineur, 78 bpm, 94-172 s du morceau
+peuples-3a.ogg   6 55 éolien     0.28  # sol mineur, 162 bpm, 21-95 s du morceau
+peuples-3b.ogg   6 55 éolien     0.26  # sol mineur, 162 bpm, 94-162 s du morceau
+peuples-4a.ogg   6 50 mixolydien 0.27  # ré majeur, 162 bpm, 21-98 s du morceau

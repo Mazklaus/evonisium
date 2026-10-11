@@ -12,13 +12,15 @@
 use crate::synth::{degree, Bus, Make, Rng, Smooth, Voice};
 use crate::{Moment, Monde};
 
-/// Modes, du plus sombre au plus lumineux.
-pub const MODES: [(&str, [i32; 7]); 5] = [
+/// Modes, du plus sombre au plus lumineux ; l'ionien (majeur), en dernier,
+/// ne sert qu'aux boucles du fond qui sont en majeur.
+pub const MODES: [(&str, [i32; 7]); 6] = [
     ("phrygien", [0, 1, 3, 5, 7, 8, 10]),
     ("éolien", [0, 2, 3, 5, 7, 8, 10]),
     ("dorien", [0, 2, 3, 5, 7, 9, 10]),
     ("mixolydien", [0, 2, 4, 5, 7, 9, 10]),
     ("lydien", [0, 2, 4, 6, 7, 9, 11]),
+    ("ionien", [0, 2, 4, 5, 7, 9, 11]),
 ];
 
 /// Pas de la musique, en secondes.
