@@ -4,6 +4,9 @@
 //!
 //! `cargo run --release -p evo-son --example fond -- [dossier] [secondes]`
 
+// Affichage seulement, comme le crate : les mathématiques de la plateforme suffisent.
+#![allow(clippy::disallowed_methods)]
+
 use evo_son::fond::{liste, Boucle, Contenu, ERES};
 use evo_son::{Monde, Ordre, Son, Vue};
 use std::io::Write;
