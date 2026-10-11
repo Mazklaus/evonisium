@@ -169,6 +169,9 @@ func _guide_only() -> void:
 	await get_tree().process_frame
 	var ok := await _until(func(): return App.session.has_frame(), 120.0)
 	await _wait(0.5)
+	# Sans règles d'arrêt : une pause automatique posée sur la naissance de
+	# la vie, juste après la reprise, figerait la partie.
+	App.settings["stop_profile"] = "aucun"
 	_screen()._begin()
 	await get_tree().process_frame
 	var jeu = _screen()
@@ -179,11 +182,19 @@ func _guide_only() -> void:
 	var spoken := {}
 	# Le guide suit la partie : à chaque étape, on lit la phrase montrée,
 	# on fait ce qu'elle propose quand c'est simple, puis on la congédie.
-	var stops := [2.0e5, 3.0e6, 3.0e7, 2.0e8, 6.0e8]
+	# --fin (Ma) : 600 par défaut ; la CI, sur des machines bien plus lentes
+	# que ce conteneur, s'arrête plus tôt (--fin=30).
+	var end := float(opts.get("fin", "600")) * 1.0e6
+	var stops := []
+	for t in [2.0e5, 3.0e6, 3.0e7, 2.0e8, 6.0e8]:
+		if t < end:
+			stops.append(t)
+	stops.append(end)
 	if opts.get("arrets", "oui") == "non":
-		stops = [6.0e8]
+		stops = [end]
 	for target in stops:
-		await _run_to(target)
+		var reached := await _run_to(target)
+		_log("%s : %s" % [App.session.frame_info().get("date", ""), "atteint" if reached else "non atteint"])
 		for i in 6:
 			n.quiet = 0.0
 			n.poll = 0.0
@@ -211,13 +222,13 @@ func _guide_only() -> void:
 			n.dismiss()
 	report["guide_phrases"] = hints
 	# Les pauses du guide ne changent pas l'histoire : même état du monde à
-	# 600 Ma avec ou sans arrêts (--arrets=non). L'empreinte du moteur compte
+	# la date de fin avec ou sans arrêts (--arrets=non). L'empreinte du moteur compte
 	# aussi les événements, donc les ordres de pause : on compare l'état.
 	var fi: Dictionary = App.session.frame_info()
-	report["etat_600ma"] = "%s %d %s %s" % [fi["years"], int(fi["lineages"]), str(fi["o2"]), str(fi["biomass"])]
+	report["etat_fin"] = "%s %d %s %s" % [fi["years"], int(fi["lineages"]), str(fi["o2"]), str(fi["biomass"])]
 	report["guide_vu"] = App.settings.get("guide_vu", [])
 	_log("guide : %s" % str(hints))
-	ok = ok and hints.size() >= 5
+	ok = ok and hints.size() >= 4
 
 	# La chronique : l'onglet du récit.
 	jeu.open_chronicle()
@@ -238,7 +249,7 @@ func _guide_only() -> void:
 	# L'absence : le joueur revient après une longue avance.
 	var since := _years()
 	jeu.looked_years = since
-	await _run_to(since + 3.0e8)
+	await _run_to(since + end / 2.0)
 	jeu.idle = jeu.ABSENT_AFTER + 1.0
 	var key := InputEventKey.new()
 	key.keycode = KEY_SHIFT

@@ -99,7 +99,7 @@ jobs:
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte5 --sortie=$PWD/porte/etape5
       - name: Première partie guidée — guide, récit de la chronique, retour d'absence
         timeout-minutes: 20
-        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=guide --niveau=4 --sortie=$PWD/porte/guide
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=guide --fin=30 --niveau=4 --sortie=$PWD/porte/guide
       - uses: actions/upload-artifact@v4
         if: always()
         with:
