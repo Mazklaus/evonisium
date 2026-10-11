@@ -67,7 +67,7 @@ fn main() -> std::io::Result<()> {
         wav(&dir.join(format!("{name}.wav")), rate, &buf)?;
     }
     let mut son = Son::new(rate as f32, 9);
-    son.ordre(Ordre::Volumes([0.8, 0.0, 0.0, 1.0]));
+    son.ordre(Ordre::Volumes([0.8, 0.0, 0.0, 1.0, 0.0]));
     let mut buf = Vec::new();
     for b in [Bruit::Plume, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
         son.ordre(Ordre::Bruit(b));
