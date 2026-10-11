@@ -252,10 +252,16 @@ func _settings_changed() -> void:
 # Boucle
 
 func _process(delta: float) -> void:
+	var t := Time.get_ticks_usec()
 	App.globe.refresh_frame()
+	App.perf_add("textures", t)
+	t = Time.get_ticks_usec()
 	info = App.session.frame_info()
 	bar.update_info(info, seeking)
+	App.perf_add("infos", t)
+	t = Time.get_ticks_usec()
 	_handle_events()
+	App.perf_add("evenements", t)
 	var n: String = App.session.take_notice()
 	if n.begins_with("ok"):
 		_flash(App.t("saved"))

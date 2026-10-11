@@ -356,6 +356,36 @@ func _guide_only() -> void:
 	ok = ok and back
 	_finish(ok)
 
+## Mesures de performance jusqu'à l'arrivée de l'oxygène : la partie
+## tourne à --vitesse (ans/s, 10 Ma/s par défaut) jusqu'à --fin Ma (120) ;
+## le cadre des mesures (F3) écrit sa ligne par seconde, le rapport garde
+## la vitesse tenue mesurée et les pires secondes.
+func _perf_only() -> void:
+	var m = get_parent().get_node("Mesures")
+	if not m.panel.visible:
+		m.toggle()
+	var speed := float(opts.get("vitesse", "1e7"))
+	App.session.set_speed(speed)
+	var end := float(opts.get("fin", "120")) * 1.0e6
+	App.session.pause_at(end)
+	App.session.resume()
+	var t0 := Time.get_ticks_msec()
+	var y0 := _years()
+	var samples := []
+	while true:
+		await _wait(5.0)
+		var fi: Dictionary = App.session.frame_info()
+		samples.append([fi["date"], fi["o2"], fi["real_speed"], Engine.get_frames_per_second()])
+		_log("%s O2 %s tenue %s calcul %.0f ips %d" % [fi["date"], m._sci(float(fi["o2"])), fi["real_speed_text"], float(fi["compute_speed"]), Engine.get_frames_per_second()])
+		if bool(fi["paused"]) or Time.get_ticks_msec() - t0 > float(opts.get("max_s", "1800")) * 1000.0:
+			break
+	var wall := (Time.get_ticks_msec() - t0) / 1000.0
+	report["mesures_fichier"] = ProjectSettings.globalize_path(m.path)
+	report["vitesse_demandee"] = speed
+	report["vitesse_moyenne"] = (_years() - y0) / max(wall, 0.001)
+	report["echantillons"] = samples
+	_finish(true)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
@@ -386,6 +416,9 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "peuples":
 		await _peoples_only()
+		return
+	if opts.get("seul", "") == "mesures":
+		await _perf_only()
 		return
 	var ma := float(opts["ma"]) * 1.0e6
 	var grown := await _run_to(ma)

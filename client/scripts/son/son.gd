@@ -215,6 +215,11 @@ func _vue() -> String:
 func _process(_delta: float) -> void:
 	if son == null:
 		return
+	var t := Time.get_ticks_usec()
+	_ecouter()
+	App.perf_add("son", t)
+
+func _ecouter() -> void:
 	var vue := _vue()
 	son.vue(vue)
 	_suivre_narrateur(vue)

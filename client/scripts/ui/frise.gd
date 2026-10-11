@@ -68,13 +68,20 @@ func _process(delta: float) -> void:
 	refresh_timer -= delta
 	if refresh_timer <= 0.0:
 		refresh_timer = 0.5
+		var t := Time.get_ticks_usec()
 		history = App.session.history()
 		chart.queue_redraw()
+		App.perf_add("frise", t)
 
 func _x_of(years: float, t0: float, t1: float, w: float) -> float:
 	return (years - t0) / max(t1 - t0, 1.0) * w
 
 func _draw_chart() -> void:
+	var t := Time.get_ticks_usec()
+	_draw_curves()
+	App.perf_add("frise", t)
+
+func _draw_curves() -> void:
 	var w := chart.size.x
 	var h := chart.size.y
 	chart.draw_line(Vector2(0, h - 1), Vector2(w, h - 1), Color(Atlas.INK, 0.6), 1.0)

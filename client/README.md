@@ -44,8 +44,20 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | Alt+1 à Alt+8, Alt+0 | Calques ; vue naturelle |
 | C, T, I, A, P | Chronique, arbre du vivant, interventions, « avec et sans », peuples (étape 6, peuples d'essai) |
 | F5 | Sauvegarder |
+| F3 | Mesures de performance : images par seconde, pire image, vitesse tenue, postes les plus lourds ; tant que le cadre est ouvert, une ligne par seconde s'écrit dans `user://mesures/` (sous Windows `%APPDATA%\Godot\app_userdata\Evonisium\mesures`), que le bouton du cadre ouvre |
 | Glisser, molette, flèches, + et − | Tourner et zoomer le globe ; double clic : s'approcher d'un lieu |
 | Échap | Fermer la fiche ouverte |
+
+## Mesures de performance
+
+```sh
+# Partie à 10 Ma/s jusqu'à 200 Ma, une ligne de mesures par seconde
+godot --path client -- --porte4 --seul=mesures --niveau=5 --vitesse=1e7 --fin=200
+# Mesures dès le lancement d'une partie ordinaire
+godot --path client -- --mesures
+```
+
+Le fichier CSV donne, seconde par seconde, la date, l'O₂, les vitesses demandée, tenue et de calcul, la durée du pas du moteur, les images par seconde et la pire image, le temps des scripts et du rendu (processeur et carte graphique), la mémoire, et le temps passé dans chaque poste du client (textures du pas, infos, événements, globe, peuples, frise, son, scène au sol).
 
 ## La porte de l'étape 3, côté client
 

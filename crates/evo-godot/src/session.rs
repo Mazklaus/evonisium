@@ -104,6 +104,8 @@ pub struct EvoSession {
     watch_step: u64,
     bridge_ms: f64,
     culture: culture::CultureSlot,
+    /// Vitesse tenue, mesurée entre les pas publiés (attente du frein comprise).
+    meter: std::cell::RefCell<(Instant, evo_view::pace::Meter)>,
 }
 
 #[godot_api]
@@ -128,6 +130,7 @@ impl IRefCounted for EvoSession {
             watch_step: 0,
             bridge_ms: 0.0,
             culture: Default::default(),
+            meter: std::cell::RefCell::new((Instant::now(), Default::default())),
         }
     }
 }
@@ -633,10 +636,23 @@ impl EvoSession {
         d.set("level", f.planet.level as i64);
         d.set("seed", f.planet.seed as i64);
         let status = g.engine.status();
-        let real = if status.paused { 0.0 } else { status.years_per_second };
+        // Le moteur publie sa vitesse de calcul, hors attente du frein ; la
+        // vitesse tenue se mesure ici, à l'horloge du client. Avant deux pas,
+        // la vitesse de calcul plafonnée à la demande en tient lieu.
+        let real = {
+            let mut m = self.meter.borrow_mut();
+            let now = m.0.elapsed().as_secs_f64();
+            m.1.observe(now, st.years, st.paused);
+            match m.1.rate(now) {
+                _ if st.paused => 0.0,
+                Some(r) => r,
+                None => status.years_per_second.min(g.pace),
+            }
+        };
         d.set("real_speed", real);
         d.set("real_speed_text", if real > 0.0 { format::speed(real, self.lang) } else { "—".into() });
         d.set("step_seconds", status.last_step_seconds);
+        d.set("compute_speed", status.years_per_second);
         d.set("engine_error", status.error.unwrap_or_default().as_str());
         d.set("bridge_ms", self.bridge_ms);
         d

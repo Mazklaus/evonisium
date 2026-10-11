@@ -546,6 +546,7 @@ func rotate_by(dyaw: float, dpitch: float) -> void:
 	target_pitch = clamp(target_pitch + dpitch * k, -1.45, 1.45)
 
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	var k: float = 1.0 if bool(App.settings["reduce_motion"]) else 1.0 - exp(-delta * 9.0)
 	yaw = lerp(yaw, target_yaw, k)
 	pitch = lerp(pitch, target_pitch, k)
@@ -563,8 +564,11 @@ func _process(delta: float) -> void:
 	if observe_timer <= 0.0:
 		observe_timer = 0.5
 		_send_observation()
+	App.perf_add("globe", t0)
 	if peoples:
+		var t1 := Time.get_ticks_usec()
 		_update_peoples()
+		App.perf_add("peuples", t1)
 
 ## Bandes Z3 (régions) et Z4 (paysages) : la région subdivisée autour du
 ## point regardé remplace le globe sous elle ; hachures de pente et contour

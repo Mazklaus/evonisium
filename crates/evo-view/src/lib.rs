@@ -26,6 +26,7 @@ pub mod guide;
 pub mod layers;
 pub mod mesh;
 pub mod naming;
+pub mod pace;
 pub mod palette;
 pub mod pick;
 pub mod save;
