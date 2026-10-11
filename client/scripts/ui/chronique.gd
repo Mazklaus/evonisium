@@ -1,7 +1,8 @@
 extends "res://scripts/ui/fiche.gd"
 ## Chronique (document Fonctionnalités, « Alertes et chronique ») : tous les
 ## événements, du plus récent au plus ancien, filtrés par famille et par
-## recherche ; chaque ligne mène au lieu. Onglet des règles d'arrêt.
+## recherche ; chaque ligne mène au lieu. Onglet du récit (un chapitre par
+## grand basculement de la partie) et onglet des règles d'arrêt.
 
 signal go_to(event: Dictionary)
 
@@ -13,11 +14,13 @@ var list: VBoxContainer
 var offset := 0
 var count_label: Label
 var rules_box: VBoxContainer
+var story_box: VBoxContainer
+var tabs: TabContainer
 
 func _ready() -> void:
 	set_title(App.t("chronicle"))
 	custom_minimum_size = Vector2(760, 0)
-	var tabs := TabContainer.new()
+	tabs = TabContainer.new()
 	tabs.custom_minimum_size = Vector2(730, 600)
 	content.add_child(tabs)
 	var page := VBoxContainer.new()
@@ -61,6 +64,16 @@ func _ready() -> void:
 		offset += PAGE
 		_reload()))
 
+	var story_scroll := ScrollContainer.new()
+	story_scroll.name = App.t("story")
+	story_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tabs.add_child(story_scroll)
+	story_box = VBoxContainer.new()
+	story_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	story_box.add_theme_constant_override("separation", 10)
+	story_scroll.add_child(story_box)
+	_fill_story()
+
 	rules_box = VBoxContainer.new()
 	rules_box.name = App.t("stop_rules")
 	tabs.add_child(rules_box)
@@ -96,6 +109,31 @@ func _reload() -> void:
 		if int(e["cell"]) >= 0 or int(e["species"]) >= 0:
 			row.add_child(Atlas.button(App.t("go_see"), go_to.emit.bind(e)))
 		list.add_child(row)
+
+## Le récit : un chapitre par grand basculement, écrit comme une histoire
+## naturelle, avec ses moments à aller voir.
+func _fill_story() -> void:
+	for c in story_box.get_children():
+		c.queue_free()
+	var chapters: Array = App.session.story()
+	if chapters.is_empty():
+		story_box.add_child(Atlas.text(App.t("story_empty"), 16, true))
+		return
+	for ch in chapters:
+		var t := Atlas.title(ch["title"], 21)
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.custom_minimum_size.x = 680
+		story_box.add_child(t)
+		var p := Atlas.text(ch["text"], 16)
+		p.custom_minimum_size.x = 680
+		story_box.add_child(p)
+		var moments := HFlowContainer.new()
+		for e in ch["events"]:
+			var b := Atlas.button(e["date"], go_to.emit.bind(e), e["text"])
+			b.add_theme_font_size_override("font_size", int(14 * App.text_scale()))
+			moments.add_child(b)
+		story_box.add_child(moments)
+		story_box.add_child(Atlas.hsep())
 
 func _fill_rules() -> void:
 	for c in rules_box.get_children():

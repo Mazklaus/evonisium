@@ -26,6 +26,8 @@ var settings := {
 	"graticule": true,
 	"terminator": false,
 	"narrator": true,
+	## Phrases du narrateur déjà dites (gardées d'une partie à l'autre).
+	"guide_vu": [],
 }
 var current_screen := ""
 ## Partie demandée par l'écran de création, en attente d'ensemencement.
@@ -58,6 +60,11 @@ const TEXT := {
 	"start_life": ["Déposer la vie et commencer", "Seed life and begin"],
 	"vents_shown": ["Les sources chaudes sont cerclées de vermillon.", "Hot springs are circled in vermilion."],
 	"pause": ["Pause", "Pause"],
+	"guided_game": ["Première partie guidée", "Guided first game"],
+	"guided_tip": ["La Terre, ensemencée près des sources chaudes, avec un narrateur discret qui présente chaque outil quand il devient utile.", "Earth, seeded near the hot springs, with a discreet narrator who introduces each tool when it becomes useful."],
+	"while_away": ["Pendant votre absence", "While you were away"],
+	"story": ["Récit", "Story"],
+	"story_empty": ["Le récit commence quand la vie est déposée.", "The story begins once life is seeded."],
 	"ground_down": ["Descendre au sol", "Go down to the ground"],
 	"ground_title": ["Au sol", "On the ground"],
 	"ground_extras": ["Les espèces de la cellule assez grandes pour se voir sont des individus tirés de leur population par le moteur ; les autres corps sont des figurants d'essai. Rien de ce qu'ils font ne change l'histoire.", "Species of this cell large enough to be seen are individuals the engine draws from their population; the other bodies are test extras. Nothing they do ever changes history."],
