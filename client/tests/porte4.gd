@@ -174,6 +174,11 @@ func _guide_only() -> void:
 	App.settings["stop_profile"] = "aucun"
 	_screen()._begin()
 	await get_tree().process_frame
+	# La partie part aussitôt : on l'arrête, pour que chaque arrêt du guide
+	# soit posé avant que le monde ne l'ait dépassé (sinon la pause et la
+	# reprise tombent au même pas et s'annulent).
+	App.session.pause()
+	await _until(func(): return bool(App.session.frame_info().get("paused", false)), 60.0)
 	var jeu = _screen()
 	var n = jeu.narrateur
 	App.session.set_rules_profile("aucun")
