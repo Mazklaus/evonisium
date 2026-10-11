@@ -88,6 +88,8 @@ pub struct EvoSon {
     moments: bool,
     dernier_moment: Option<std::time::Instant>,
     tirage: u64,
+    /// Ère du fond musical donnée au son.
+    ere: Option<u8>,
     nouvelles: Vec<VarDictionary>,
 }
 
@@ -112,6 +114,7 @@ impl INode for EvoSon {
             moments: true,
             dernier_moment: None,
             tirage: 0,
+            ere: None,
             nouvelles: Vec::new(),
         }
     }
@@ -202,11 +205,18 @@ impl EvoSon {
     /// appeler une fois par image pendant une partie.
     #[func]
     fn ecouter(&mut self, session: Gd<EvoSession>) {
+        let debut = self.cursor.is_none();
         let state = session.bind().sound_state(&mut self.cursor);
-        let Some((monde, events, recits)) = state else {
+        let Some((monde, events, recits, ere)) = state else {
             self.cursor = None;
             return;
         };
+        // L'ère ne fait qu'avancer, sauf quand une autre partie commence.
+        let ere = if debut { Some(ere.unwrap_or(0)) } else { ere.filter(|&e| self.ere.is_none_or(|x| e > x)) };
+        if let Some(e) = ere.filter(|&e| Some(e) != self.ere) {
+            self.ere = Some(e);
+            self.send(Ordre::Ere(e));
+        }
         // Un moment clé au plus, rarement, et jamais par-dessus une autre
         // narration.
         if self.moments && self.voix.is_some() {
@@ -414,6 +424,36 @@ impl EvoSon {
     #[func]
     fn prononcer(&mut self, mot: GString) {
         self.send(Ordre::Prononcer(mot.to_string()));
+    }
+
+    /// Charge les boucles du fond musical listées dans `dossier/boucles.txt`
+    /// (voir `evo_son::fond::liste`), décodées sur un fil à part : elles
+    /// arrivent au son une à une. Renvoie le nombre de boucles listées.
+    #[func]
+    fn fond(&mut self, dossier: GString) -> i64 {
+        let dossier = PathBuf::from(dossier.to_string());
+        let Ok(texte) = std::fs::read_to_string(dossier.join("boucles.txt")) else { return 0 };
+        let entrees = evo_son::fond::liste(&texte);
+        let n = entrees.len() as i64;
+        let (Some(tx), rate) = (self.tx.clone(), self.rate) else { return 0 };
+        let _ = std::thread::Builder::new().name("evo-son-fond".into()).spawn(move || {
+            for e in entrees {
+                let pcm = std::fs::read(dossier.join(&e.fichier)).map_err(|x| x.to_string()).and_then(|b| evo_son::fond::decoder(&b, rate));
+                match pcm {
+                    Ok(pcm) => {
+                        let _ = tx.send(Ordre::Boucle(evo_son::fond::Boucle {
+                            ere: e.ere,
+                            pcm,
+                            tonique: e.tonique,
+                            mode: e.mode,
+                            gain: e.gain,
+                        }));
+                    }
+                    Err(x) => eprintln!("fond musical : {} illisible ({x})", e.fichier),
+                }
+            }
+        });
+        n
     }
 
     /// Quand la partie change (nouvelle partie, chargement) : l'histoire

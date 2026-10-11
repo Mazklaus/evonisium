@@ -38,6 +38,9 @@ pub struct Musique {
     /// Délai minimal entre deux motifs d'événement.
     cooldown: f32,
     pending: Vec<Moment>,
+    /// Tonalité imposée par la boucle du fond qui joue (tonique MIDI, mode) :
+    /// les couches générées s'y accordent et la nappe se tait.
+    pub cle: Option<(i32, usize)>,
 }
 
 /// Valeurs de 0 à 1 que la musique lit dans le monde publié.
@@ -76,6 +79,7 @@ impl Musique {
             presence: Smooth::new(0.0),
             cooldown: 0.0,
             pending: Vec::new(),
+            cle: None,
         }
     }
 
@@ -109,8 +113,17 @@ impl Musique {
         let p = self.presence.value;
         if i.is_multiple_of(32) {
             // Accord et nappe grave (violoncelle feutré) : toujours là, même au repos.
-            self.mode = ((l.temp * 5.0) as usize).min(4);
-            self.base = 52 + (l.temp * 6.0).round() as i32;
+            match self.cle {
+                // Même registre que d'habitude, dans la tonalité de la boucle.
+                Some((tonique, mode)) => {
+                    self.mode = mode.min(MODES.len() - 1);
+                    self.base = 52 + (tonique - 52).rem_euclid(12);
+                }
+                None => {
+                    self.mode = ((l.temp * 5.0) as usize).min(4);
+                    self.base = 52 + (l.temp * 6.0).round() as i32;
+                }
+            }
             self.chord = if i == 0 {
                 0
             } else if rng.chance(0.6) {
@@ -118,9 +131,12 @@ impl Musique {
             } else {
                 rng.pick(&[0, 1, 2, 3, 4, 5, 6])
             };
-            let sc = &MODES[self.mode].1;
-            let notes = [degree(self.base - 12, sc, self.chord), degree(self.base - 12, sc, self.chord + 4)];
-            out.push(Voice::new(mk.pad(rng, &notes, 6.6, 1.8, true, 600.0), Bus::Musique, 0.09).send(0.3));
+            // La boucle du fond tient déjà le grave.
+            if self.cle.is_none() {
+                let sc = &MODES[self.mode].1;
+                let notes = [degree(self.base - 12, sc, self.chord), degree(self.base - 12, sc, self.chord + 4)];
+                out.push(Voice::new(mk.pad(rng, &notes, 6.6, 1.8, true, 600.0), Bus::Musique, 0.09).send(0.3));
+            }
         }
         let sc = MODES[self.mode].1;
         let voices = 1 + (l.bio * 6.0).round() as usize;

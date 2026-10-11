@@ -45,6 +45,8 @@ func _ready() -> void:
 	son = EvoSon.new()
 	son.name = "EvoSon"
 	add_child(son)
+	# Boucles du fond musical par ère (morceaux Suno découpés), s'il y en a.
+	son.fond(ProjectSettings.globalize_path("res://musique/fond"))
 	installeur = preload("res://scripts/son/voix.gd").new()
 	installeur.name = "Voix"
 	add_child(installeur)

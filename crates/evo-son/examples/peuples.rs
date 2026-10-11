@@ -74,8 +74,8 @@ fn main() -> std::io::Result<()> {
 
     let mut w = CultureWorld::new(2026);
     let land = Context::land(Organ::Hand);
-    // Trois régions sans contact : trois peuples, trois langues.
-    for r in 0..3u32 {
+    // Six régions sans contact : six peuples, six langues.
+    for r in 0..6u32 {
         let cells = grid(&mut w, 1, presets::human(), r * 1000, 6, 5, 900.0, 0.3, land);
         for f in [Family::Percussion, Family::Flake, Family::Fire] {
             seed_technique(&mut w, 1, &cells, f, 0.8, 1.0);
@@ -94,7 +94,14 @@ fn main() -> std::io::Result<()> {
     let rate = 44_100u32;
     let monde = Monde { o2: 0.21, temperature_k: 288.0, ice: 0.05, ocean: 0.7, lineages: 400, paused: false };
     for (i, p) in liste.iter().take(combien).enumerate() {
-        println!("{} : mots {:?}, rites {:?}", p.nom, p.langue.mots, p.rites.iter().map(|r| &r.nom).collect::<Vec<_>>());
+        let tr = evo_son::peuples::Tradition::de(p.cle);
+        println!(
+            "{} : mots {:?}, instruments {:?}, manières {:?}",
+            p.nom,
+            &p.langue.mots[..5.min(p.langue.mots.len())],
+            tr.instruments.iter().map(|i| i.nom()).collect::<Vec<_>>(),
+            tr.formes.iter().map(|f| f.nom()).collect::<Vec<_>>()
+        );
         let rendre = |son: &mut Son, secondes: f32| {
             let mut buf = vec![[0.0f32; 2]; (rate as f32 * secondes) as usize];
             for c in buf.chunks_mut(512) {
@@ -136,9 +143,10 @@ fn main() -> std::io::Result<()> {
             son.ordre(Ordre::Vue(Vue::Sol));
             son.ordre(Ordre::Peuple(Some(p.clone())));
             son.ordre(Ordre::Rite(r));
+            let forme = son.chant().map_or("?", |f| f.nom());
             let t = std::time::Instant::now();
-            let buf = rendre(&mut son, 50.0);
-            println!("  {} : {:.1} % d'un cœur", p.rites[r].nom, 100.0 * t.elapsed().as_secs_f64() / 50.0);
+            let buf = rendre(&mut son, 60.0);
+            println!("  {} ({forme}) : {:.1} % d'un cœur", p.rites[r].nom, 100.0 * t.elapsed().as_secs_f64() / 60.0);
             wav(&dir.join(format!("{}-chant-{}.wav", i + 1, k + 1)), rate, &buf)?;
         }
     }

@@ -577,52 +577,198 @@ pub enum Polyphonie {
     Quartes,
 }
 
+/// Manière de célébrer : comment le chant se partage entre les voix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Forme {
+    /// Un meneur lance, le chœur répond.
+    AppelReponse,
+    /// La même mélodie, reprise en décalé par trois groupes.
+    Canon,
+    /// Une voix seule, lente et ornée, sur un bourdon fredonné.
+    Lamentation,
+    /// Des syllabes martelées sur deux notes, au rythme des pieds.
+    Scande,
+    /// Chaque chanteur ne tient que quelques notes d'un motif qui tourne ;
+    /// le motif n'existe qu'à plusieurs.
+    Hoquet,
+    /// Le même motif repris en boucle, de plus en plus vite.
+    Transe,
+}
+
+impl Forme {
+    pub const TOUTES: [Forme; 6] = [Forme::AppelReponse, Forme::Canon, Forme::Lamentation, Forme::Scande, Forme::Hoquet, Forme::Transe];
+    pub fn nom(self) -> &'static str {
+        match self {
+            Forme::AppelReponse => "appel et réponse",
+            Forme::Canon => "canon",
+            Forme::Lamentation => "lamentation",
+            Forme::Scande => "chant scandé",
+            Forme::Hoquet => "hoquet",
+            Forme::Transe => "transe",
+        }
+    }
+}
+
+/// Instruments des traditions, tous faits de ce que l'on trouve sans métal :
+/// bois, os, peau, pierre, coquille, graines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Instrument {
+    Tambour,
+    TambourEau,
+    /// Tambour de bois fendu, à deux notes.
+    Fendu,
+    Hochet,
+    Mains,
+    Batons,
+    Racleur,
+    BatonPluie,
+    Rhombe,
+    Flute,
+    Conque,
+    /// Arc musical : une corde pincée.
+    Arc,
+    /// Pierres qui sonnent.
+    Lithophone,
+    Guimbarde,
+}
+
+impl Instrument {
+    pub const MELODIQUES: [Instrument; 5] =
+        [Instrument::Flute, Instrument::Conque, Instrument::Arc, Instrument::Lithophone, Instrument::Guimbarde];
+    pub const FRAPPES: [Instrument; 9] = [
+        Instrument::Tambour,
+        Instrument::TambourEau,
+        Instrument::Fendu,
+        Instrument::Hochet,
+        Instrument::Mains,
+        Instrument::Batons,
+        Instrument::Racleur,
+        Instrument::BatonPluie,
+        Instrument::Rhombe,
+    ];
+    pub fn nom(self) -> &'static str {
+        match self {
+            Instrument::Tambour => "tambour",
+            Instrument::TambourEau => "tambour d'eau",
+            Instrument::Fendu => "tambour de bois fendu",
+            Instrument::Hochet => "hochet",
+            Instrument::Mains => "mains",
+            Instrument::Batons => "bâtons entrechoqués",
+            Instrument::Racleur => "racleur",
+            Instrument::BatonPluie => "bâton de pluie",
+            Instrument::Rhombe => "rhombe",
+            Instrument::Flute => "flûte d'os",
+            Instrument::Conque => "conque",
+            Instrument::Arc => "arc musical",
+            Instrument::Lithophone => "pierres sonnantes",
+            Instrument::Guimbarde => "guimbarde",
+        }
+    }
+    pub fn melodique(self) -> bool {
+        Self::MELODIQUES.contains(&self)
+    }
+}
+
 /// Tradition musicale d'un peuple, tirée de sa clé : la même pour tous ses
 /// rites.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Tradition {
     pub gamme: &'static [i32],
     pub temps: u32,
     pub polyphonie: Polyphonie,
-    /// Hochets, battements de mains, bâtons entrechoqués.
-    pub hochet: bool,
-    pub mains: bool,
-    pub batons: bool,
     pub tonique: i32,
+    /// Ses instruments : aucun à deux mélodiques, deux à quatre frappés.
+    pub instruments: Vec<Instrument>,
+    /// Ses deux manières de célébrer préférées.
+    pub formes: [Forme; 2],
 }
 
 impl Tradition {
     pub fn de(cle: u64) -> Self {
         let mut r = Rng::new(cle ^ 0x7472_6164);
-        Self {
-            gamme: GAMMES[(r.u() * GAMMES.len() as f32) as usize % GAMMES.len()],
-            temps: r.pick(&[2, 3, 4, 4, 3, 5]),
-            polyphonie: r.pick(&[Polyphonie::Unisson, Polyphonie::Heterophonie, Polyphonie::Bourdon, Polyphonie::Quartes]),
-            hochet: r.chance(0.6),
-            mains: r.chance(0.5),
-            batons: r.chance(0.4),
-            tonique: 45 + (r.u() * 7.0) as i32,
+        let gamme = GAMMES[(r.u() * GAMMES.len() as f32) as usize % GAMMES.len()];
+        let temps = r.pick(&[2, 3, 4, 4, 3, 5]);
+        let polyphonie = r.pick(&[Polyphonie::Unisson, Polyphonie::Heterophonie, Polyphonie::Bourdon, Polyphonie::Quartes]);
+        let tonique = 45 + (r.u() * 7.0) as i32;
+        let mut instruments = Vec::new();
+        let melodiques = match (r.u() * 4.0) as u32 {
+            0 => 0,
+            1 | 2 => 1,
+            _ => 2,
+        };
+        while instruments.len() < melodiques {
+            let i = r.pick(&Instrument::MELODIQUES);
+            if !instruments.contains(&i) {
+                instruments.push(i);
+            }
+        }
+        if r.chance(0.7) {
+            instruments.push(Instrument::Tambour);
+        }
+        let frappes = melodiques + 2 + (r.u() * 3.0) as usize;
+        while instruments.len() < frappes {
+            let i = r.pick(&Instrument::FRAPPES);
+            if !instruments.contains(&i) {
+                instruments.push(i);
+            }
+        }
+        let a = r.pick(&Forme::TOUTES);
+        let mut b = r.pick(&Forme::TOUTES);
+        while b == a {
+            b = r.pick(&Forme::TOUTES);
+        }
+        Self { gamme, temps, polyphonie, tonique, instruments, formes: [a, b] }
+    }
+
+    pub fn a(&self, i: Instrument) -> bool {
+        self.instruments.contains(&i)
+    }
+
+    /// Manière de célébrer un rite : celles du peuple, sauf que les morts
+    /// appellent souvent la lamentation et la chasse le chant scandé.
+    pub fn forme(&self, car: &Caractere, rng: &mut Rng) -> Forme {
+        if car.tempo < 66.0 && rng.chance(0.5) {
+            Forme::Lamentation
+        } else if car.frappe >= 1.0 && rng.chance(0.4) {
+            Forme::Scande
+        } else {
+            self.formes[(rng.u() * 2.0) as usize % 2]
         }
     }
 }
 
-/// Une frappe de percussion.
+/// Une frappe ou une note d'instrument.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Coup {
     Tambour(f32),
+    TambourEau(f32),
+    Fendu(f32),
     Hochet,
     Mains,
     Baton,
+    /// Grain de bruit aigu (bâton de pluie, racleur) : fréquence, volume.
+    Grain(f32, f32),
+    Souffle {
+        midi: f32,
+        dur: f32,
+        rauque: f32,
+    },
+    Arc(f32),
+    Pierre(f32),
 }
 
 /// Un chant rituel en cours : les voix chantées sont lancées d'un coup, les
-/// percussions au fil du temps.
+/// instruments au fil du temps.
 pub struct Chant {
     pub t: f32,
     pub fin: f32,
+    pub forme: Forme,
     coups: Vec<(f32, Coup)>,
     suivant: usize,
 }
+
+/// Silence dans une ligne de notes.
+const SILENCE: i32 = i32::MIN;
 
 /// Une phrase mélodique : (durée en temps, degré de la gamme).
 fn melodie(rng: &mut Rng, temps: u32, mesures: u32, vivacite: f32, haut: i32) -> Vec<(f32, i32)> {
@@ -651,6 +797,26 @@ fn melodie(rng: &mut Rng, temps: u32, mesures: u32, vivacite: f32, haut: i32) ->
     notes
 }
 
+/// Notes en temps → notes en secondes.
+fn en_secondes(notes: &[(f32, i32)], beat: f32) -> Vec<(f32, i32)> {
+    notes.iter().map(|&(d, g)| (d * beat, g)).collect()
+}
+
+fn duree(notes: &[(f32, i32)]) -> f32 {
+    notes.iter().map(|n| n.0).sum()
+}
+
+/// Une ligne à chanter : qui, quelles phrases (début en secondes, notes en
+/// secondes), transposée de combien.
+struct Ligne {
+    loc: Locuteur,
+    phrases: Vec<(f32, Vec<(f32, i32)>)>,
+    decal: i32,
+    octave: i32,
+    orne: bool,
+    gain: f32,
+}
+
 impl Chant {
     /// Compose et lance un chant : renvoie le chant et ses voix chantées.
     pub fn composer(peuple: &Peuple, rite: usize, rng: &mut Rng, mk: &Make) -> (Chant, Vec<Voice>) {
@@ -660,13 +826,15 @@ impl Chant {
         let car = caractere(&r.objet);
         let graine = r.nom.bytes().fold(peuple.cle, |h, b| h.wrapping_mul(0x100_0000_01b3) ^ b as u64);
         let mut cr = Rng::new(graine);
+        let forme = tr.forme(&car, &mut cr);
         let tempo = car.tempo * cr.range(0.92, 1.08);
         let beat = 60.0 / tempo;
+        let mesure = tr.temps as f32 * beat;
         let mesures = if tr.temps >= 4 { 2 } else { 3 };
         let appel = melodie(&mut cr, tr.temps, mesures, car.vivacite, 4);
         let reponse = melodie(&mut cr, tr.temps, mesures, car.vivacite, 2);
-        let tours = 4 + (cr.u() * 3.0) as usize;
         let racine = tr.tonique + car.registre;
+        let melodiques: Vec<Instrument> = tr.instruments.iter().copied().filter(|i| i.melodique()).collect();
 
         // Texte : le mot du rite, puis des mots de la langue.
         let mut texte: Vec<Vec<Ph>> = Vec::new();
@@ -677,118 +845,403 @@ impl Chant {
         while texte.len() < 12 {
             texte.extend(peuple.langue.babil(&mut cr, &reserve));
         }
-        let longueur = |n: &[(f32, i32)]| n.iter().map(|x| x.0).sum::<f32>() * beat;
-        let (la, lr) = (longueur(&appel), longueur(&reponse));
-        let cycle = la + lr;
 
-        // Une ligne chantée : les notes de `phrases`, aux temps donnés, sur
-        // le texte. `decal` : degrés ajoutés ; `octave` : demi-tons.
-        let chanter =
-            |phrases: &[(f32, &Vec<(f32, i32)>)], loc: Locuteur, decal: i32, octave: i32, retard: f32, orne: bool, rng: &mut Rng| {
-                let mut segs = vec![Seg { ph: Ph::Pause, dur: retard.max(0.001), f0: loc.f0, amp: 0.0 }];
-                let mut t = retard;
-                let mut s = 0;
-                for &(debut, notes) in phrases {
-                    if debut > t {
-                        segs.push(Seg { ph: Ph::Pause, dur: debut - t, f0: loc.f0, amp: 0.0 });
-                        t = debut;
-                    }
-                    for &(d, deg) in notes.iter() {
-                        let f0 = mtof(crate::synth::degree(racine + octave, tr.gamme, deg + decal) + rng.range(-0.08, 0.08));
-                        let dur = d * beat;
-                        let syl = &texte[s % texte.len()];
-                        s += 1;
-                        let cons: f32 = syl.iter().filter(|p| !p.voyelle()).count() as f32 * 0.05;
-                        let ornement = orne && dur > 0.4 && rng.chance(0.3);
-                        for &p in syl {
-                            if p.voyelle() {
-                                let v = (dur - cons).max(0.06);
-                                if ornement {
-                                    let haut = mtof(crate::synth::degree(racine + octave, tr.gamme, deg + decal + 1));
-                                    segs.push(Seg { ph: p, dur: v * 0.25, f0: haut, amp: 1.0 });
-                                    segs.push(Seg { ph: p, dur: v * 0.75, f0, amp: 1.0 });
-                                } else {
-                                    segs.push(Seg { ph: p, dur: v, f0, amp: 1.0 });
-                                }
-                            } else {
-                                segs.push(Seg { ph: p, dur: 0.05, f0, amp: 0.9 });
+        // Les chanteurs : un meneur, un chœur plus nombreux quand le peuple
+        // est grand (une femme sur deux, à l'octave).
+        let meneur = Locuteur::homme(&mut cr);
+        let n_choeur = (3.0 + peuple.population.max(1.0).ln() * 0.6 * (1.0 - car.douceur * 0.5)).clamp(3.0, 9.0) as usize;
+        let choeur: Vec<(Locuteur, i32)> =
+            (0..n_choeur).map(|c| if c % 2 == 1 { (Locuteur::femme(&mut cr), 12) } else { (Locuteur::homme(&mut cr), 0) }).collect();
+        let g_choeur = 0.38 / (n_choeur as f32).sqrt();
+
+        // Une mélodie jouée seule ouvre le chant quand le peuple a une flûte
+        // ou des pierres sonnantes (sauf pour le chant scandé, qui part d'un
+        // coup).
+        let solo = tr.a(Instrument::Flute) || tr.a(Instrument::Lithophone);
+        let intro = if solo && forme != Forme::Scande { duree(&appel) * beat + beat } else { 0.0 };
+
+        let mut lignes: Vec<Ligne> = Vec::new();
+        // Bourdons fredonnés : (début, fin, degré, octave, locuteur).
+        let mut bourdons: Vec<(f32, f32, i32, Locuteur, i32)> = Vec::new();
+        // Les temps, pour les percussions : (instant, rang dans la mesure,
+        // intensité de 0 à 1).
+        let mut grille: Vec<(f32, u32, f32)> = Vec::new();
+        let grille_reguliere = |de: f32, a: f32, beat: f32, temps: u32, g: &mut Vec<(f32, u32, f32)>| {
+            let mut t = de;
+            let mut n = 0;
+            while t < a - beat * 0.5 {
+                g.push((t, n % temps, 1.0));
+                t += beat;
+                n += 1;
+            }
+        };
+        // Phrase de l'instrument (début, notes en secondes), doublée à
+        // l'octave par la flûte ou les pierres.
+        let mut jeu: Vec<(f32, Vec<(f32, i32)>)> = Vec::new();
+        if intro > 0.0 {
+            jeu.push((0.0, en_secondes(&appel, beat)));
+        }
+
+        let fin = match forme {
+            Forme::AppelReponse => {
+                let tours = 4 + (cr.u() * 3.0) as usize;
+                let (a, rp) = (en_secondes(&appel, beat), en_secondes(&reponse, beat));
+                let (la, lr) = (duree(&a), duree(&rp));
+                let cycle = la + lr;
+                lignes.push(Ligne {
+                    loc: meneur,
+                    phrases: (0..tours).map(|k| (intro + k as f32 * cycle, a.clone())).collect(),
+                    decal: 0,
+                    octave: 0,
+                    orne: true,
+                    gain: 0.5,
+                });
+                for (c, &(loc, oct)) in choeur.iter().enumerate() {
+                    let phrases: Vec<_> = (0..tours).map(|k| (intro + k as f32 * cycle + la, rp.clone())).collect();
+                    match tr.polyphonie {
+                        Polyphonie::Bourdon if c < 2 => {
+                            for k in 0..tours {
+                                let d = intro + k as f32 * cycle + la;
+                                bourdons.push((d, d + lr, 0, loc, oct - 12 * (c == 0) as i32));
                             }
                         }
-                        t += dur;
+                        Polyphonie::Quartes if c % 3 == 2 => {
+                            lignes.push(Ligne { loc, phrases, decal: 2, octave: oct - 12, orne: false, gain: g_choeur })
+                        }
+                        p => {
+                            lignes.push(Ligne { loc, phrases, decal: 0, octave: oct, orne: p == Polyphonie::Heterophonie, gain: g_choeur })
+                        }
                     }
                 }
-                (segs, t)
-            };
+                if solo {
+                    for k in (1..tours).step_by(2) {
+                        jeu.push((intro + k as f32 * cycle, a.clone()));
+                    }
+                }
+                let fin = intro + tours as f32 * cycle;
+                grille_reguliere(intro + la, fin, beat, tr.temps, &mut grille);
+                fin
+            }
+            Forme::Canon => {
+                let mut m = en_secondes(&appel, beat);
+                m.extend(en_secondes(&reponse, beat));
+                let l = duree(&m);
+                let reprises = 3 + (cr.u() * 2.0) as usize;
+                let groupes = 3;
+                let entree = |g: usize| intro + g as f32 * mesure * if mesures == 2 { 1.0 } else { 1.5 };
+                let phrases = |g: usize| (0..reprises).map(|k| (entree(g) + k as f32 * l, m.clone())).collect::<Vec<_>>();
+                lignes.push(Ligne { loc: meneur, phrases: phrases(0), decal: 0, octave: 0, orne: false, gain: 0.4 });
+                for (c, &(loc, oct)) in choeur.iter().enumerate() {
+                    lignes.push(Ligne { loc, phrases: phrases(c % groupes), decal: 0, octave: oct, orne: false, gain: g_choeur });
+                }
+                if solo {
+                    jeu.push((entree(0), m.clone()));
+                }
+                let fin = entree(groupes - 1) + reprises as f32 * l;
+                grille_reguliere(entree(1), fin, beat, tr.temps, &mut grille);
+                fin
+            }
+            Forme::Lamentation => {
+                // Lente, ornée, chaque phrase suivie d'un silence.
+                let a = en_secondes(&appel, beat * 1.6);
+                let rp = en_secondes(&reponse, beat * 1.6);
+                let tours = 3 + (cr.u() * 2.0) as usize;
+                let souffle = 2.0 * beat;
+                let mut t = intro;
+                let mut phrases = Vec::new();
+                for k in 0..tours {
+                    let p = if k % 2 == 0 { a.clone() } else { rp.clone() };
+                    let d = duree(&p);
+                    phrases.push((t, p));
+                    t += d + souffle;
+                }
+                let fin = t;
+                lignes.push(Ligne { loc: meneur, phrases: phrases.clone(), decal: 0, octave: 0, orne: true, gain: 0.55 });
+                // Le chœur fredonne la tonique et la quinte, bouche fermée puis ouverte.
+                let quinte = tr.gamme.iter().position(|&x| x == 7).unwrap_or(2) as i32;
+                for (c, &(loc, oct)) in choeur.iter().enumerate() {
+                    bourdons.push((intro * 0.5, fin, if c % 3 == 2 { quinte } else { 0 }, loc, oct - 12));
+                }
+                if solo {
+                    // L'instrument répond à chaque phrase, dans le silence.
+                    for (k, (d, p)) in phrases.iter().enumerate() {
+                        if k % 2 == 1 {
+                            jeu.push((d + duree(p) - beat, en_secondes(&reponse[reponse.len().saturating_sub(3)..], beat)));
+                        }
+                    }
+                }
+                // Un seul coup sourd par mesure lente.
+                let mut tt = intro;
+                while tt < fin {
+                    grille.push((tt, 0, 0.6));
+                    tt += mesure * 1.6;
+                }
+                fin
+            }
+            Forme::Scande => {
+                // Croches martelées sur deux notes, de plus en plus serrées.
+                let tours = 6 + (cr.u() * 3.0) as usize;
+                let croches = (tr.temps * 4) as usize;
+                let motif: Vec<i32> = (0..croches).map(|i| if i % (tr.temps as usize * 2) == 0 { 1 } else { 0 }).collect();
+                let mut t = 0.0;
+                let mut b = beat;
+                let mut phrases = Vec::new();
+                for k in 0..tours {
+                    let mut p: Vec<(f32, i32)> = motif.iter().map(|&g| (b * 0.5, g)).collect();
+                    // Un cri tenu à la fin de chaque deuxième tour.
+                    if k % 2 == 1 {
+                        p.truncate(croches - 2);
+                        p.push((b, 2));
+                    }
+                    let n_temps = tr.temps * 2;
+                    for i in 0..n_temps {
+                        grille.push((t + i as f32 * b, i % tr.temps, 0.7 + 0.3 * k as f32 / tours as f32));
+                    }
+                    let d = duree(&p);
+                    phrases.push((t, p));
+                    t += d;
+                    b *= 0.975;
+                }
+                lignes.push(Ligne { loc: meneur, phrases: phrases.clone(), decal: 0, octave: 0, orne: false, gain: 0.4 });
+                for &(loc, oct) in &choeur {
+                    lignes.push(Ligne { loc, phrases: phrases.clone(), decal: 0, octave: oct, orne: false, gain: g_choeur * 1.1 });
+                }
+                t
+            }
+            Forme::Hoquet => {
+                // Un motif de huit croches, partagé note à note entre les voix.
+                let motif: Vec<i32> = (0..8).map(|_| (cr.u() * 5.0) as i32).collect();
+                let reprises = 12 + (cr.u() * 6.0) as usize;
+                let l = 8.0 * beat * 0.5;
+                for (c, &(loc, oct)) in choeur.iter().enumerate() {
+                    let notes: Vec<(f32, i32)> = motif
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &g)| (beat * 0.5, if i % n_choeur.min(4) == c % 4 { g } else { SILENCE }))
+                        .collect();
+                    let phrases = (0..reprises).map(|k| (intro + k as f32 * l, notes.clone())).collect();
+                    lignes.push(Ligne { loc, phrases, decal: 0, octave: oct, orne: false, gain: g_choeur * 1.3 });
+                }
+                // Le meneur chante l'appel par-dessus, un tour sur deux.
+                let a = en_secondes(&appel, beat);
+                let la = duree(&a);
+                let fin = intro + reprises as f32 * l;
+                let mut t = intro + 2.0 * l;
+                let mut phrases = Vec::new();
+                while t + la < fin {
+                    phrases.push((t, a.clone()));
+                    t += la * 2.0;
+                }
+                lignes.push(Ligne { loc: meneur, phrases, decal: 2, octave: 0, orne: true, gain: 0.4 });
+                grille_reguliere(intro, fin, beat, tr.temps, &mut grille);
+                fin
+            }
+            Forme::Transe => {
+                // Le même motif en boucle, du lent au très vif.
+                let reprises = 9 + (cr.u() * 4.0) as usize;
+                let mut t = intro;
+                let mut phrases = Vec::new();
+                for k in 0..reprises {
+                    let x = k as f32 / (reprises - 1) as f32;
+                    let b = beat * (1.12 - 0.4 * x);
+                    let p = en_secondes(&reponse, b);
+                    for i in 0..(duree(&reponse) as u32) {
+                        grille.push((t + i as f32 * b, i % tr.temps, 0.35 + 0.65 * x));
+                    }
+                    let d = duree(&p);
+                    phrases.push((t, p));
+                    t += d;
+                }
+                lignes.push(Ligne { loc: meneur, phrases: phrases.clone(), decal: 0, octave: 0, orne: false, gain: 0.4 });
+                for &(loc, oct) in &choeur {
+                    lignes.push(Ligne { loc, phrases: phrases.clone(), decal: 0, octave: oct, orne: false, gain: g_choeur });
+                }
+                t
+            }
+        };
 
+        // Les voix chantées.
         let mut voix = Vec::new();
-        // Le meneur lance chaque tour.
-        let meneur = Locuteur::homme(&mut cr);
-        let appels: Vec<(f32, &Vec<(f32, i32)>)> = (0..tours).map(|k| (k as f32 * cycle, &appel)).collect();
-        let (segs, fin_meneur) = chanter(&appels, meneur, 0, 0, 0.0, true, &mut cr);
-        voix.push(Voice::new(crate::synth::Kind::Gosier(Box::new(Gosier::new(segs, meneur, 0.35, rate))), Bus::Ambiance, 0.5).send(0.35));
-
-        // Le chœur répond, plus nombreux quand le peuple est grand.
-        let choristes = (3.0 + peuple.population.max(1.0).ln() * 0.6 * (1.0 - car.douceur * 0.5)).clamp(3.0, 9.0) as usize;
-        let reponses: Vec<(f32, &Vec<(f32, i32)>)> = (0..tours).map(|k| (k as f32 * cycle + la, &reponse)).collect();
-        let mut fin = fin_meneur;
-        for c in 0..choristes {
-            let femme = c % 2 == 1;
-            let loc = if femme { Locuteur::femme(&mut cr) } else { Locuteur::homme(&mut cr) };
-            let octave = if femme { 12 } else { 0 };
-            let retard = if tr.polyphonie == Polyphonie::Unisson { cr.range(0.0, 0.02) } else { cr.range(0.0, 0.05) };
-            let (segs, t) = match tr.polyphonie {
-                Polyphonie::Bourdon if c < 2 => {
-                    // Le bourdon tient la tonique sur une voyelle ouverte.
-                    let f0 = mtof((racine + octave - 12 * (c == 0) as i32) as f32);
-                    let mut s = Vec::new();
-                    for k in 0..tours {
-                        let debut = k as f32 * cycle + la;
-                        s.push(Seg { ph: Ph::Pause, dur: if k == 0 { debut.max(0.001) } else { la }, f0, amp: 0.0 });
-                        s.push(Seg { ph: son("m").unwrap_or(Ph::Pause), dur: 0.08, f0, amp: 0.6 });
-                        s.push(Seg { ph: son("o").unwrap_or(Ph::Pause), dur: lr - 0.08, f0, amp: 0.7 });
-                    }
-                    (s, tours as f32 * cycle)
+        let unisson = tr.polyphonie == Polyphonie::Unisson || matches!(forme, Forme::Scande | Forme::Hoquet);
+        let note = |deg: i32, octave: i32, decal: i32, rng: &mut Rng| {
+            mtof(crate::synth::degree(racine + octave, tr.gamme, deg + decal) + rng.range(-0.08, 0.08))
+        };
+        for ligne in &lignes {
+            let retard = if unisson { cr.range(0.0, 0.02) } else { cr.range(0.0, 0.05) };
+            let mut segs = vec![Seg { ph: Ph::Pause, dur: retard.max(0.001), f0: ligne.loc.f0, amp: 0.0 }];
+            let mut t = retard;
+            let mut s = 0;
+            for (debut, notes) in &ligne.phrases {
+                if *debut + retard > t {
+                    segs.push(Seg { ph: Ph::Pause, dur: *debut + retard - t, f0: ligne.loc.f0, amp: 0.0 });
+                    t = *debut + retard;
                 }
-                Polyphonie::Quartes if c % 3 == 2 => chanter(&reponses, loc, 2, octave - 12, retard, false, &mut cr),
-                Polyphonie::Heterophonie => chanter(&reponses, loc, 0, octave, retard, true, &mut cr),
-                _ => chanter(&reponses, loc, 0, octave, retard, false, &mut cr),
-            };
-            fin = fin.max(t);
-            let g = 0.38 / (choristes as f32).sqrt();
-            let pan = cr.range(-0.6, 0.6);
+                for &(dur, deg) in notes {
+                    t += dur;
+                    if deg == SILENCE {
+                        segs.push(Seg { ph: Ph::Pause, dur, f0: ligne.loc.f0, amp: 0.0 });
+                        continue;
+                    }
+                    let f0 = note(deg, ligne.octave, ligne.decal, &mut cr);
+                    let syl = &texte[s % texte.len()];
+                    s += 1;
+                    let cons = (syl.iter().filter(|p| !p.voyelle()).count() as f32 * 0.05).min(dur * 0.5);
+                    let n_cons = syl.iter().filter(|p| !p.voyelle()).count().max(1) as f32;
+                    let ornement = ligne.orne && dur > 0.4 && cr.chance(0.3);
+                    for &p in syl {
+                        if p.voyelle() {
+                            let v = (dur - cons).max(0.04);
+                            if ornement {
+                                let haut = note(deg + 1, ligne.octave, ligne.decal, &mut cr);
+                                segs.push(Seg { ph: p, dur: v * 0.25, f0: haut, amp: 1.0 });
+                                segs.push(Seg { ph: p, dur: v * 0.75, f0, amp: 1.0 });
+                            } else {
+                                segs.push(Seg { ph: p, dur: v, f0, amp: 1.0 });
+                            }
+                        } else {
+                            segs.push(Seg { ph: p, dur: cons / n_cons, f0, amp: 0.9 });
+                        }
+                    }
+                }
+            }
+            let pan = if ligne.gain >= 0.4 { 0.0 } else { cr.range(-0.6, 0.6) };
+            let vib = if ligne.gain >= 0.4 { 0.35 } else { 0.25 };
             voix.push(
-                Voice::new(crate::synth::Kind::Gosier(Box::new(Gosier::new(segs, loc, 0.25, rate))), Bus::Ambiance, g).pan(pan).send(0.45),
+                Voice::new(crate::synth::Kind::Gosier(Box::new(Gosier::new(segs, ligne.loc, vib, rate))), Bus::Ambiance, ligne.gain)
+                    .pan(pan)
+                    .send(0.4),
+            );
+        }
+        for &(de, a, deg, loc, oct) in &bourdons {
+            let f0 = note(deg, oct, 0, &mut cr);
+            let segs = vec![
+                Seg { ph: Ph::Pause, dur: de.max(0.001), f0, amp: 0.0 },
+                Seg { ph: son("m").unwrap_or(Ph::Pause), dur: ((a - de) * 0.4).max(0.05), f0, amp: 0.6 },
+                Seg { ph: son(if deg == 0 { "o" } else { "ou" }).unwrap_or(Ph::Pause), dur: ((a - de) * 0.6).max(0.05), f0, amp: 0.6 },
+            ];
+            voix.push(
+                Voice::new(crate::synth::Kind::Gosier(Box::new(Gosier::new(segs, loc, 0.1, rate))), Bus::Ambiance, g_choeur * 0.7)
+                    .pan(cr.range(-0.5, 0.5))
+                    .send(0.5),
             );
         }
 
-        // Percussions : elles entrent après le premier appel.
-        let mut coups = Vec::new();
-        let mut t = la;
-        let mut n = 0u32;
-        while t < fin - beat * 0.5 {
-            let premier = n.is_multiple_of(tr.temps);
-            if premier || car.frappe > 0.7 || (car.frappe > 0.4 && n.is_multiple_of(2)) {
-                coups.push((t, Coup::Tambour(if premier { 1.0 } else { 0.6 } * (0.4 + 0.6 * car.frappe))));
+        // Instruments au long cours : rhombe et guimbarde.
+        if tr.a(Instrument::Rhombe) {
+            voix.push(Voice::new(mk.rhombe(cr.range(90.0, 150.0), cr.range(0.9, 1.6), fin + 2.0), Bus::Ambiance, 0.06).pan(-0.4).send(0.5));
+        }
+        if tr.a(Instrument::Guimbarde) {
+            // Une voix sans souffle sur une note grave fixe, dont la bouche
+            // change de voyelle à chaque croche : le nasillement de la guimbarde.
+            let f0 = mtof((racine - 12) as f32);
+            let loc = Locuteur { f0, conduit: 1.0, souffle: 0.0 };
+            let voyelles = ["i", "ou", "a", "é", "o"];
+            let mut segs = vec![Seg { ph: Ph::Pause, dur: intro.max(0.001), f0, amp: 0.0 }];
+            let mut t = intro;
+            let mut k = 0;
+            while t < fin {
+                let v = son(voyelles[(cr.u() * voyelles.len() as f32) as usize % voyelles.len()]).unwrap_or(Ph::Pause);
+                segs.push(Seg { ph: v, dur: beat * 0.5 * if k % 4 == 3 { 0.6 } else { 1.0 }, f0, amp: 1.0 });
+                if k % 4 == 3 {
+                    segs.push(Seg { ph: Ph::Pause, dur: beat * 0.2, f0, amp: 0.0 });
+                }
+                t += beat * 0.5;
+                k += 1;
             }
-            if tr.hochet && car.frappe > 0.2 {
-                coups.push((t + beat * 0.5, Coup::Hochet));
-                if car.vivacite > 0.4 {
-                    coups.push((t + beat * 0.25, Coup::Hochet));
-                    coups.push((t + beat * 0.75, Coup::Hochet));
+            voix.push(
+                Voice::new(crate::synth::Kind::Gosier(Box::new(Gosier::new(segs, loc, 0.0, rate))), Bus::Ambiance, 0.18).pan(0.4).send(0.2),
+            );
+        }
+
+        // Percussions et notes des instruments, d'après la grille des temps.
+        let mut coups = Vec::new();
+        let frappe = car.frappe;
+        for (i, &(t, n, x)) in grille.iter().enumerate() {
+            let premier = n == 0;
+            let f = frappe * x;
+            if tr.a(Instrument::Tambour) && (premier || f > 0.7 || (f > 0.4 && n % 2 == 0)) {
+                coups.push((t, Coup::Tambour(if premier { 1.0 } else { 0.6 } * (0.4 + 0.6 * f))));
+            }
+            if tr.a(Instrument::TambourEau) && n % 2 == 0 {
+                coups.push((t, Coup::TambourEau(0.5 + 0.5 * f)));
+            }
+            if tr.a(Instrument::Fendu) && f > 0.2 {
+                // Deux notes de bois, grave sur le temps, aiguë en contretemps.
+                coups.push((t, Coup::Fendu((racine + 12) as f32)));
+                if f > 0.5 || i % 2 == 1 {
+                    let dt = grille.get(i + 1).map_or(beat, |g| g.0 - t);
+                    coups.push((t + dt * 0.5, Coup::Fendu((racine + 17) as f32)));
                 }
             }
-            if tr.mains && car.frappe > 0.5 && !premier {
+            if tr.a(Instrument::Hochet) && f > 0.15 {
+                let dt = grille.get(i + 1).map_or(beat, |g| g.0 - t);
+                coups.push((t + dt * 0.5, Coup::Hochet));
+                if f > 0.5 {
+                    coups.push((t + dt * 0.25, Coup::Hochet));
+                    coups.push((t + dt * 0.75, Coup::Hochet));
+                }
+            }
+            if tr.a(Instrument::Mains) && f > 0.45 && !premier {
                 coups.push((t, Coup::Mains));
             }
-            if tr.batons && car.frappe > 0.3 && n % tr.temps == tr.temps - 1 {
-                coups.push((t + beat * 0.5, Coup::Baton));
+            if tr.a(Instrument::Batons) && f > 0.25 && n + 1 == tr.temps {
+                let dt = grille.get(i + 1).map_or(beat, |g| g.0 - t);
+                coups.push((t + dt * 0.5, Coup::Baton));
             }
-            t += beat;
-            n += 1;
+            if tr.a(Instrument::Racleur) && f > 0.3 && n % 2 == 1 {
+                for g in 0..6 {
+                    coups.push((t + g as f32 * 0.035, Coup::Grain(cr.range(2500.0, 3500.0), 0.12)));
+                }
+            }
+            if tr.a(Instrument::Arc) && f > 0.1 {
+                let d = if n == 0 {
+                    0
+                } else if n % 2 == 1 {
+                    1
+                } else {
+                    0
+                };
+                coups.push((t, Coup::Arc(crate::synth::degree(racine, tr.gamme, d))));
+            }
+        }
+        if tr.a(Instrument::BatonPluie) {
+            for (de, a) in [(0.0, 3.0), (fin - 1.0, fin + 2.0)] {
+                for _ in 0..50 {
+                    coups.push((cr.range(de, a), Coup::Grain(cr.range(5000.0, 9000.0), cr.range(0.02, 0.07))));
+                }
+            }
+        }
+        if tr.a(Instrument::Conque) {
+            // Longs appels graves au début et à la fin.
+            for t in [0.0, fin - 1.0] {
+                coups.push((t, Coup::Souffle { midi: (racine - 12) as f32, dur: 2.2, rauque: 1.0 }));
+            }
+        }
+        for &inst in &melodiques {
+            if !matches!(inst, Instrument::Flute | Instrument::Lithophone) {
+                continue;
+            }
+            for (debut, notes) in &jeu {
+                let mut t = *debut;
+                for &(dur, deg) in notes {
+                    if deg != SILENCE {
+                        let m = crate::synth::degree(racine + 12, tr.gamme, deg);
+                        coups.push((
+                            t,
+                            if inst == Instrument::Flute {
+                                Coup::Souffle { midi: m + 12.0, dur: dur * 0.95, rauque: 0.1 }
+                            } else {
+                                Coup::Pierre(m + 12.0)
+                            },
+                        ));
+                    }
+                    t += dur;
+                }
+            }
         }
         coups.sort_by(|a, b| a.0.total_cmp(&b.0));
         let _ = rng;
-        (Chant { t: 0.0, fin: fin + 1.5, coups, suivant: 0 }, voix)
+        (Chant { t: 0.0, fin: fin + 2.5, forme, coups, suivant: 0 }, voix)
     }
 
     /// Avance de `dt` et lance les frappes qui tombent dans ce pas.
@@ -802,6 +1255,8 @@ impl Chant {
             let at = (t - self.t).max(0.0);
             let v = match c {
                 Coup::Tambour(g) => Voice::new(mk.thump(rng.range(88.0, 96.0), 0.35), Bus::Ambiance, 0.55 * g).send(0.3),
+                Coup::TambourEau(g) => Voice::new(mk.thump(rng.range(58.0, 64.0), 0.6), Bus::Ambiance, 0.35 * g).pan(0.2).send(0.45),
+                Coup::Fendu(m) => Voice::new(mk.bell(m, 1.5, 0.7, 0.3), Bus::Ambiance, 0.16).pan(-0.2).send(0.3),
                 Coup::Hochet => Voice::new(mk.burst(FilterKind::HighPass, 4500.0, 4500.0, 0.8, 0.004, 0.07, false), Bus::Ambiance, 0.09)
                     .pan(0.35)
                     .send(0.2),
@@ -809,6 +1264,14 @@ impl Chant {
                     .pan(rng.range(-0.4, 0.4))
                     .send(0.35),
                 Coup::Baton => Voice::new(mk.bell(rng.range(82.0, 84.0), 2.76, 0.6, 0.12), Bus::Ambiance, 0.12).pan(-0.3).send(0.2),
+                Coup::Grain(f, g) => Voice::new(mk.burst(FilterKind::BandPass, f, f, 2.0, 0.001, 0.018, false), Bus::Ambiance, g)
+                    .pan(rng.range(-0.5, 0.5))
+                    .send(0.3),
+                Coup::Souffle { midi, dur, rauque } => {
+                    Voice::new(mk.flute(midi, dur, rauque), Bus::Ambiance, if rauque > 0.5 { 0.14 } else { 0.1 }).pan(0.3).send(0.5)
+                }
+                Coup::Arc(m) => Voice::new(mk.pluck(rng, m, 0.15, 1.2), Bus::Ambiance, 0.2).pan(0.25).send(0.25),
+                Coup::Pierre(m) => Voice::new(mk.bell(m, 2.76, 1.0, 1.4), Bus::Ambiance, 0.08).pan(0.3).send(0.4),
             };
             out.push(v.at(at, mk.rate));
         }
@@ -907,6 +1370,15 @@ mod tests {
         assert_eq!(Tradition::de(7), Tradition::de(7));
         let differentes = (0..20).map(Tradition::de).filter(|t| t.gamme != Tradition::de(0).gamme).count();
         assert!(differentes > 5);
+        // Sur quelques dizaines de peuples, tous les instruments et toutes
+        // les manières de célébrer se rencontrent.
+        let traditions: Vec<Tradition> = (0..60).map(Tradition::de).collect();
+        for i in Instrument::MELODIQUES.iter().chain(&Instrument::FRAPPES) {
+            assert!(traditions.iter().any(|t| t.a(*i)), "{}", i.nom());
+        }
+        for f in Forme::TOUTES {
+            assert!(traditions.iter().any(|t| t.formes.contains(&f)), "{}", f.nom());
+        }
     }
 
     #[test]
@@ -929,5 +1401,17 @@ mod tests {
             chant.tick(0.1, &mk, &mut rng, &mut coups);
         }
         assert!(coups.len() > 10);
+        // Chaque manière de célébrer donne un chant d'une durée raisonnable.
+        let mut vues = Vec::new();
+        for cle in 0..40 {
+            let p = Peuple { cle, ..peuple.clone() };
+            let (c, v) = Chant::composer(&p, 0, &mut rng, &mk);
+            assert!((8.0..120.0).contains(&c.fin), "{:?} : {}", c.forme, c.fin);
+            assert!(v.len() >= 4);
+            if !vues.contains(&c.forme) {
+                vues.push(c.forme);
+            }
+        }
+        assert!(vues.len() >= 5, "{vues:?}");
     }
 }

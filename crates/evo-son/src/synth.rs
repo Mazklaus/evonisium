@@ -155,6 +155,12 @@ pub enum Kind {
     Thump { f0: f32, dec: f32, phase: f32 },
     /// Voix parlée ou chantée d'un peuple.
     Gosier(Box<crate::peuples::Gosier>),
+    /// Souffle dans un tuyau : flûte d'os ou de roseau, conque (`rauque`
+    /// ajoute les harmoniques rugueuses).
+    Flute { f: f32, phase: f32, dur: f32, att: f32, rauque: f32, souffle: Biquad, vph: f32 },
+    /// Rhombe : planchette qui tourne au bout d'une corde, vrombissement
+    /// dont la hauteur monte et descend à chaque tour.
+    Rhombe { filt: Biquad, f: f32, tour: f32, ph: f32, dur: f32 },
 }
 
 pub struct Voice {
@@ -271,6 +277,39 @@ impl Voice {
                 (TAU * *phase).sin() * (-t * 5.0 / *dec).exp()
             }
             Kind::Gosier(g) => g.next(rng, dt)?,
+            Kind::Flute { f, phase, dur, att, rauque, souffle, vph } => {
+                if t > *dur {
+                    return None;
+                }
+                let rel = 0.12f32.min(*dur * 0.3);
+                let env = if t < *att {
+                    t / *att
+                } else if t > *dur - rel {
+                    (*dur - t) / rel
+                } else {
+                    1.0
+                };
+                *vph = (*vph + 4.8 * dt).fract();
+                let vib = if t > 0.25 { 1.0 + 0.004 * (TAU * *vph).sin() } else { 1.0 };
+                *phase = (*phase + *f * vib * dt).fract();
+                let x = TAU * *phase;
+                let ton = x.sin() + *rauque * (0.5 * (2.0 * x).sin() + 0.35 * (3.0 * x).sin() + 0.2 * (5.0 * x).sin());
+                // Plus de souffle à l'attaque, comme une note qui s'amorce.
+                let air = souffle.run(rng.bipolar()) * (0.25 + 0.6 * (1.0 - (t / (*att * 2.0)).min(1.0)));
+                (ton * 0.6 + air) * env
+            }
+            Kind::Rhombe { filt, f, tour, ph, dur } => {
+                if t > *dur {
+                    return None;
+                }
+                *ph = (*ph + *tour * dt).fract();
+                let m = (TAU * *ph).sin();
+                if ((t * rate) as u32).is_multiple_of(64) {
+                    filt.set(FilterKind::BandPass, *f * (1.0 + 0.35 * m), 6.0, rate);
+                }
+                let env = (t / 1.5).min(1.0) * ((*dur - t) / 1.5).min(1.0);
+                filt.run(rng.bipolar()) * (0.6 + 0.4 * m) * env * 3.0
+            }
         };
         Some(s * self.gain)
     }
@@ -316,6 +355,21 @@ impl Make {
     }
     pub fn thump(&self, f0: f32, dec: f32) -> Kind {
         Kind::Thump { f0, dec, phase: 0.0 }
+    }
+    pub fn flute(&self, midi: f32, dur: f32, rauque: f32) -> Kind {
+        let f = mtof(midi);
+        Kind::Flute {
+            f,
+            phase: 0.0,
+            dur,
+            att: 0.06 + 0.04 * rauque,
+            rauque,
+            souffle: Biquad::new(FilterKind::BandPass, f * 2.0, 2.5, self.rate),
+            vph: 0.0,
+        }
+    }
+    pub fn rhombe(&self, f: f32, tour: f32, dur: f32) -> Kind {
+        Kind::Rhombe { filt: Biquad::new(FilterKind::BandPass, f, 6.0, self.rate), f, tour, ph: 0.0, dur }
     }
 }
 
