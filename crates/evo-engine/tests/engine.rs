@@ -110,6 +110,30 @@ fn the_speed_cursor_never_changes_history() {
     assert_eq!(fast, varied);
 }
 
+/// Le frein tient pendant que le client observe et interroge le moteur
+/// plusieurs fois par seconde, comme le globe le fait : chaque commande
+/// reçue pendant l'attente ne doit pas faire partir le pas suivant.
+#[test]
+fn the_brake_holds_while_the_client_queries() {
+    let engine = Engine::new_game(small_game(17)).unwrap();
+    engine.submit(When::Now, OrderKind::SeedLife);
+    engine.submit(When::Now, OrderKind::Resume);
+    wait_for(&engine, "premier pas", |e| e.frame().current.years > 0.0);
+    let pace = 1.0e6;
+    engine.set_throttle(Some(pace));
+    std::thread::sleep(Duration::from_millis(300));
+    let (t0, y0) = (Instant::now(), engine.frame().current.years);
+    while t0.elapsed() < Duration::from_secs(3) {
+        engine.set_interest(Some(InterestZone { center_cell: 3, radius_km: 1500.0, zoom_band: 2 }));
+        let _ = engine.query(Query::Lineages { since_years: 0.0 }).recv();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let held = (engine.frame().current.years - y0) / t0.elapsed().as_secs_f64();
+    // Un pas d'avance au plus sur la fenêtre de 3 s.
+    let step = engine.frame().current.step_years;
+    assert!(held <= pace + step / 3.0 + 1.0, "vitesse tenue {held} pour un frein à {pace}");
+}
+
 /// Les individus échantillonnés ne changent pas l'histoire : une partie où
 /// le client tire et fait vivre des échantillons à chaque étape finit au même
 /// état, bit pour bit, qu'une partie sans eux (porte de l'étape 5).

@@ -368,6 +368,11 @@ func force(key: String) -> void:
 		ground.force_action(int(ground.individual(followed)["species"]), key)
 
 func _process(delta: float) -> void:
+	var t := Time.get_ticks_usec()
+	_tick(delta)
+	App.perf_add("sol", t)
+
+func _tick(delta: float) -> void:
 	if ground == null:
 		return
 	if not ready_done:

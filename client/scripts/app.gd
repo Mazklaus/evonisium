@@ -30,6 +30,11 @@ var settings := {
 	"guide_vu": [],
 }
 var current_screen := ""
+## Mesures de performance (F3, scripts/ui/mesures.gd) : microsecondes passées
+## dans chaque poste depuis la dernière ligne écrite.
+const PERF_KEYS := ["textures", "infos", "evenements", "globe", "peuples", "frise", "son", "sol"]
+var perf := {}
+var perf_on := false
 ## Partie demandée par l'écran de création, en attente d'ensemencement.
 var pending := {}
 
@@ -285,6 +290,10 @@ const TEXT := {
 	"clear_focus": ["Effacer l'aire", "Clear range"],
 	"layer_none": ["Aucun calque : vue naturelle", "No layer: natural view"],
 	"go_menu": ["Revenir au menu (la partie est sauvegardée)", "Back to menu (the game is saved)"],
+	"perf_open": ["Ouvrir le dossier des mesures", "Open the measurements folder"],
+	"perf_fps": ["images/s", "fps"],
+	"perf_worst": ["pire image", "worst frame"],
+	"perf_script": ["scripts", "scripts"],
 	"real_speed_long": ["vitesse tenue", "speed held"],
 	# Étape 6 : peuples, fiches, arbre des cultures, mythes.
 	"peoples": ["Peuples", "Peoples"],
@@ -380,3 +389,8 @@ func list_saves() -> Array:
 func save_path(name: String) -> String:
 	var clean := name.to_lower().replace(" ", "-").validate_filename()
 	return ProjectSettings.globalize_path("%s/%s.evo" % [SAVE_DIR, clean])
+
+## Ajoute `usec` microsecondes au poste `key` des mesures (F3).
+func perf_add(key: String, since_usec: int) -> void:
+	if perf_on:
+		perf[key] = int(perf.get(key, 0)) + Time.get_ticks_usec() - since_usec

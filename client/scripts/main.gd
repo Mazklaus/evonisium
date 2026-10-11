@@ -24,6 +24,9 @@ func _ready() -> void:
 	ui.name = "Interface"
 	add_child(ui)
 	App.screen_requested.connect(_show)
+	var mesures = preload("res://scripts/ui/mesures.gd").new()
+	mesures.name = "Mesures"
+	add_child(mesures)
 	var first := "accueil"
 	var args := OS.get_cmdline_user_args()
 	# Le scénario de la porte pilote le client depuis la ligne de commande.
