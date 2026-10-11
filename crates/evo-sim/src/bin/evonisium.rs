@@ -215,6 +215,7 @@ fn complexity(args: &[String]) {
     let mut next = every;
     let (mut previous_budget, mut previous_years) = (evo_planet::geochem::OxygenBudget::default(), 0.0);
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
+    let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
     let mut accelerated = false;
     let mut seen_oxygenic = false;
     while world.years() < max_years {
@@ -230,6 +231,12 @@ fn complexity(args: &[String]) {
         if let Some(y) = world.progress.stage_years[4].filter(|_| !seen_oxygenic) {
             seen_oxygenic = true;
             println!("  ☀ photosynthèse oxygénique : {}", format_years(y));
+        }
+        for (k, done) in seen_animal.iter_mut().enumerate() {
+            if let Some(y) = world.progress.animal_years[k].filter(|_| !*done) {
+                *done = true;
+                println!("  ▲ {} : {}", evo_sim::world::ANIMAL_STAGES[k], format_years(y));
+            }
         }
         for (k, done) in seen.iter_mut().enumerate() {
             if !*done {
@@ -278,11 +285,12 @@ fn complexity(args: &[String]) {
             }
             let total = total.max(1e-300);
             println!(
-                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
+                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % CO₂ {:.0} Pa | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
                 format_years(world.years()),
                 s.globals.o2_mixing,
                 s.globals.mean_temperature_k,
                 100.0 * s.globals.ice_fraction,
+                world.planet.partial_pressure(evo_planet::geochem::Gas::Co2),
                 100.0 * phago / total,
                 100.0 * euk / total,
                 100.0 * multi / total,
@@ -356,13 +364,14 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
 
 fn trace_complex(world: &World) {
     type Pick = fn(&evo_life::Population) -> bool;
-    let groups: [(&str, Pick); 4] = [
+    let groups: [(&str, Pick); 5] = [
         ("phagotrophes", |p| p.phenotype.is_phagotroph()),
         ("eucaryotes", |p| p.phenotype.is_eukaryote()),
         ("oxygéniques aquatiques", |p| {
             !p.phenotype.is_terrestrial() && p.phenotype.signature & (1 << evo_life::metabolism::OXYGENIC_PHOTOSYNTHESIS) != 0
         }),
         ("terrestres", |p| p.phenotype.is_terrestrial()),
+        ("mobiles", |p| p.phenotype.animal.motility > 0.0),
     ];
     for (name, pick) in groups {
         let mut cells = 0usize;
@@ -407,6 +416,23 @@ fn trace_complex(world: &World) {
         );
         if name == "terrestres" {
             trace_land_cells(world, pick);
+        }
+        if name == "mobiles" {
+            let max = |f: &dyn Fn(&evo_life::Population) -> f64| rows.iter().map(|p| f(p)).fold(0.0, f64::max);
+            let animals = rows.iter().filter(|p| p.phenotype.is_multicellular() && p.phenotype.engulfment > 0.0).count();
+            println!(
+                "        animaux {animals} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                median(&|p| p.phenotype.animal.motor),
+                max(&|p| p.phenotype.animal.motor),
+                median(&|p| p.phenotype.animal.sensor),
+                max(&|p| p.phenotype.animal.neural),
+                max(&|p| p.phenotype.animal.support),
+                max(&|p| p.phenotype.animal.length_m),
+                max(&|p| p.phenotype.animal.speed_m_s),
+                median(&|p| p.phenotype.animal.defense),
+                max(&|p| p.phenotype.animal.limb_pairs as f64),
+                rows.iter().filter(|p| p.phenotype.animal.sound.is_some()).count(),
+            );
         }
     }
 }

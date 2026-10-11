@@ -110,6 +110,170 @@ pub struct Body {
     pub expression: Vec<Vec<bool>>,
 }
 
+/// Ce qu'un plan non viable a d'impossible (règles du constructeur de
+/// phénotypes, document d'architecture, étape 5) : le mutant qui le porte
+/// n'est pas retenu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum NonViable {
+    /// Des appendices sans matrice rigide où s'attacher.
+    Detached,
+    /// Un corps plus massif que son squelette (ou l'eau) ne le porte.
+    Overweight,
+    /// Un corps aérobie trop épais pour que l'O₂ y diffuse, sans circulation.
+    Suffocating,
+}
+
+/// Traits de mouvement, de sens et de soutien (étape 5), lus par la
+/// prédation, la viabilité, le plan de construction et les fils Individus et
+/// Cognition.
+///
+/// [Simplification] Ils se lisent, comme l'adhésion, sur tous les gènes
+/// fonctionnels de l'organisme, sans régulation par zone.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AnimalTraits {
+    /// Moteurs moléculaires, récepteurs, tissu nerveux, matrice (sommes des
+    /// domaines).
+    pub motor: f64,
+    pub sensor: f64,
+    pub neural: f64,
+    pub support: f64,
+    /// Coordination du corps par le tissu nerveux, de 0 à 1 (1 pour une
+    /// cellule seule).
+    pub coordination: f64,
+    /// Motricité effective (moteurs × coordination, appendices), sans
+    /// dimension : elle entre dans l'attaque et la fuite.
+    pub motility: f64,
+    /// Vitesse de croisière, m·s⁻¹, et portée de détection, m.
+    pub speed_m_s: f64,
+    pub sensing: f64,
+    pub detection_m: f64,
+    /// Défense passive (carapace, coque, épines, bois), de 0 à 1.
+    pub defense: f64,
+    /// Circulation interne (muscles qui brassent les fluides), de 0 à 1.
+    pub circulation: f64,
+    /// Ouverture de la bouche (taille relative à une bactérie) : la taille
+    /// vue d'une proie.
+    pub gape: f64,
+    /// Longueur et épaisseur du corps, m, et diamètre de la sphère de même
+    /// volume (la masse que le corps doit porter).
+    pub length_m: f64,
+    pub thickness_m: f64,
+    pub mass_length_m: f64,
+    /// Segments (un par régulateur, chez un corps mobile) et paires
+    /// d'appendices.
+    pub segments: u8,
+    pub limb_pairs: u8,
+    pub sound: Option<crate::body::SoundOrgan>,
+    pub non_viable: Option<NonViable>,
+}
+
+impl AnimalTraits {
+    /// Attaque d'un prédateur et fuite d'une proie, sans dimension.
+    pub fn attack(&self) -> f64 {
+        self.motility + self.sensing
+    }
+
+    pub fn escape(&self, physio: &Physiology) -> f64 {
+        self.motility + self.sensing + physio.defense_weight * self.defense
+    }
+
+    /// Parade perçue par les partenaires (sélection sexuelle).
+    pub fn display(&self) -> f64 {
+        self.sound.map_or(0.0, |s| s.power * (0.5 + s.complexity))
+    }
+}
+
+/// Coordination d'un corps de `cells` cellules : le besoin en tissu nerveux
+/// croît avec le nombre de doublements ; un peu de signal entre cellules
+/// voisines tient lieu de nerfs chez les petits corps.
+fn coordination(org: &Organisation, cells: f64, physio: &Physiology) -> f64 {
+    if cells <= 1.0 {
+        return 1.0;
+    }
+    let need = physio.neural_half * cells.dln() / (12.0 * std::f64::consts::LN_2);
+    let own = org.neural + 0.05 * org.signalling.min(1.0);
+    own / (own + need)
+}
+
+/// Circulation interne d'un corps : ses muscles brassent ses fluides.
+fn circulation(org: &Organisation, cells: f64, physio: &Physiology) -> f64 {
+    if cells <= 1.0 || !org.eukaryote {
+        return 0.0;
+    }
+    org.motor.min(1.0) * coordination(org, cells, physio)
+}
+
+/// Remplit les traits animaux d'un phénotype de corps `body` (forme et
+/// nombre de cellules ; `None` : cellule seule ou agrégat).
+fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64)>, physio: &Physiology) {
+    let cell_m = crate::body::REFERENCE_CELL_M * p.cell_size;
+    let (length, thickness, cells) = match body {
+        None => {
+            let l = crate::body::REFERENCE_CELL_M * p.body_size;
+            (l, l, 1.0)
+        }
+        Some((Shape::Sphere, n)) => {
+            let d = cell_m * 1.24 * n.dcbrt();
+            (d, d, n)
+        }
+        Some((Shape::Filament, n)) => (cell_m * n, cell_m, n),
+        Some((Shape::Sheet, n)) => (cell_m * (n / 2.0).sqrt(), 2.0 * cell_m, n),
+    };
+    let multicellular = body.is_some();
+    // Segments, appendices et organes : un corps d'eucaryote.
+    let organised = multicellular && org.eukaryote;
+    let support = org.matrix.min(3.0);
+    let coord = coordination(org, cells, physio);
+    let segments = if organised && org.motor > 0.0 { org.regulators.clamp(1, 16) as u8 } else { 1 };
+    let limb_pairs =
+        if organised && org.motor >= physio.limb_motor { segments.min(1 + ((org.motor - physio.limb_motor) * 4.0) as u8) } else { 0 };
+    let motility = org.motor.min(3.0) * coord * if limb_pairs > 0 { 1.5 } else { 1.0 };
+    let sensing = org.sensor.min(3.0) * if multicellular { 0.5 + 0.5 * coord } else { 1.0 };
+    let circulation = circulation(org, cells, physio);
+    let gape =
+        if organised && org.motor > 0.0 && p.engulfment > 0.0 { (p.body_size * physio.mouth_share).max(p.cell_size) } else { p.cell_size };
+    let mass_length = if multicellular { cell_m * 1.24 * cells.dcbrt() } else { length };
+    let mut a = AnimalTraits {
+        motor: org.motor,
+        sensor: org.sensor,
+        neural: org.neural,
+        support,
+        coordination: coord,
+        motility,
+        speed_m_s: physio.speed_m_s * motility * (length * 1e3).dpowf(physio.speed_exponent),
+        sensing,
+        detection_m: length * physio.detection_lengths * sensing,
+        defense: -(-support).dexp_m1(),
+        circulation,
+        gape,
+        length_m: length,
+        thickness_m: thickness,
+        mass_length_m: mass_length,
+        segments,
+        limb_pairs,
+        sound: None,
+        non_viable: None,
+    };
+    if multicellular {
+        let soft = if p.is_terrestrial() { physio.soft_length_land_m } else { physio.soft_length_water_m };
+        let aerobic = p.signature & (1 << crate::metabolism::AEROBIC_RESPIRATION) != 0;
+        a.non_viable = if limb_pairs > 0 && support < physio.limb_matrix {
+            Some(NonViable::Detached)
+        } else if mass_length > soft * physio.support_reach.dpowf(support) {
+            Some(NonViable::Overweight)
+        } else if aerobic && 0.5 * thickness > physio.oxygen_diffusion_m * (1.0 + physio.circulation_reach * circulation) {
+            Some(NonViable::Suffocating)
+        } else {
+            None
+        };
+    }
+    if organised {
+        a.sound =
+            crate::body::sound_organ(org.motor, support, org.neural, org.cuticle, org.sensor_nm, length, p.is_terrestrial(), p.sexual);
+    }
+    p.animal = a;
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Phenotype {
     pub enzymes: Vec<Enzyme>,
@@ -157,6 +321,8 @@ pub struct Phenotype {
     /// à 1. Au-delà de `Physiology::terrestrial_tolerance`, l'organisme vit
     /// hors de l'eau (bit `TERRESTRIAL`).
     pub desiccation_tolerance: f64,
+    /// Animaux et plantes (étape 5), voir [`AnimalTraits`].
+    pub animal: AnimalTraits,
     /// Organites, dont plastes (organites photosynthétiques).
     pub organelles: u8,
     pub plastids: u8,
@@ -239,6 +405,16 @@ struct Organisation {
     signalling_reach: f64,
     meiosis: f64,
     cuticle: f64,
+    motor: f64,
+    sensor: f64,
+    sensor_nm: f64,
+    neural: f64,
+    matrix: f64,
+    /// Régulateurs fonctionnels (gènes maîtres des segments).
+    regulators: u32,
+    /// Porte des organites : seul un eucaryote a l'énergie d'un grand corps
+    /// organisé (Lane et Martin, 2010).
+    eukaryote: bool,
 }
 
 fn organisation(genome: &Genome) -> Organisation {
@@ -257,12 +433,24 @@ fn organisation(genome: &Genome) -> Organisation {
             }
             DomainFamily::Meiosis => o.meiosis += d.efficiency,
             DomainFamily::Cuticle => o.cuticle += d.efficiency,
+            DomainFamily::Motor => o.motor += d.efficiency,
+            DomainFamily::Sensor => {
+                o.sensor += d.efficiency;
+                o.sensor_nm += d.efficiency * d.absorption_nm;
+            }
+            DomainFamily::Neural => o.neural += d.efficiency,
+            DomainFamily::Matrix => o.matrix += d.efficiency,
+            DomainFamily::Regulator => o.regulators += 1,
             _ => {}
         }
     }
     if o.adhesion > 0.0 {
         o.adhesion_nm /= o.adhesion;
     }
+    if o.sensor > 0.0 {
+        o.sensor_nm /= o.sensor;
+    }
+    o.eukaryote = !genome.organelles.is_empty();
     if o.signalling > 0.0 {
         o.signalling_reach /= o.signalling;
     }
@@ -504,8 +692,15 @@ fn develop(
     signal: Option<f64>,
     physio: &Physiology,
 ) -> (Shape, f64, Vec<Zone>, Vec<Vec<bool>>) {
-    let doublings = 1.0 + physio.colony_doublings * (org.adhesion - physio.clonal_adhesion).min(1.0);
-    let cells = doublings.dexp2().min(physio.max_colony_cells);
+    // Une matrice de soutien libère la taille du corps (étape 5) : elle
+    // n'est plus bornée que par la viabilité (masse portée, oxygène).
+    let (gain, cap) = if org.matrix > 0.0 && org.eukaryote {
+        ((org.adhesion - physio.clonal_adhesion).min(4.0), physio.max_body_cells)
+    } else {
+        ((org.adhesion - physio.clonal_adhesion).min(1.0), physio.max_colony_cells)
+    };
+    let doublings = 1.0 + physio.colony_doublings * gain;
+    let cells = doublings.dexp2().min(cap);
     let shape = if org.adhesion_nm < 500.0 {
         Shape::Filament
     } else if org.adhesion_nm > 800.0 {
@@ -547,11 +742,14 @@ fn develop(
         Shape::Sphere => physio.contact_sphere,
     };
     let reach = physio.morphogen_reach_cells * (0.5 + org.signalling_reach);
+    // Une circulation interne porte les substances dissoutes (dont l'O₂)
+    // jusqu'au centre du corps ; la lumière, non.
+    let diffusion = physio.diffusion_cells * (1.0 + physio.circulation_reach * circulation(org, cells, physio));
     let mut zones: Vec<Zone> = Vec::with_capacity(layout.len());
     let mut masks: Vec<Vec<bool>> = Vec::new();
     for &(weight, depth) in &layout {
         let light = (-depth / physio.diffusion_cells).dexp();
-        let access = light * (1.0 - contact);
+        let access = (-depth / diffusion).dexp() * (1.0 - contact);
         // Morphogène émis par la surface, qui décroît vers l'intérieur.
         let m = signal.map(|s| s * (-depth / reach).dexp());
         let mask = expression_mask(genome, regulated_by, m);
@@ -581,6 +779,7 @@ impl Phenotype {
             // Agrégats : l'adhésion sous le seuil de la colonie colle les
             // cellules en amas lâches, que les prédateurs avalent moins bien.
             p.body_size = cell_size * (1.0 + physio.aggregate_size * org.adhesion);
+            animal_traits(&mut p, org, None, physio);
             return p;
         };
         let types: Vec<Arc<Phenotype>> = basis
@@ -609,6 +808,7 @@ impl Phenotype {
         top.body_size = cell_size * colony;
         let expression = basis.masks.iter().map(|m| m.clone().unwrap_or_default()).collect();
         top.body = Some(Arc::new(Body { cells: *cells, shape: *shape, clonal: true, zones: zones.clone(), types, expression }));
+        animal_traits(&mut top, org, Some((*shape, *cells)), physio);
         top
     }
 
@@ -663,7 +863,12 @@ impl Phenotype {
             // Cytosquelette dynamique (polymérisation de l'actine, recyclage
             // des membranes) : un poste d'énergie important des cellules qui
             // changent de forme et englobent.
-            + physio.cytoskeleton_cost_kj * org.cytoskeleton.min(1.5);
+            + physio.cytoskeleton_cost_kj * org.cytoskeleton.min(1.5)
+            // Muscles et cils, récepteurs, tissu nerveux, matrice (étape 5).
+            + physio.motor_cost_kj * org.motor.min(3.0)
+            + physio.sensor_cost_kj * org.sensor.min(3.0)
+            + physio.neural_cost_kj * org.neural.min(3.0)
+            + physio.matrix_cost_kj * org.matrix.min(5.0);
 
         let light_capture = if pigment > 0.0 { (pigment.min(1.0) * pigment_capture / pigment).min(1.0) } else { 0.0 };
         let pigment_nm = (pigment > 0.0).then(|| pigment_nm_sum / pigment);
@@ -735,6 +940,7 @@ impl Phenotype {
             signalling: org.signalling,
             meiosis: org.meiosis,
             desiccation_tolerance,
+            animal: AnimalTraits::default(),
             organelles,
             plastids,
             sexual: organelles > 0 && org.meiosis >= physio.sex_meiosis_threshold,
@@ -987,5 +1193,62 @@ mod tests {
         // Signal faible sous le seuil : le bloc se tait.
         let p2 = Phenotype::from_genome(&g2, &physio);
         assert_eq!(p2.signature & PATHWAY_MASK, 0);
+    }
+    #[test]
+    fn the_builder_rejects_bodies_it_cannot_carry_or_oxygenate() {
+        use DomainFamily::*;
+        let physio = Physiology::default();
+        let base = |adhesion: f64, extra: &[(DomainFamily, f64)]| {
+            let mut genes = vec![
+                gene(Catalytic(FERMENTATION), 1.0, 1.0, 500.0),
+                gene(Catalytic(AEROBIC_RESPIRATION), 1.0, 1.0, 500.0),
+                gene(Cytoskeleton, 1.0, 1.0, 500.0),
+                gene(Signalling, 1.0, 1.0, 500.0),
+                gene(Adhesion, adhesion, 1.0, 600.0),
+            ];
+            genes.extend(extra.iter().map(|&(f, e)| gene(f, e, 1.0, 620.0)));
+            let mut g = Genome::new(genes, [0; 32]);
+            g.organelles.push(Organelle {
+                genes: vec![gene(Catalytic(AEROBIC_RESPIRATION), 1.0, 1.0, 500.0)],
+                origin_lineage: 1,
+                acquired_years: 0.0,
+            });
+            Phenotype::from_genome(&g, &physio)
+        };
+        // Un animal : muscles, nerfs, matrice où attacher ses appendices.
+        let a = base(1.2, &[(Motor, 0.8), (Neural, 1.0), (Matrix, 0.5), (Sensor, 0.5)]);
+        assert!(a.animal.non_viable.is_none(), "{:?}", a.animal);
+        assert!(a.animal.limb_pairs >= 1 && a.animal.motility > 0.0 && a.animal.speed_m_s > 0.0);
+        assert!(a.animal.gape > a.cell_size && a.animal.detection_m > a.animal.length_m);
+        assert!(a.animal.sound.is_some());
+        // Sans matrice, ses appendices n'ont pas d'attache.
+        let b = base(1.2, &[(Motor, 0.8), (Neural, 1.0)]);
+        assert_eq!(b.animal.non_viable, Some(NonViable::Detached));
+        // Un grand corps mou ne se porte pas.
+        let c = base(3.0, &[(Matrix, 0.01)]);
+        assert_eq!(c.animal.non_viable, Some(NonViable::Overweight), "{} m", c.animal.mass_length_m);
+        // Porté, mais trop épais pour l'O₂ sans circulation ; des muscles
+        // coordonnés le brassent.
+        let d = base(3.0, &[(Matrix, 1.0)]);
+        assert_eq!(d.animal.non_viable, Some(NonViable::Suffocating), "{} m", d.animal.thickness_m);
+        let e = base(3.0, &[(Matrix, 1.0), (Motor, 1.0), (Neural, 2.0)]);
+        assert!(e.animal.non_viable.is_none(), "{:?}", e.animal);
+        // Une colonie de l'étape 4 reste viable.
+        assert!(base(1.6, &[]).animal.non_viable.is_none());
+        // Un procaryote n'organise pas de corps : ni appendice ni organe.
+        let mut prok = Genome::new(
+            vec![
+                gene(Catalytic(FERMENTATION), 1.0, 1.0, 500.0),
+                gene(Cytoskeleton, 1.0, 1.0, 500.0),
+                gene(Adhesion, 3.0, 1.0, 600.0),
+                gene(Motor, 2.0, 1.0, 500.0),
+                gene(Matrix, 3.0, 1.0, 500.0),
+                gene(Neural, 1.0, 1.0, 500.0),
+            ],
+            [0; 32],
+        );
+        prok.genes.push(gene(Signalling, 1.0, 1.0, 500.0));
+        let p = Phenotype::from_genome(&prok, &physio);
+        assert!(p.cells() <= physio.max_colony_cells && p.animal.limb_pairs == 0 && p.animal.sound.is_none());
     }
 }

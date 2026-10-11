@@ -69,6 +69,8 @@ pub struct CellEnvironment {
     /// entre ce que l'altération libère et ce que la pluie lessive (réglé à
     /// chaque pas par le monde).
     pub soil_phosphate: f64,
+    /// Pression partielle du CO₂ de l'air, Pa (photosynthèse des terres).
+    pub co2_pa: f64,
 }
 
 /// Concentrations de la couche d'eau, mol·m⁻³, indexées par [`WaterPool`].
@@ -216,6 +218,7 @@ impl Planet {
         let k = p.water_light_attenuation;
         let gravity = p.gravity();
         let surface_pressure = self.reservoirs.pressure_pa(gravity, p.surface_area());
+        let co2_pa = self.partial_pressure(Gas::Co2);
         let mut changes = Vec::new();
         let mut surface_volume = 0.0;
         for c in 0..n {
@@ -265,6 +268,7 @@ impl Planet {
                 moisture: soil_moisture(display[c].rain_mm_yr as f64, cl.temperature_k, p.potential_evaporation_mm),
                 phosphorus_supply: 0.0,
                 soil_phosphate: 0.0,
+                co2_pa,
             };
             if let Some(old) = self.cells.get(c) {
                 if old.is_ocean != ocean || old.water_volume_m3 != volume {

@@ -325,6 +325,10 @@ pub struct Progress {
     /// tours se comptent sur le temps, pas sur les pas, pour que l'histoire
     /// ne dépende pas du pas choisi par le joueur.
     pub evolution_clock: f64,
+    /// Première apparition de chaque étape des animaux et des plantes
+    /// ([`ANIMAL_STAGES`], étape 5) : date et événement.
+    pub animal_years: [Option<f64>; ANIMAL_STAGE_COUNT],
+    pub animal_events: [Option<u64>; ANIMAL_STAGE_COUNT],
 }
 
 /// Étapes de la complexité suivies et signalées (chemin des « cellules
@@ -356,6 +360,31 @@ pub fn complexity_bits(p: &Phenotype, on_land: bool) -> u8 {
     bits |= u8::from(types) << 5;
     bits |= u8::from(types && p.is_eukaryote()) << 6;
     bits |= u8::from(types && p.is_eukaryote() && on_land && p.is_terrestrial()) << 7;
+    bits
+}
+
+/// Étapes des animaux et des plantes (étape 5), datées à leur première
+/// apparition : rien ne les code, elles naissent des familles de domaines
+/// (moteurs, récepteurs, nerfs, matrice) et de la sélection.
+pub const ANIMAL_PATHWAY: &str = "animaux et plantes";
+pub const ANIMAL_STAGE_COUNT: usize = 6;
+pub const ANIMAL_STAGES: [&str; ANIMAL_STAGE_COUNT] =
+    ["animal mobile", "système nerveux", "squelette", "plante à tissus de soutien hors de l'eau", "animal hors de l'eau", "organe sonore"];
+
+/// Étapes des animaux et des plantes atteintes par un phénotype (bits, dans
+/// l'ordre de [`ANIMAL_STAGES`]).
+pub fn animal_bits(p: &Phenotype) -> u8 {
+    let a = &p.animal;
+    // Un corps organisé est un corps d'eucaryote.
+    let multi = p.is_multicellular() && p.is_eukaryote();
+    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0;
+    let mut bits = 0u8;
+    bits |= u8::from(animal);
+    bits |= u8::from(multi && a.neural >= 0.5) << 1;
+    bits |= u8::from(animal && a.support >= 0.5) << 2;
+    bits |= u8::from(multi && p.phototroph && p.is_terrestrial() && a.support > 0.0) << 3;
+    bits |= u8::from(animal && p.is_terrestrial()) << 4;
+    bits |= u8::from(a.sound.is_some()) << 5;
     bits
 }
 
@@ -428,6 +457,16 @@ impl World {
         land.fold((0, 0.0), |(n, b), p| (n + 1, b + p.biomass))
     }
 
+    /// Part de la végétation des terres que les incendies laissent debout
+    /// (COPSE, Lenton et Watson, 2000) : 1 à 21 % d'O₂, moins au-delà (les
+    /// feux prennent dès 16 % et ravagent tout vers 30 %).
+    pub fn fire_factor(&self) -> f64 {
+        let f = self.planet.reservoirs.mixing_ratio(Gas::O2);
+        let ignition = (48.0 * f - 9.08).clamp(0.0, 5.0);
+        let k = self.planet.params.fire_feedback;
+        (k / (k - 1.0 + ignition)).min(1.0)
+    }
+
     pub fn biotic_weathering(&self) -> f64 {
         let b0 = self.config.light_biomass_per_m2;
         let (mut covered, mut total) = (0.0, 0.0);
@@ -452,7 +491,11 @@ impl World {
             total += env.dry_area_m2;
         }
         let cover = if total > 0.0 { covered / total } else { 0.0 };
-        1.0 + (self.planet.params.biotic_weathering_max - 1.0).max(0.0) * cover
+        // Les plantes affamées de CO₂ poussent et altèrent moins (COPSE) :
+        // l'effet est entier à 100 Pa et au-delà.
+        let physio = &self.config.physiology;
+        let co2 = (physio.land_co2_factor(self.planet.partial_pressure(Gas::Co2)) / physio.land_co2_factor(100.0)).min(1.0);
+        1.0 + (self.planet.params.biotic_weathering_max - 1.0).max(0.0) * cover * self.fire_factor() * co2
     }
 
     /// Livre aux sols de la terre ferme leur part du phosphore de
@@ -948,6 +991,28 @@ impl World {
         self.disturbances.expire(self.years);
         self.bookkeeping(modified);
         self.adapt_step(first_event, oxygen_before);
+        if std::env::var_os("EVO_DEBUG_CO2").is_some() && (self.years / 2e6).floor() > (years / 2e6).floor() {
+            let pl = &self.planet;
+            let r = &pl.reservoirs;
+            let ctx = pl.box_context(self.years);
+            let (bare, land) = r.land_weathering(&pl.params, &ctx);
+            eprintln!(
+                "CARBONE {:.1} Ma CO2 {:.0} Pa T {:.1} K glace {:.2} terres libres {:.2e} m² | altération {:.2e} ({:.2e} nue) | carbonates {:.4e} organique {:.4e} | export {:.2e} enfoui {:.2e} litière {:.2e} | P sédiments {:.2e}",
+                self.years / 1e6,
+                pl.partial_pressure(Gas::Co2),
+                self.summary().globals.mean_temperature_k,
+                self.summary().globals.ice_fraction,
+                ctx.land_area_m2,
+                land,
+                bare,
+                r.carbonate_c,
+                r.organic_c,
+                r.last.organic_export,
+                r.last.organic_burial,
+                r.oxygen.land_burial,
+                r.sediment_p,
+            );
+        }
         if std::env::var_os("EVO_DEBUG_O2").is_some() && (self.years / 2e7).floor() > (years / 2e7).floor() {
             let r = &self.planet.reservoirs;
             let b = r.oxygen;
@@ -1238,8 +1303,15 @@ impl World {
         ctx.land_phosphorus_routed = routed;
         // Litière enfouie : celle de l'écologie rapide, puis la même chaque
         // année pour le reste du pas.
-        self.planet.reservoirs.organic_c += total.land_burial;
-        ctx.land_burial = total.land_burial / t_eco;
+        // Les incendies brûlent une part de la litière avant son
+        // enfouissement (CH₂O + O₂ → CO₂).
+        let fire = self.fire_factor();
+        let burnt = total.land_burial * (1.0 - fire);
+        let r = &mut self.planet.reservoirs;
+        r.organic_c += total.land_burial - burnt;
+        r.atmosphere[Gas::Co2 as usize] += burnt;
+        r.atmosphere[Gas::O2 as usize] -= burnt;
+        ctx.land_burial = total.land_burial * fire / t_eco;
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le
@@ -1619,6 +1691,7 @@ impl World {
             }
         }
         self.complexity_bookkeeping(&modified);
+        self.animal_bookkeeping(&modified);
         // Détecteur de stagnation : l'accélérateur n'agit qu'en dernier recours.
         let acc = &self.config.evolution.accelerator;
         if acc.enabled && !self.progress.accelerator_on && self.progress.best_stage < 4 {
@@ -1745,6 +1818,35 @@ impl World {
     /// accélérateur des transitions quand la complexité stagne (seulement
     /// une fois la photosynthèse oxygénique apparue : avant, c'est elle que
     /// l'accélérateur de la photosynthèse surveille).
+    /// Étapes des animaux et des plantes : première apparition sur la
+    /// planète, sans accélérateur.
+    fn animal_bookkeeping(&mut self, modified: &[(usize, usize, GenomeChangeCause)]) {
+        let years = self.years;
+        for &(c, i, cause) in modified {
+            let Some(p) = self.communities[c].get(i) else { continue };
+            let bits = animal_bits(&p.phenotype);
+            if bits == 0 {
+                continue;
+            }
+            let lineage = p.lineage;
+            for (k, label) in ANIMAL_STAGES.iter().enumerate() {
+                if bits & (1 << k) == 0 || self.progress.animal_years[k].is_some() {
+                    continue;
+                }
+                let previous = self.progress.animal_events.iter().rev().find_map(|e| *e);
+                let id = self.events.push_with(
+                    years,
+                    Some(c as u32),
+                    EventKind::Innovation { lineage, pathway: ANIMAL_PATHWAY.into(), stage: k as u8 + 1, label: (*label).into() },
+                    origin_of(cause),
+                    previous,
+                );
+                self.progress.animal_years[k] = Some(years);
+                self.progress.animal_events[k] = Some(id);
+            }
+        }
+    }
+
     fn complexity_bookkeeping(&mut self, modified: &[(usize, usize, GenomeChangeCause)]) {
         let years = self.years;
         let mut reached = [None::<(usize, usize, GenomeChangeCause)>; COMPLEXITY_STAGE_COUNT];

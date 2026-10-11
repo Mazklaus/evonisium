@@ -265,7 +265,7 @@ fn sim_module(
         pigments: vec![sim::PigmentPatch { absorption_nm: pigment_nm, concentration: 0.8, depth: 0.0 }],
         structural_colour: None,
         pattern: None,
-        function: sim::Function { pathways: 0, maintenance_kj: 1.0, build_kj: 1.0 },
+        function: sim::Function { pathways: 0, maintenance_kj: 1.0, build_kj: 1.0, sound: None },
     }
 }
 

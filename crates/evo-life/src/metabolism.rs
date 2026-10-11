@@ -266,6 +266,20 @@ pub fn domain_relations() -> Vec<DomainRelation> {
         // protéines de la matrice d'adhésion.
         rel(Catalytic(FERMENTATION), Cuticle, 0.05),
         rel(Adhesion, Cuticle, 0.1),
+        // Animaux et plantes (étape 5). Les moteurs moléculaires dérivent des
+        // protéines qui lient l'actine ; les récepteurs sensoriels, des
+        // rhodopsines (opsines) et des récepteurs de signal ; les canaux et
+        // synapses des cellules nerveuses, des récepteurs de signal et
+        // sensoriels ; la matrice de soutien, des protéines d'adhésion
+        // (collagène) et des polysaccharides de l'enveloppe (chitine,
+        // cellulose).
+        rel(Cytoskeleton, Motor, 0.2),
+        rel(Rhodopsin, Sensor, 0.3),
+        rel(Signalling, Sensor, 0.2),
+        rel(Signalling, Neural, 0.1),
+        rel(Sensor, Neural, 0.2),
+        rel(Adhesion, Matrix, 0.1),
+        rel(Cuticle, Matrix, 0.2),
     ];
     // Les centres anoxygéniques changent de donneur entre eux, et chacun peut
     // donner le centre oxygénique (photosystème II).

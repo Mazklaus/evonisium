@@ -14,7 +14,7 @@
 //! système se rapprochant pas après pas de son équilibre ; la planète en tire
 //! des flux annuels qu'elle applique sur tout le pas.
 
-use crate::growth::{edibility, growth_rates_with, Conditions, GrowthRates, Physiology};
+use crate::growth::{capture, growth_rates_with, Conditions, GrowthRates, Physiology};
 use crate::metabolism::{EnergySource, REACTIONS};
 use crate::phenotype::{Capacities, Phenotype};
 use evo_core::math::Det;
@@ -87,6 +87,7 @@ impl CellContext<'_> {
         cond.moisture = self.env.moisture;
         cond.has_land = self.env.dry_area_m2 > 0.0;
         cond.soil_po4 = self.env.soil_phosphate;
+        cond.co2_pa = self.env.co2_pa;
         cond
     }
 
@@ -104,7 +105,7 @@ impl CellContext<'_> {
         // ferme, elles sont rapportées au même volume (simple échelle).
         for p in pops {
             let list = if p.phenotype.is_terrestrial() { &mut cond.land_prey } else { &mut cond.prey };
-            list.push(p.phenotype.body_size, p.biomass / v);
+            list.push(p.phenotype.as_prey(p.biomass / v, physio));
         }
         for (j, p) in pops.iter().enumerate() {
             let demand = p.rates.prey_demand() * p.biomass;
@@ -114,7 +115,7 @@ impl CellContext<'_> {
             let edible = edible_biomass(pops, j, physio);
             if edible > 0.0 {
                 let list = if p.phenotype.is_terrestrial() { &mut cond.land_predators } else { &mut cond.predators };
-                list.push(p.phenotype.cell_size, demand / edible);
+                list.push(p.phenotype.as_predator(demand / edible));
             }
         }
         cond
@@ -141,12 +142,12 @@ fn shared_light(light_w_m2: f64, area_m2: f64, light_biomass_per_m2: f64, photo_
 /// Biomasse que le prédateur `j` peut englober dans la communauté (lui
 /// excepté), pondérée par la facilité à englober chaque proie.
 fn edible_biomass(pops: &[Population], j: usize, physio: &Physiology) -> f64 {
-    let size = pops[j].phenotype.cell_size;
+    let hunter = pops[j].phenotype.as_predator(1.0);
     let land = pops[j].phenotype.is_terrestrial();
     pops.iter()
         .enumerate()
         .filter(|&(q, p)| q != j && p.phenotype.is_terrestrial() == land)
-        .map(|(_, q)| q.biomass * edibility(size, q.phenotype.body_size, physio))
+        .map(|(_, q)| q.biomass * capture(&hunter, &q.phenotype.as_prey(1.0, physio), physio))
         .sum()
 }
 
@@ -258,10 +259,10 @@ pub fn substep_with(
             if edible <= 0.0 {
                 continue;
             }
-            let size = pops[j].phenotype.cell_size;
+            let hunter = pops[j].phenotype.as_predator(1.0);
             for q in 0..n {
                 let same = pops[q].phenotype.is_terrestrial() == pops[j].phenotype.is_terrestrial();
-                let e = if q == j || !same { 0.0 } else { edibility(size, pops[q].phenotype.body_size, physio) };
+                let e = if q == j || !same { 0.0 } else { capture(&hunter, &pops[q].phenotype.as_prey(1.0, physio), physio) };
                 if e > 0.0 {
                     let a = want * e * pops[q].biomass / edible;
                     alloc.push((j, q, a));
@@ -511,6 +512,7 @@ mod tests {
             moisture: 0.0,
             phosphorus_supply: 0.0,
             soil_phosphate: 0.0,
+            co2_pa: 40.0,
         }
     }
 

@@ -59,13 +59,40 @@ pub enum DomainFamily {
     /// spores) : elle retient l'eau hors de l'eau, mais freine les échanges
     /// dans l'eau (étape 5).
     Cuticle,
+    /// Moteur moléculaire (équivalent myosine, dynéine) : cils et flagelles
+    /// d'une cellule, fibres contractiles d'un corps (muscle) ; il donne la
+    /// vitesse, l'attaque et la fuite (étape 5).
+    Motor,
+    /// Récepteur sensoriel (équivalent opsines animales, canaux
+    /// mécanosensibles et chimiorécepteurs) : portée de détection des proies
+    /// et des prédateurs.
+    Sensor,
+    /// Canal et synapse des cellules nerveuses (équivalent canaux sodium,
+    /// récepteurs des neurotransmetteurs) : coordination d'un corps,
+    /// comportement.
+    Neural,
+    /// Matrice extracellulaire de soutien (équivalent collagène, chitine,
+    /// cellulose et lignine) : squelette, carapace, bois.
+    Matrix,
 }
 
 impl DomainFamily {
     /// Famille lue par la physiologie de la cellule, sans voie métabolique
     /// propre (structure, adhésion, signal, régulation, méiose).
     pub fn is_cellular(self) -> bool {
-        matches!(self, Self::Cytoskeleton | Self::Adhesion | Self::Signalling | Self::Regulator | Self::Meiosis | Self::Cuticle)
+        matches!(
+            self,
+            Self::Cytoskeleton
+                | Self::Adhesion
+                | Self::Signalling
+                | Self::Regulator
+                | Self::Meiosis
+                | Self::Cuticle
+                | Self::Motor
+                | Self::Sensor
+                | Self::Neural
+                | Self::Matrix
+        )
     }
 }
 
