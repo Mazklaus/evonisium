@@ -459,7 +459,7 @@ func descend(cell: int) -> void:
 	var s = Sol.new()
 	s.modulate.a = 0.0
 	add_child(s)
-	s.open(g)
+	s.open(g, App.session.camp_at(cell) if App.globe.peoples_ready else {})
 	s.closed.connect(ascend)
 	sol = s
 	var tw := create_tween()

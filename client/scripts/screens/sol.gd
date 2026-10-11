@@ -36,6 +36,9 @@ var impostor_frame := 0
 ## (un MultiMesh par objet).
 var camp := {}
 var prop_mms: Array = []
+## Le peuple du campement pour le son (langue et rites) ; dernier chant.
+var people := {}
+var rite_clock := 0.0
 
 var followed := -1
 var free_target := Vector3.ZERO
@@ -136,8 +139,22 @@ func _build_ui() -> void:
 	waiting_label.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(waiting_label)
 
-func open(g: EvoGround) -> void:
+func open(g: EvoGround, people_info: Dictionary = {}) -> void:
 	ground = g
+	people = people_info
+
+## Le son du peuple : sa rumeur dans sa langue, ses chants quand ses gens
+## célèbrent un rite (fil Design sonore, `EvoSon.peuple`).
+func _people_sound(on: bool) -> void:
+	if people.is_empty() or not is_instance_valid(Son) or Son.son == null:
+		return
+	if on:
+		Son.son.peuple(people["name"], people.get("words", PackedStringArray()), people.get("rites", PackedStringArray()), float(people["population"]), 1.0, int(people["people"]))
+	else:
+		Son.son.sans_peuple()
+
+func _exit_tree() -> void:
+	_people_sound(false)
 
 func _setup_scene() -> void:
 	ready_done = true
@@ -222,6 +239,8 @@ func _setup_scene() -> void:
 	imi.custom_aabb = AABB(Vector3(-3000, -3000, -3000), Vector3(6000, 6000, 6000))
 	world.add_child(imi)
 	_build_camp()
+	if not camp.is_empty():
+		_people_sound(true)
 	# Actions du lexique.
 	keys = [""]
 	actions_box.add_item(App.t("ground_free_behaviour"))
@@ -278,6 +297,16 @@ func _build_camp() -> void:
 			else:
 				prop_mms.append(mm)
 	notice_label.text = App.t("ground_extras") + "\n" + App.t("camp_notice") % camp["people"]
+
+## Quand plusieurs gens dansent autour du feu, le chœur chante (au plus
+## une fois par minute).
+func _watch_rites(delta: float) -> void:
+	rite_clock -= delta
+	if camp.is_empty() or people.get("rites", PackedStringArray()).is_empty() or rite_clock > 0.0:
+		return
+	if ground.camp_rite_count() >= 3 and is_instance_valid(Son) and Son.son != null:
+		Son.son.rite(0)
+		rite_clock = 60.0
 
 func _update_props() -> void:
 	if camp.is_empty():
@@ -376,6 +405,7 @@ func _process(delta: float) -> void:
 		env.background_color = sky
 	_update_animated()
 	_update_props()
+	_watch_rites(delta)
 	impostor_frame += 1
 	if impostor_frame % impostor_every == 0:
 		impostor_mm.buffer = ground.impostors()

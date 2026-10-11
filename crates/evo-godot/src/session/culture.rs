@@ -335,7 +335,30 @@ impl EvoSession {
         d.set("cohesion", c.cohesion as f64);
         d.set("people", c.people as i64);
         d.set("colour", colour(cv::people_colour(&st, c.people)));
-        d.set("name", st.peoples.iter().find(|p| p.id == c.people).map_or("", |p| p.name.as_str()));
+        let people = st.peoples.iter().find(|p| p.id == c.people);
+        d.set("name", people.map_or("", |p| p.name.as_str()));
+        // Pour le son (étape 6, fil Design sonore) : les mots de sa langue et
+        // ses rites, les plus portés d'abord.
+        let mut words = PackedStringArray::new();
+        if let Some(l) = people.and_then(|p| p.language).and_then(|id| st.languages.iter().find(|l| l.id == id)) {
+            for w in &l.words {
+                words.push(w.1.as_str());
+            }
+        }
+        d.set("words", &words);
+        let mut rites = PackedStringArray::new();
+        if let Some(g) = cv::main_groups(&st).get(&(cell as u32)) {
+            let mut list: Vec<_> = g
+                .traits
+                .iter()
+                .filter(|t| st.traits.iter().any(|x| x.id == t.id && matches!(x.kind, evo_culture::traits::TraitKind::Rite)))
+                .collect();
+            list.sort_by(|a, b| b.freq.total_cmp(&a.freq));
+            for t in list {
+                rites.push(cv::trait_name(&st, t.id, self.lang).as_str());
+            }
+        }
+        d.set("rites", &rites);
         d
     }
 }

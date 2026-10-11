@@ -315,6 +315,20 @@ impl EvoGround {
         d
     }
 
+    /// Gens du campement proches de la caméra qui célèbrent un rite.
+    #[func]
+    fn camp_rite_count(&self) -> i64 {
+        let Some(c) = self.crowd() else { return 0 };
+        let Some(folk) = c.folk else { return 0 };
+        c.near
+            .iter()
+            .filter(|&&i| {
+                let ind = &c.individuals[i as usize];
+                ind.species == folk && ind.action == Action::Rite
+            })
+            .count() as i64
+    }
+
     /// Nombre d'objets du palier 3.
     #[func]
     fn artefact_count(&self) -> i64 {

@@ -310,7 +310,14 @@ pub fn bench_plan(kind: BenchKind, seed: u64, size_m: f64) -> sim::BodyPlan {
     let primate = kind == BenchKind::Primate;
     // Le primate : tronc court et trapu, membres épais.
     let girth = size_m * if primate { 0.16 } else { drawn };
-    let trunk_len = size_m * if kind == BenchKind::Worm { 0.25 } else if primate { 0.36 } else { 0.5 };
+    let trunk_len = size_m
+        * if kind == BenchKind::Worm {
+            0.25
+        } else if primate {
+            0.36
+        } else {
+            0.5
+        };
     m.push(sim_module(
         0,
         K::Body,
