@@ -46,7 +46,13 @@ fn main() -> std::io::Result<()> {
         son.ordre(Ordre::Ere(e as u8));
         for x in entrees.iter().filter(|x| x.ere as usize == e) {
             let ogg = std::fs::read(dossier.join(&x.fichier))?;
-            son.ordre(Ordre::Boucle(Boucle { ere: x.ere, son: Contenu::Ogg(Arc::new(ogg)), tonique: x.tonique, mode: x.mode, gain: x.gain }));
+            son.ordre(Ordre::Boucle(Boucle {
+                ere: x.ere,
+                son: Contenu::Ogg(Arc::new(ogg)),
+                tonique: x.tonique,
+                mode: x.mode,
+                gain: x.gain,
+            }));
         }
         let mut buf = vec![[0.0f32; 2]; (rate * secondes) as usize];
         let t = std::time::Instant::now();
