@@ -613,6 +613,7 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     // Hors de l'eau : dessiccation, qui baisse avec la résistance et avec
     // l'humidité du sol ; pas de terre ferme, pas de vie terrestre. Dans
     // l'eau, l'enveloppe protectrice freine les échanges.
+    let dormant = cond.on_land && !cond.has_land;
     let (birth, desiccation) = if cond.on_land {
         if cond.has_land {
             // La vie terrestre ne croît que mouillée : une part du temps qui
@@ -620,12 +621,14 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
             let wet = cond.moisture.clamp(0.0, 1.0);
             (birth * wet, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
         } else {
-            (0.0, physio.desiccation_mortality)
+            // Plus de terre ferme libre (glace) : spores et formes de
+            // dormance attendent son retour, sans croître ni mourir.
+            (0.0, 0.0)
         }
     } else {
         (birth * (1.0 - physio.cuticle_water_penalty * p.desiccation_tolerance), 0.0)
     };
-    let mortality = physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation;
+    let mortality = if dormant { 0.0 } else { physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
 
     out.energy_kj = carbon_energy + b.supplement;
     out.autotroph_energy_kj = b.auto;

@@ -356,9 +356,12 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
 
 fn trace_complex(world: &World) {
     type Pick = fn(&evo_life::Population) -> bool;
-    let groups: [(&str, Pick); 3] = [
+    let groups: [(&str, Pick); 4] = [
         ("phagotrophes", |p| p.phenotype.is_phagotroph()),
         ("eucaryotes", |p| p.phenotype.is_eukaryote()),
+        ("oxygéniques aquatiques", |p| {
+            !p.phenotype.is_terrestrial() && p.phenotype.signature & (1 << evo_life::metabolism::OXYGENIC_PHOTOSYNTHESIS) != 0
+        }),
         ("terrestres", |p| p.phenotype.is_terrestrial()),
     ];
     for (name, pick) in groups {
@@ -372,14 +375,9 @@ fn trace_complex(world: &World) {
             }
         }
         if name == "terrestres" {
-            let possible = world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0 && !e.is_ocean).count();
-            let wet: Vec<f64> = world
-                .bio
-                .env
-                .iter()
-                .filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0 && !e.is_ocean)
-                .map(|e| e.moisture)
-                .collect();
+            let possible = world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0).count();
+            let wet: Vec<f64> =
+                world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0).map(|e| e.moisture).collect();
             let mean = wet.iter().sum::<f64>() / wet.len().max(1) as f64;
             println!("      terre ferme habitable : {possible} cellules, humidité moyenne {mean:.2}");
         }

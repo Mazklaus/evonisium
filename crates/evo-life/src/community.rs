@@ -85,7 +85,7 @@ impl CellContext<'_> {
         let mut cond = Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(water));
         cond.land_light_kj = self.land_light_per_biomass(land);
         cond.moisture = self.env.moisture;
-        cond.has_land = self.env.dry_area_m2 > 0.0 && !self.env.is_ocean;
+        cond.has_land = self.env.dry_area_m2 > 0.0;
         cond.soil_po4 = self.env.soil_phosphate;
         cond
     }
@@ -450,10 +450,11 @@ pub fn substep_with(
     out
 }
 
-/// Échange d'une population avec son milieu : l'air pour la terre ferme (en
-/// moles, cumulées dans `air`), la couche d'eau sinon.
+/// Échange d'une population avec son milieu : les gaz de l'air pour la terre
+/// ferme (en moles, cumulées dans `air`), la couche d'eau pour le reste (les
+/// sols humides de la cellule) et pour la vie aquatique.
 fn put(land: bool, chem: &mut WaterChemistry, air: &mut [f64; WATER_POOL_COUNT], volume: f64, pool: WaterPool, moles: f64) {
-    if land {
+    if land && matches!(pool, WaterPool::Dic | WaterPool::O2 | WaterPool::Ch4 | WaterPool::H2) {
         air[pool as usize] += moles;
     } else {
         chem[pool as usize] += moles / volume;

@@ -299,6 +299,8 @@ pub struct PlanetParams {
     /// Part d'un sol bien arrosé (un mètre de pluie par an) couverte de
     /// croûtes et tapis microbiens humides.
     pub wet_soil_fraction: f64,
+    /// Part d'une cellule de terre gelée en eau de fonte (refuges, étape 5).
+    pub ice_refuge_fraction: f64,
     /// Débit qui remplit à moitié la plaine d'un fleuve de lacs, m³·s⁻¹.
     pub lake_flow_scale_m3s: f64,
     /// Épaisseur de la couche d'eau des lacs et des sols humides, m.
@@ -424,6 +426,7 @@ impl PlanetParams {
             ocean_evaporation_m_yr: 1.2,
             runoff_coefficient: 0.4,
             wet_soil_fraction: 0.03,
+            ice_refuge_fraction: 1e-3,
             lake_flow_scale_m3s: 5000.0,
             lake_layer_m: 2.0,
             lake_phosphate_share: 0.3,

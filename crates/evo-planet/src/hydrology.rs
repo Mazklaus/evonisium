@@ -198,6 +198,9 @@ pub fn diagnose(
     let mut water = vec![LandWater::default(); n];
     for &c in &land {
         if ice[c] {
+            // Sous la glace, des poches d'eau de fonte (trous à cryoconite,
+            // lacs sous-glaciaires) : refuges de la vie des terres gelées.
+            water[c] = LandWater { wet_fraction: params.ice_refuge_fraction, flushing_per_year: 0.05 };
             continue;
         }
         let rain_m = rain[c] * 1e-3;
