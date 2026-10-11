@@ -150,6 +150,7 @@ version = "0.1.0"
 dependencies = [
  "evo-agents",
  "evo-core",
+ "evo-culture",
  "evo-engine",
  "evo-genetics",
  "evo-life",
@@ -219,6 +220,7 @@ version = "0.1.0"
 dependencies = [
  "evo-agents",
  "evo-core",
+ "evo-culture",
  "evo-engine",
  "evo-genetics",
  "evo-life",

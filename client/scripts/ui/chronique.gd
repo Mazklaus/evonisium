@@ -74,6 +74,18 @@ func _ready() -> void:
 	story_scroll.add_child(story_box)
 	_fill_story()
 
+	# Étape 6 : les mythes, quand des peuples existent.
+	if App.session.culture_status() == 2:
+		var myth_scroll := ScrollContainer.new()
+		myth_scroll.name = App.t("myths")
+		myth_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		tabs.add_child(myth_scroll)
+		var myth_box := VBoxContainer.new()
+		myth_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		myth_box.add_theme_constant_override("separation", 10)
+		myth_scroll.add_child(myth_box)
+		_fill_myths(myth_box)
+
 	rules_box = VBoxContainer.new()
 	rules_box.name = App.t("stop_rules")
 	tabs.add_child(rules_box)
@@ -134,6 +146,36 @@ func _fill_story() -> void:
 			moments.add_child(b)
 		story_box.add_child(moments)
 		story_box.add_child(Atlas.hsep())
+
+## Les mythes, du plus ancien au plus récent : titre, peuple, date, récit ;
+## ceux qui sont nés d'une intervention du joueur le disent.
+func _fill_myths(box: VBoxContainer) -> void:
+	var warn := Atlas.text(App.t("peoples_bench_short"), 14, true)
+	warn.add_theme_color_override("font_color", Atlas.VERMILION)
+	box.add_child(warn)
+	var ms: Array = App.session.myths()
+	if ms.is_empty():
+		box.add_child(Atlas.text(App.t("myths_none"), 16, true))
+	for m in ms:
+		var t := Atlas.title(m["title"], 21)
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.custom_minimum_size.x = 680
+		box.add_child(t)
+		var who := "%s · %s · %s" % [m["people"], m["date"], m["theme"]]
+		if bool(m["intervention"]):
+			who += " · " + App.t("myth_from_you")
+		var w := Atlas.text(who, 15, true)
+		if bool(m["intervention"]):
+			w.add_theme_color_override("font_color", Atlas.VERMILION)
+		box.add_child(w)
+		var p := Atlas.text(m["text"], 17)
+		p.custom_minimum_size.x = 680
+		box.add_child(p)
+		var e := {"cell": int(m["cell"]), "species": -1}
+		var b := Atlas.button(App.t("go_see"), go_to.emit.bind(e))
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		box.add_child(b)
+		box.add_child(Atlas.hsep())
 
 func _fill_rules() -> void:
 	for c in rules_box.get_children():

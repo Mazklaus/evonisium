@@ -14,6 +14,8 @@ const MAX_DISTANCE := 9.0
 const ATLAS_SHADER := preload("res://shaders/globe_atlas.gdshader")
 const ATMOSPHERE_SHADER := preload("res://shaders/atmosphere.gdshader")
 const INK_SHADER := preload("res://shaders/contour_encre.gdshader")
+## Graine des peuples d'essai (le moteur ne les fait pas encore naître).
+const PEOPLES_SEED := 2026
 
 var planet: MeshInstance3D
 var atmosphere: MeshInstance3D
@@ -73,6 +75,14 @@ var observe_timer := 0.0
 var last_observation := Vector4.ZERO
 var radius_m := 6.371e6
 var frames_seen := 0
+## Peuples (étape 6) : territoires en lavis et noms à l'encre. Tant que le
+## moteur ne fait pas naître de peuples, ce sont des peuples d'essai posés
+## sur les terres de la partie (evo-view/src/culture.rs).
+var peoples := false
+var peoples_ready := false
+var peoples_tex: ImageTexture
+var people_labels: Node3D
+signal peoples_changed(ready: bool)
 
 func _ready() -> void:
 	var env := WorldEnvironment.new()
@@ -143,6 +153,9 @@ func _ready() -> void:
 	ink_quad.extra_cull_margin = 16384.0
 	ink_quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	camera.add_child(ink_quad)
+
+	people_labels = Node3D.new()
+	add_child(people_labels)
 
 	App.settings_changed.connect(_apply_settings)
 	_apply_settings()
@@ -335,6 +348,66 @@ func _update_comparison() -> void:
 		comparison_tex = ImageTexture.create_from_image(img)
 	material.set_shader_parameter("data4", comparison_tex)
 
+## Peuples sur le globe : le premier appel pose les peuples d'essai.
+func set_peoples(on: bool) -> void:
+	peoples = on
+	material.set_shader_parameter("show_peoples", on and peoples_ready)
+	people_labels.visible = on
+	if on and App.session.culture_status() == 0:
+		peoples_ready = false
+		App.session.culture_bench(PEOPLES_SEED)
+
+func _update_peoples() -> void:
+	var status: int = App.session.culture_status()
+	if status != 2:
+		if peoples_ready:
+			peoples_ready = false
+			material.set_shader_parameter("show_peoples", false)
+			for c in people_labels.get_children():
+				c.queue_free()
+			peoples_changed.emit(false)
+		if status == 0:
+			App.session.culture_bench(PEOPLES_SEED)
+		return
+	if not peoples_ready:
+		peoples_ready = true
+		_build_peoples()
+		peoples_changed.emit(true)
+	# Les noms du côté caché s'effacent.
+	var eye := camera.global_position.normalized()
+	for l in people_labels.get_children():
+		var lb := l as Label3D
+		var facing := lb.position.normalized().dot(eye)
+		lb.visible = facing > 0.2
+		lb.modulate.a = clampf((facing - 0.2) / 0.2, 0.0, 1.0)
+
+func _build_peoples() -> void:
+	var img: Image = App.session.culture_texture()
+	if img == null:
+		return
+	peoples_tex = ImageTexture.create_from_image(img)
+	material.set_shader_parameter("data5", peoples_tex)
+	material.set_shader_parameter("people_palette", ImageTexture.create_from_image(App.session.people_palette()))
+	material.set_shader_parameter("show_peoples", true)
+	for c in people_labels.get_children():
+		c.queue_free()
+	for p in App.session.culture_labels():
+		var lb := Label3D.new()
+		lb.text = str(p["name"]).to_upper()
+		lb.font = Atlas.heading_font()
+		lb.font_size = 40 if float(p["population"]) > 2000.0 else 30
+		lb.pixel_size = 0.0009
+		lb.fixed_size = true
+		lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lb.no_depth_test = true
+		lb.modulate = Atlas.INK
+		lb.outline_modulate = Color(Atlas.PAPER, 0.85)
+		lb.outline_size = 10
+		lb.render_priority = 3
+		lb.position = (p["position"] as Vector3).normalized() * 1.03
+		lb.set_meta("people", int(p["id"]))
+		people_labels.add_child(lb)
+
 ## Calque de données (dictionnaire de session.layers()) ou {} : vue naturelle.
 func set_layer(l: Dictionary) -> void:
 	layer = l
@@ -490,6 +563,8 @@ func _process(delta: float) -> void:
 	if observe_timer <= 0.0:
 		observe_timer = 0.5
 		_send_observation()
+	if peoples:
+		_update_peoples()
 
 ## Bandes Z3 (régions) et Z4 (paysages) : la région subdivisée autour du
 ## point regardé remplace le globe sous elle ; hachures de pente et contour

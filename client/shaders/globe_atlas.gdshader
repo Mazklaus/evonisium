@@ -17,6 +17,11 @@ uniform sampler2D data2 : filter_nearest;
 uniform sampler2D data3 : filter_nearest;
 // Comparaison « avec et sans » (étape 4, voir evo-view/src/compare.rs).
 uniform sampler2D data4 : filter_nearest;
+// Peuples (étape 6, voir evo-view/src/culture.rs) : rang de couleur du
+// peuple, log₁₀ de l'effectif, frontière, mode historique.
+uniform sampler2D data5 : filter_nearest;
+uniform sampler2D people_palette : filter_nearest, repeat_disable;
+uniform bool show_peoples = false;
 uniform sampler2D prev0 : filter_nearest;
 uniform sampler2D prev2 : filter_nearest;
 uniform sampler2D palette : filter_linear, repeat_disable;
@@ -75,12 +80,17 @@ varying float v_ice;
 varying float v_layer;
 varying float v_share;
 varying vec3 v_pig;
-varying float v_pig_w;
-varying float v_ocean;
-varying float v_focus;
+// Drapeaux : pigment visible, océan, aire de l'espèce choisie.
+varying vec3 v_flags;
 varying flat float v_cat;
 varying vec3 v_world_n;
 varying vec3 v_grad;
+// Peuples : présence de chaque rang (0 aucun, 1 à 10), interpolée entre
+// les cellules ; le rang dominant colore, l'égalité des deux premiers trace
+// la frontière. Le dernier canal porte le log₁₀ de l'effectif.
+varying vec4 v_pw0;
+varying vec4 v_pw1;
+varying vec4 v_pw2;
 
 vec3 to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
@@ -172,9 +182,7 @@ void vertex() {
 	v_share = d2.a;
 	v_pig = d1.rgb;
 	int flags = int(d1.a + 0.5);
-	v_ocean = float((flags & 1) != 0);
-	v_pig_w = float((flags & 4) != 0);
-	v_focus = float((flags & 16) != 0);
+	v_flags = vec3(float((flags & 4) != 0), float((flags & 1) != 0), float((flags & 16) != 0));
 	vec4 lt = layer_tex == 0 ? mix(p0, d0, blend) : (layer_tex == 1 ? d1 : (layer_tex == 2 ? mix(p2, d2, blend) : (layer_tex == 3 ? d3 : d4)));
 	float raw = channel(lt, layer_channel);
 	if (layer_transform == 1) {
@@ -186,6 +194,17 @@ void vertex() {
 	VERTEX = dir * (1.0 + relief_scale * max(v_height, 0.0));
 	v_grad = regional > 0.5 ? CUSTOM2.xyz : vec3(0.0);
 	v_world_n = normalize((MODEL_MATRIX * vec4(dir, 0.0)).xyz);
+	v_pw0 = vec4(0.0);
+	v_pw1 = vec4(0.0);
+	v_pw2 = vec4(0.0);
+	if (show_peoples) {
+		vec4 d5 = fetch(data5, uv);
+		int k = clamp(int(d5.r + 0.5), 0, 10);
+		if (k < 4) v_pw0[k] = 1.0;
+		else if (k < 8) v_pw1[k - 4] = 1.0;
+		else v_pw2[k - 8] = 1.0;
+		v_pw2.w = d5.g;
+	}
 }
 
 void fragment() {
@@ -213,7 +232,7 @@ void fragment() {
 	vec3 land = mix(PAPER * mix(vec3(1.0), OCHRE, 0.55 + 0.15 * bloom), PAPER * mix(vec3(1.0), OCHRE, 0.25), clamp(h / 4000.0, 0.0, 1.0));
 	col = mix(land, sea, ocean);
 	// Le vivant colore la planète : tapis et efflorescences du pigment réel.
-	if (natural_life && v_pig_w > 0.5) {
+	if (natural_life && v_flags.x > 0.5) {
 		float cover = clamp((v_bio - 3.0) / 7.0, 0.0, 1.0) * (0.75 + 0.25 * bloom);
 		col *= mix(vec3(1.0), v_pig, 0.45 * cover);
 	}
@@ -235,8 +254,37 @@ void fragment() {
 		}
 		col = mix(col, pc * (0.96 + 0.06 * grain), layer_opacity);
 	}
+	// Peuples : lavis de la couleur du peuple dominant, plus dense là où il
+	// est nombreux ; frontière à l'encre où deux rangs s'égalent.
+	float border_ink = 0.0;
+	if (show_peoples) {
+		float w[11] = float[11](v_pw0.x, v_pw0.y, v_pw0.z, v_pw0.w, v_pw1.x, v_pw1.y, v_pw1.z, v_pw1.w, v_pw2.x, v_pw2.y, v_pw2.z);
+		int top = 0;
+		float w1 = -1.0;
+		float w2 = -1.0;
+		for (int i = 0; i < 11; i++) {
+			if (w[i] > w1) {
+				w2 = w1;
+				w1 = w[i];
+				top = i;
+			} else if (w[i] > w2) {
+				w2 = w[i];
+			}
+		}
+		float gap = w1 - w2;
+		if (top > 0) {
+			vec3 pc = texture(people_palette, vec2((float(top) + 0.5) / 16.0, 0.5)).rgb;
+			float dense = clamp((v_pw2.w - 1.0) / 3.0, 0.25, 1.0);
+			col = mix(col, pc * (0.95 + 0.08 * bloom), 0.5 * dense);
+			// Liseré des cartes anciennes : la couleur forcit le long de la
+			// frontière, côté intérieur.
+			float ribbon = 1.0 - smoothstep(0.1, 0.35, gap);
+			col = mix(col, pc * 0.8, 0.45 * ribbon);
+		}
+		border_ink = 1.0 - smoothstep(0.0, fwidth(gap) * 1.4, gap);
+	}
 	// Aire de l'espèce choisie : hachures vermillon.
-	if (show_focus && v_focus > 0.5) {
+	if (show_focus && v_flags.z > 0.5) {
 		float hatch = step(fract((FRAGCOORD.x - FRAGCOORD.y) / 7.0), 0.28);
 		col = mix(col, VERMILION, 0.5 * hatch);
 	}
@@ -290,6 +338,7 @@ void fragment() {
 		float h2 = step(fract((FRAGCOORD.x - FRAGCOORD.y) / 6.0), 0.35 * night) * step(0.45, night);
 		ink = max(ink, 0.55 * max(h1, h2) * smoothstep(0.0, 0.3, night));
 	}
+	ink = max(ink, 0.8 * border_ink);
 	col = mix(col, INK, clamp(ink * ink_strength, 0.0, 1.0));
 	// Cellule survolée et cellule choisie : cercles au vermillon.
 	if (hover_radius > 0.0) {
