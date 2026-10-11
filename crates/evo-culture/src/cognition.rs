@@ -196,7 +196,7 @@ pub const COPY_NOISE: f64 = 1.0;
 
 /// Constante d'Euler-Mascheroni, qui apparaît dans le maximum de tirages de
 /// Gumbel.
-pub const EULER_GAMMA: f64 = 0.577_215_664_901_532_9;
+pub const EULER_GAMMA: f64 = std::f64::consts::EULER_GAMMA;
 
 /// Difficulté de référence de la culture cumulative : une espèce franchit
 /// le seuil quand ses groupes améliorent une technique de cette difficulté
