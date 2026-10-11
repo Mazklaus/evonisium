@@ -26,6 +26,29 @@ pub const MODES: [(&str, [i32; 7]); 6] = [
 /// Pas de la musique, en secondes.
 pub const STEP: f32 = 0.2;
 
+/// Timbre des petites phrases mélodiques (la kalimba du premier jet était
+/// trop vive : l'utilisateur l'a refusée le 2026-10-11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phrase {
+    /// Flûte douce, sans souffle rauque, une octave sous la kalimba.
+    Flute,
+    /// Harpe feutrée : corde pincée très sombre, dans le grave.
+    Harpe,
+    /// Verre doux : notes qui enflent et s'éteignent lentement.
+    Verre,
+}
+
+impl Phrase {
+    pub const TOUTES: [Phrase; 3] = [Phrase::Flute, Phrase::Harpe, Phrase::Verre];
+    pub fn nom(self) -> &'static str {
+        match self {
+            Phrase::Flute => "flûte douce",
+            Phrase::Harpe => "harpe feutrée",
+            Phrase::Verre => "verre doux",
+        }
+    }
+}
+
 pub struct Musique {
     step: u64,
     acc: f32,
@@ -43,6 +66,8 @@ pub struct Musique {
     /// Tonalité imposée par la boucle du fond qui joue (tonique MIDI, mode) :
     /// les couches générées s'y accordent et la nappe se tait.
     pub cle: Option<(i32, usize)>,
+    /// Timbre des petites phrases.
+    pub phrase: Phrase,
 }
 
 /// Valeurs de 0 à 1 que la musique lit dans le monde publié.
@@ -82,6 +107,7 @@ impl Musique {
             cooldown: 0.0,
             pending: Vec::new(),
             cle: None,
+            phrase: Phrase::Verre,
         }
     }
 
@@ -160,15 +186,23 @@ impl Musique {
                 }
             }
         }
-        // Kalimba pincée, rare : une petite phrase quand la vie se diversifie.
-        if i % 16 == 8 && rng.chance(0.35 * l.bio * p) {
+        // Petite phrase douce, rare : quand la vie se diversifie.
+        if i % 16 == 8 && rng.chance(0.3 * l.bio * p) {
             let mut d = self.chord + 7 + rng.pick(&[0, 2, 4]);
             let mut t = 0.0;
             for _ in 0..rng.pick(&[3, 4, 5]) {
                 d += rng.pick(&[-2, -1, 1, 1, 2]);
-                let k = mk.pluck(rng, degree(self.base, &sc, d), 0.25 + 0.6 * l.o2, 2.2);
-                out.push(Voice::new(k, Bus::Musique, 0.16).at(t, r).pan(-0.25).send(0.35));
-                t += rng.pick(&[0.3, 0.45, 0.6]);
+                let pas = rng.pick(&[0.6, 0.8, 1.0]);
+                let v = match self.phrase {
+                    Phrase::Flute => Voice::new(mk.flute(degree(self.base, &sc, d), pas * 1.1, 0.0), Bus::Musique, 0.045).send(0.5),
+                    Phrase::Harpe => Voice::new(mk.pluck(rng, degree(self.base - 12, &sc, d), 0.07, 2.6), Bus::Musique, 0.11).send(0.45),
+                    Phrase::Verre => {
+                        let k = mk.pad(rng, &[degree(self.base + 12, &sc, d)], pas * 1.8, pas * 0.6, true, 1400.0);
+                        Voice::new(k, Bus::Musique, 0.035).send(0.6)
+                    }
+                };
+                out.push(v.at(t, r).pan(rng.range(-0.4, 0.1)));
+                t += pas;
             }
         }
         // Motifs des moments forts de la chronique.

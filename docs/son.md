@@ -12,7 +12,7 @@ Conception : doc « Evonisium : design sonore » (choix de l'utilisateur du 10 o
 | Menus | Musique seule, plus douce | — |
 | Interface | Plume à l'ouverture d'une fiche, page tournée au changement d'écran, tampon quand un point de sauvegarde est écrit | — |
 
-Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des cloches de verre, des bulles et de rares phrases de kalimba.
+Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des cloches de verre, des bulles et de rares phrases douces (verre doux par défaut ; flûte douce et harpe feutrée au choix, la kalimba du premier jet ayant été refusée).
 
 - plus de lignées vivantes, plus de voix ;
 - plus chaud, mode plus lumineux (du phrygien au lydien) et registre plus haut ;
@@ -51,7 +51,7 @@ Volet « peuples » de la livraison 3 (`evo-son/src/peuples.rs`), lu dans l'éta
 
 Sur demande de l'utilisateur (2026-10-11), le fond de chaque ère n'est plus
 seulement généré : des morceaux composés avec Suno, découpés en boucles,
-jouent sous les couches générées (cloches, kalimba, bulles, motifs de la
+jouent sous les couches générées (cloches, phrases douces, bulles, motifs de la
 chronique), qui restent pilotées par l'état de la planète.
 
 - Les boucles sont dans `client/musique/fond/` (Ogg Vorbis, dossier ignoré

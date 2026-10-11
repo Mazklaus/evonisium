@@ -141,7 +141,7 @@ impl Smooth {
 
 /// Forme d'une voix ponctuelle.
 pub enum Kind {
-    /// Corde pincée (Karplus-Strong) : harpe, kalimba, luth.
+    /// Corde pincée (Karplus-Strong) : harpe, luth.
     Pluck { ring: Vec<f32>, idx: usize, loss: f32, dur: f32 },
     /// Cloche en modulation de phase : verre, kalimba, clochette.
     Bell { f: f32, ratio: f32, index: f32, dec: f32, pc: f32, pm: f32 },
