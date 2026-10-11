@@ -22,6 +22,8 @@ const Strates := preload("res://scripts/ui/strates.gd")
 const Anatomie := preload("res://scripts/ui/anatomie.gd")
 const Comparateur := preload("res://scripts/ui/comparateur.gd")
 const Sol := preload("res://scripts/screens/sol.gd")
+const Peuples := preload("res://scripts/ui/peuples.gd")
+const FichePeuple := preload("res://scripts/ui/fiche_peuple.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -72,6 +74,7 @@ func setup(params: Dictionary) -> void:
 		if not l.is_empty():
 			narrateur.tool_opened("calques"))
 	calques.raw_toggled.connect(func(on): App.globe.set_tiles(on))
+	calques.peoples_toggled.connect(_toggle_peoples)
 
 	inspecteur = Inspecteur.new()
 	inspecteur.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -82,12 +85,13 @@ func setup(params: Dictionary) -> void:
 	add_child(inspecteur)
 	inspecteur.species_requested.connect(open_species)
 	inspecteur.tool_requested.connect(open_tool)
+	inspecteur.people_requested.connect(open_people)
 
 	frise = Frise.new()
 	add_child(frise)
 	frise.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 10)
 	frise.event_clicked.connect(go_to_event)
-	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
+	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["peoples", "P", open_peoples], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
 		var b := Atlas.button(App.t(m[0]), m[2], App.t(m[0]) + ("" if m[1] == "" else " (%s)" % m[1]))
 		menu_buttons[m[0]] = b
 		b.add_theme_font_size_override("font_size", int(17 * App.text_scale()))
@@ -383,6 +387,42 @@ func open_chronicle() -> void:
 		f.close()
 		go_to_event(e))
 
+## Peuples (étape 6) : sur le globe, puis la fenêtre des peuples et les
+## fiches. Tant que le moteur ne fait pas naître de peuples, des peuples
+## d'essai sont posés sur les terres de la partie, et l'écran le dit.
+func _toggle_peoples(on: bool) -> void:
+	App.globe.set_peoples(on)
+	if on:
+		_flash(App.t("peoples_bench_short"))
+	if calques.peoples.button_pressed != on:
+		calques.peoples.set_pressed_no_signal(on)
+
+func open_peoples() -> void:
+	if not App.globe.peoples:
+		_toggle_peoples(true)
+	if not App.globe.peoples_ready:
+		_flash(App.t("peoples_waiting"))
+		return
+	var f = _open(Peuples.new())
+	f.people_requested.connect(open_people)
+	f.notable_requested.connect(open_notable)
+
+func open_people(id: int) -> void:
+	var f = _open(FichePeuple.new())
+	f.open_people(id)
+	f.go_to_cell.connect(_go_cell)
+
+func open_notable(id: int) -> void:
+	var f = _open(FichePeuple.new())
+	f.open_notable(id)
+	f.go_to_cell.connect(_go_cell)
+
+func _go_cell(cell: int) -> void:
+	if fiche and is_instance_valid(fiche):
+		fiche.close()
+	App.globe.go_to_cell(cell)
+	inspecteur.show_cell(cell)
+
 func open_interventions() -> void:
 	narrateur.tool_opened("interventions")
 	var f = _open(Interventions.new())
@@ -419,7 +459,7 @@ func descend(cell: int) -> void:
 	var s = Sol.new()
 	s.modulate.a = 0.0
 	add_child(s)
-	s.open(g)
+	s.open(g, App.session.camp_at(cell) if App.globe.peoples_ready else {})
 	s.closed.connect(ascend)
 	sol = s
 	var tw := create_tween()
@@ -475,6 +515,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			open_interventions()
 		KEY_A:
 			open_with_without()
+		KEY_P:
+			open_peoples()
 		KEY_F5:
 			open_save()
 		_:

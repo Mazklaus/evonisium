@@ -83,6 +83,95 @@ func _populated_cell() -> int:
 		return -1
 	return int(App.session.species_info(ids[0]).get("peak_cell", -1))
 
+## Essai de l'affichage de l'étape 6 sur peuples d'essai : territoires et
+## noms sur le globe, inspecteur, fenêtre des peuples (liste, arbres des
+## peuples et des langues, personnages), fiches, mythes de la chronique et
+## mode historique dans la barre du temps.
+func _peoples_only() -> void:
+	await _run_to(2.0e5)
+	var jeu = _screen()
+	jeu._toggle_peoples(true)
+	var ok := await _until(func(): return App.globe.peoples_ready, 120.0)
+	report["peuples_prets"] = ok
+	if not ok:
+		_finish(false)
+		return
+	var labels: Array = App.session.culture_labels()
+	report["peuples"] = labels.size()
+	report["noms"] = labels.map(func(l): return l["name"])
+	var mode: Dictionary = App.session.culture_mode()
+	report["mode_historique"] = bool(mode.get("historical", false))
+	var core := int(labels[0]["cell"])
+	App.globe.go_to_cell(core, 2.6)
+	await _wait(1.5)
+	await _shot("peuples-globe")
+	App.globe.go_to_cell(core, 1.5)
+	jeu.inspecteur.show_cell(core)
+	App.globe.select_cell(core)
+	await _wait(1.5)
+	report["etat_temps"] = jeu.bar.state_label.text
+	await _shot("peuples-inspecteur")
+	jeu.inspecteur.show_cell(-1)
+	jeu.open_peoples()
+	await _wait(0.5)
+	await _shot("peuples-liste")
+	for k in 3:
+		jeu.fiche.tabs.current_tab = k + 1
+		await _wait(0.4)
+		await _shot(["peuples-arbre", "peuples-langues", "peuples-personnages"][k])
+	var info: Dictionary = App.session.people_info(int(labels[0]["id"]))
+	report["techniques"] = info.get("techniques", []).size()
+	report["coutumes"] = info.get("customs", []).size()
+	jeu.open_people(int(labels[0]["id"]))
+	await _wait(0.5)
+	await _shot("peuples-fiche")
+	var notables: Array = info.get("notables", [])
+	report["personnages"] = notables.size()
+	if not notables.is_empty():
+		jeu.open_notable(int(notables[0]["id"]))
+		await _wait(0.5)
+		await _shot("peuples-personnage")
+	var myths: Array = App.session.myths()
+	report["mythes"] = myths.map(func(m): return m["title"])
+	jeu.open_chronicle()
+	await _wait(0.3)
+	var tabs: TabContainer = jeu.fiche.tabs
+	for i in tabs.get_tab_count():
+		if tabs.get_tab_title(i) == App.t("myths"):
+			tabs.current_tab = i
+	await _wait(0.4)
+	await _shot("peuples-mythes")
+	jeu.fiche.close()
+	ok = labels.size() >= 2 and not myths.is_empty() and report["mode_historique"] and int(report["techniques"]) > 0
+	# Palier 3 : le campement du peuple au sol, ses objets et ses gestes.
+	jeu.descend(core)
+	var down := await _until(func(): return jeu.sol != null and jeu.sol.ready_done, 180.0)
+	report["sol_pret"] = down
+	if down:
+		var sol = jeu.sol
+		var cinfo: Dictionary = sol.ground.camp_info()
+		report["campement"] = cinfo
+		await _wait(20.0)
+		await _shot("campement")
+		var props := 0
+		for buf in sol.ground.camp_instances(false):
+			props += (buf as PackedFloat32Array).size() / 12
+		report["objets_tenus"] = props
+		sol.follow_species(int(cinfo.get("folk_species", 0)))
+		for key in ["fabriquer_un_outil", "celebrer_un_rite"]:
+			sol.force(key)
+			sol.target_distance = 5.0
+			sol.pitch = 0.75
+			await _wait(3.0)
+			await _shot("campement-" + key)
+		sol.force("")
+		ok = ok and not cinfo.is_empty() and int(cinfo.get("fixed", 0)) >= 3 and props > 0
+		jeu.ascend()
+		await _wait(1.0)
+	else:
+		ok = false
+	_finish(ok)
+
 ## Essai court du globe G3 : un massif vu en région puis en paysage.
 func _g3_only() -> void:
 	await _run_to(2.0e5)
@@ -294,6 +383,9 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "colonie":
 		await _colony_only()
+		return
+	if opts.get("seul", "") == "peuples":
+		await _peoples_only()
 		return
 	var ma := float(opts["ma"]) * 1.0e6
 	var grown := await _run_to(ma)

@@ -36,6 +36,17 @@ pub struct Tree {
 
 /// Construit l'arbre élagué ; `now` est la date courante.
 pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
+    build_with(lineages, now, max_leaves, false)
+}
+
+/// Comme `build`, mais un parent encore vivant garde sa propre ligne,
+/// au-dessus de ses descendants (arbre des peuples et des langues : un
+/// peuple qui essaime continue de vivre à côté de son enfant).
+pub fn build_keeping_parents(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
+    build_with(lineages, now, max_leaves, true)
+}
+
+fn build_with(lineages: &[LineageFrame], now: f64, max_leaves: usize, own_rows: bool) -> Tree {
     if lineages.is_empty() {
         return Tree::default();
     }
@@ -77,7 +88,9 @@ pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
         let l = by_id[&id];
         let own_end = l.extinct_years.unwrap_or(now);
         let (count, end) = match children.get(&id) {
-            Some(cs) => cs.iter().fold((0, own_end), |(n, e), c| (n + leaf_count[c], e.max(last_end[c]))),
+            Some(cs) => cs
+                .iter()
+                .fold((usize::from(own_rows && l.extinct_years.is_none()), own_end), |(n, e), c| (n + leaf_count[c], e.max(last_end[c]))),
             None => (1, own_end),
         };
         leaf_count.insert(id, count);
@@ -108,7 +121,7 @@ pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
     let threshold = lo;
     type Ctx<'a> = (&'a BTreeMap<u32, &'a LineageFrame>, &'a BTreeMap<u32, Vec<u32>>, &'a BTreeMap<u32, usize>, &'a BTreeMap<u32, f64>);
     let mut tree = Tree { from_years: f64::INFINITY, to_years: now, ..Default::default() };
-    fn place(id: u32, parent: Option<usize>, threshold: usize, ctx: Ctx, now: f64, tree: &mut Tree) -> f32 {
+    fn place(id: u32, parent: Option<usize>, threshold: usize, ctx: Ctx, now: f64, own_rows: bool, tree: &mut Tree) -> f32 {
         let (by_id, children, leaf_count, last_end) = ctx;
         let l = by_id[&id];
         let index = tree.nodes.len();
@@ -126,8 +139,12 @@ pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
         tree.from_years = tree.from_years.min(l.born_years);
         let y = match children.get(&id) {
             Some(cs) if !collapse => {
-                let ys: Vec<f32> = cs.iter().map(|&c| place(c, Some(index), threshold, ctx, now, tree)).collect();
-                (ys[0] + ys[ys.len() - 1]) / 2.0
+                let own = (own_rows && l.extinct_years.is_none()).then(|| {
+                    tree.leaves += 1;
+                    (tree.leaves - 1) as f32
+                });
+                let ys: Vec<f32> = cs.iter().map(|&c| place(c, Some(index), threshold, ctx, now, own_rows, tree)).collect();
+                own.unwrap_or((ys[0] + ys[ys.len() - 1]) / 2.0)
             }
             _ => {
                 tree.leaves += 1;
@@ -138,7 +155,7 @@ pub fn build(lineages: &[LineageFrame], now: f64, max_leaves: usize) -> Tree {
         y
     }
     for &r in &roots {
-        place(r, None, threshold, (&by_id, &children, &leaf_count, &last_end), now, &mut tree);
+        place(r, None, threshold, (&by_id, &children, &leaf_count, &last_end), now, own_rows, &mut tree);
     }
     tree
 }
@@ -161,6 +178,15 @@ mod tests {
         assert!(!t.nodes[0].living);
         assert_eq!(t.leaves, 1);
         assert_eq!(t.nodes[2].parent, 1);
+    }
+
+    #[test]
+    fn a_living_parent_keeps_its_own_row() {
+        let ls = vec![lf(0, 0, 0.0, None), lf(1, 0, 4.0, None)];
+        assert_eq!(build(&ls, 10.0, 100).leaves, 1);
+        let t = build_keeping_parents(&ls, 10.0, 100);
+        assert_eq!(t.leaves, 2);
+        assert_ne!(t.nodes[0].y, t.nodes[1].y);
     }
 
     #[test]

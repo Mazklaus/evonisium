@@ -7,6 +7,7 @@
 //! et la zone d'intérêt.
 
 mod bodies;
+mod culture;
 mod region;
 mod son;
 mod story;
@@ -102,6 +103,7 @@ pub struct EvoSession {
     watch: HashMap<u32, Vec<f64>>,
     watch_step: u64,
     bridge_ms: f64,
+    culture: culture::CultureSlot,
 }
 
 #[godot_api]
@@ -125,6 +127,7 @@ impl IRefCounted for EvoSession {
             watch: HashMap::new(),
             watch_step: 0,
             bridge_ms: 0.0,
+            culture: Default::default(),
         }
     }
 }
