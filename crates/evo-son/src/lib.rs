@@ -15,11 +15,13 @@
 
 pub mod ambiance;
 pub mod musique;
+pub mod peuples;
 pub mod recit;
 pub mod synth;
 
 use ambiance::{Globe, Micro};
 use musique::{Lecture, Musique};
+use peuples::{Chant, Peuple, Rumeur};
 use std::collections::VecDeque;
 use synth::{Biquad, Bus, FilterKind, Make, Reverb, Rng, Smooth, Voice};
 
@@ -133,6 +135,12 @@ pub enum Ordre {
     },
     /// Le narrateur se tait et oublie les phrases en attente.
     Taire,
+    /// Peuple que l'on regarde au sol (sa rumeur, ses chants), ou aucun.
+    Peuple(Option<Peuple>),
+    /// Le peuple célèbre son rite numéro tant (chant rituel).
+    Rite(usize),
+    /// Dit un mot dans la langue du peuple regardé (un nom propre).
+    Prononcer(String),
 }
 
 /// Ce que le son signale au fil principal (sous-titres, fin de phrase).
@@ -175,6 +183,8 @@ pub struct Son {
     /// Retrait de la musique et des ambiances sous la voix, de 0 à 1.
     duck: Smooth,
     annonces: Vec<Annonce>,
+    rumeur: Option<Rumeur>,
+    chant: Option<Chant>,
 }
 
 /// Pas de contrôle, en échantillons.
@@ -207,6 +217,8 @@ impl Son {
             souffle: 0.0,
             duck: Smooth::new(0.0),
             annonces: Vec::new(),
+            rumeur: None,
+            chant: None,
         }
     }
 
@@ -231,6 +243,33 @@ impl Son {
                     self.annonces.push(Annonce::Fin(id));
                 }
             }
+            Ordre::Peuple(p) => {
+                if self.rumeur.as_ref().map(|r| &r.peuple) != p.as_ref() {
+                    self.chant = None;
+                    self.rumeur = p.map(|p| Rumeur::new(p, &mut self.rng));
+                }
+            }
+            Ordre::Rite(i) => self.chanter(i),
+            Ordre::Prononcer(mot) => {
+                if let Some(r) = &self.rumeur {
+                    let loc = peuples::Locuteur::homme(&mut self.rng);
+                    let g = peuples::prononcer(&mot, &r.peuple.langue, loc, &mut self.rng, self.rate);
+                    self.push(Voice::new(synth::Kind::Gosier(Box::new(g)), Bus::Interface, 0.9).send(0.15));
+                }
+            }
+        }
+    }
+
+    /// Lance le chant d'un rite du peuple regardé (s'il n'en chante pas déjà un).
+    fn chanter(&mut self, rite: usize) {
+        let Some(r) = &self.rumeur else { return };
+        if self.chant.is_some() || r.peuple.rites.is_empty() {
+            return;
+        }
+        let (chant, voix) = Chant::composer(&r.peuple, rite % r.peuple.rites.len(), &mut self.rng, &self.mk);
+        self.chant = Some(chant);
+        for v in voix {
+            self.push(v);
         }
     }
 
@@ -306,7 +345,8 @@ impl Son {
         let dt = BLOCK as f32 * self.dt;
         let l = Lecture::of(self.monde.as_ref());
         let (m, g, u) = self.targets();
-        self.mix_music.target = m;
+        // Un chant rituel couvre la musique du jeu.
+        self.mix_music.target = if self.chant.is_some() { m * 0.25 } else { m };
         self.globe.set(&l, g);
         self.micro.set(u);
         let lp = l.cutoff();
@@ -317,10 +357,34 @@ impl Son {
         self.musique.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
         self.globe.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
         self.micro.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
+        self.peuple(dt, &mut fresh);
         for v in fresh.drain(..) {
             self.push(v);
         }
         self.fresh = fresh;
+    }
+
+    /// Rumeur et chants du peuple regardé, au sol seulement.
+    fn peuple(&mut self, dt: f32, fresh: &mut Vec<Voice>) {
+        let sol = self.vue == Vue::Sol;
+        if let Some(c) = &mut self.chant {
+            c.tick(dt, &self.mk, &mut self.rng, fresh);
+            if c.fini() {
+                self.chant = None;
+            }
+        }
+        let parleurs = self.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_)) && v.bus == Bus::Ambiance).count();
+        let Some(r) = &mut self.rumeur else { return };
+        let level = if sol && self.chant.is_none() { 1.0 } else { 0.0 };
+        r.tick(dt, level, &self.mk, &mut self.rng, fresh, parleurs);
+        if sol && self.chant.is_none() && !r.peuple.rites.is_empty() {
+            r.prochain_chant -= dt;
+            if r.prochain_chant <= 0.0 {
+                r.prochain_chant = self.rng.range(120.0, 300.0);
+                let i = (self.rng.u() * r.peuple.rites.len() as f32) as usize;
+                self.chanter(i);
+            }
+        }
     }
 
     /// Remplit `out` d'échantillons stéréo entrelacés par paires.
@@ -519,5 +583,38 @@ mod tests {
         assert_eq!(son.annonces(), vec![Annonce::Fin(2)]);
         render(&mut son, 3.0);
         assert!(!son.parle() && son.duck.value < 0.2);
+    }
+
+    #[test]
+    fn a_people_murmurs_on_the_ground_and_sings_its_rites() {
+        let mut son = Son::new(22_050.0, 8);
+        son.ordre(Ordre::Monde(terre(300, 0.21)));
+        son.ordre(Ordre::Vue(Vue::Sol));
+        let p = peuples::Peuple {
+            nom: "Kalo".into(),
+            langue: peuples::Langue { mots: vec!["kalo".into(), "mira".into()], cle: 3 },
+            rites: vec![peuples::Rite::depuis_nom("rite du Mira, pour les morts")],
+            population: 800.0,
+            taille: 1.0,
+            cle: 3,
+        };
+        son.ordre(Ordre::Peuple(Some(p.clone())));
+        let gens = |s: &Son| s.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_))).count();
+        let mut entendu = 0;
+        for _ in 0..10 {
+            render(&mut son, 1.0);
+            entendu = entendu.max(gens(&son));
+        }
+        assert!(entendu > 0, "personne ne parle");
+        son.ordre(Ordre::Rite(0));
+        let (peak, _) = render(&mut son, 5.0);
+        assert!(son.chant.is_some() && gens(&son) >= 4);
+        assert!(son.mix_music.value < 0.4, "la musique ne s'efface pas devant le chant");
+        assert!(peak < 0.95);
+        // Rien au-dessus du globe : ni rumeur ni chant.
+        son.ordre(Ordre::Peuple(None));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        render(&mut son, 3.0);
+        assert!(son.chant.is_none());
     }
 }
