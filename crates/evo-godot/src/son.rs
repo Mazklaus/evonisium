@@ -441,7 +441,13 @@ impl EvoSon {
                 let pcm = std::fs::read(dossier.join(&e.fichier)).map_err(|x| x.to_string()).and_then(|b| evo_son::fond::decoder(&b, rate));
                 match pcm {
                     Ok(pcm) => {
-                        let _ = tx.send(Ordre::Boucle(evo_son::fond::Boucle { ere: e.ere, pcm, tonique: e.tonique, mode: e.mode, gain: e.gain }));
+                        let _ = tx.send(Ordre::Boucle(evo_son::fond::Boucle {
+                            ere: e.ere,
+                            pcm,
+                            tonique: e.tonique,
+                            mode: e.mode,
+                            gain: e.gain,
+                        }));
                     }
                     Err(x) => eprintln!("fond musical : {} illisible ({x})", e.fichier),
                 }
