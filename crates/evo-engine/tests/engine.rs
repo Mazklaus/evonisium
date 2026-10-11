@@ -121,17 +121,23 @@ fn the_brake_holds_while_the_client_queries() {
     wait_for(&engine, "premier pas", |e| e.frame().current.years > 0.0);
     let pace = 1.0e6;
     engine.set_throttle(Some(pace));
-    std::thread::sleep(Duration::from_millis(300));
-    let (t0, y0) = (Instant::now(), engine.frame().current.years);
+    // Mesure d'une arrivée de pas à une autre, pour ne pas compter un pas
+    // de trop aux bords de la fenêtre.
+    let next_step = |e: &Engine| {
+        let y = e.frame().current.years;
+        wait_for(e, "pas suivant", |e| e.frame().current.years > y);
+        (Instant::now(), e.frame().current.years)
+    };
+    let (t0, y0) = next_step(&engine);
     while t0.elapsed() < Duration::from_secs(3) {
         engine.set_interest(Some(InterestZone { center_cell: 3, radius_km: 1500.0, zoom_band: 2 }));
         let _ = engine.query(Query::Lineages { since_years: 0.0 }).recv();
         std::thread::sleep(Duration::from_millis(20));
     }
-    let held = (engine.frame().current.years - y0) / t0.elapsed().as_secs_f64();
-    // Un pas d'avance au plus sur la fenêtre de 3 s.
-    let step = engine.frame().current.step_years;
-    assert!(held <= pace + step / 3.0 + 1.0, "vitesse tenue {held} pour un frein à {pace}");
+    let (t1, y1) = next_step(&engine);
+    let held = (y1 - y0) / (t1 - t0).as_secs_f64();
+    // Le pas peut varier d'un pas à l'autre (pas adaptatif) : 20 % de marge.
+    assert!(held <= pace * 1.2, "vitesse tenue {held} pour un frein à {pace}");
 }
 
 /// Les individus échantillonnés ne changent pas l'histoire : une partie où
