@@ -3,8 +3,11 @@ extends Control
 ## choisit de la déposer près des sources chaudes ou dans toutes les mers.
 
 var choice := "sources"
+## Première partie guidée : le narrateur repart du début.
+var guided := false
 
-func setup(_params: Dictionary) -> void:
+func setup(params: Dictionary) -> void:
+	guided = params.get("guided", false)
 	var g = App.globe
 	g.interactive = true
 	g.set_layer({})
@@ -41,7 +44,7 @@ func setup(_params: Dictionary) -> void:
 	v.add_child(Atlas.hsep())
 	var h := HBoxContainer.new()
 	v.add_child(h)
-	h.add_child(Atlas.button(App.t("back"), func(): App.goto("creation")))
+	h.add_child(Atlas.button(App.t("back"), func(): App.goto("accueil" if guided else "creation")))
 	var go := Atlas.button(App.t("start_life"), _begin)
 	h.add_child(go)
 	go.grab_focus.call_deferred()
@@ -57,9 +60,12 @@ func begin() -> void:
 	_begin()
 
 func _begin() -> void:
+	# La planète d'une partie guidée se génère encore.
+	if not App.session.has_frame():
+		return
 	App.session.set_seeding(choice)
 	App.session.seed_life()
 	App.session.set_rules_profile(App.settings["stop_profile"])
 	App.session.resume()
 	App.globe.set_show_vents(false)
-	App.goto("jeu", {"new": true})
+	App.goto("jeu", {"new": true, "guided": guided})

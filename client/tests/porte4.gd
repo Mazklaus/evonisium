@@ -156,10 +156,108 @@ func _colony_only() -> void:
 	await _shot("18-colonie-comparateur")
 	_finish(body_ok and cmp_ok)
 
+## Essai de la première partie guidée : depuis l'accueil, la Terre
+## ensemencée près des sources, le narrateur présente ses outils un à un
+## (on accélère ses silences), la chronique raconte la partie en chapitres
+## et le retour après une absence en fait le résumé.
+func _guide_only() -> void:
+	App.goto("accueil")
+	await get_tree().process_frame
+	await _wait(0.5)
+	await _shot("guide-00-accueil")
+	_screen()._guided()
+	await get_tree().process_frame
+	var ok := await _until(func(): return App.session.has_frame(), 120.0)
+	await _wait(0.5)
+	_screen()._begin()
+	await get_tree().process_frame
+	var jeu = _screen()
+	var n = jeu.narrateur
+	App.session.set_rules_profile("aucun")
+	App.session.set_speed(1.0e7)
+	var hints := []
+	var spoken := {}
+	# Le guide suit la partie : à chaque étape, on lit la phrase montrée,
+	# on fait ce qu'elle propose quand c'est simple, puis on la congédie.
+	var stops := [2.0e5, 3.0e6, 3.0e7, 2.0e8, 6.0e8]
+	if opts.get("arrets", "oui") == "non":
+		stops = [6.0e8]
+	for target in stops:
+		await _run_to(target)
+		for i in 6:
+			n.quiet = 0.0
+			n.poll = 0.0
+			var shown := await _until(func(): return n.visible, 3.0)
+			if not shown:
+				break
+			hints.append("%s : %s" % [n.current, n.label.text])
+			if not spoken.has(n.current_tool):
+				spoken[n.current_tool] = true
+				await _wait(0.3)
+				await _shot("guide-%02d-%s" % [hints.size(), n.current])
+			match n.current_tool:
+				"globe":
+					var cell := _populated_cell()
+					if cell < 0:
+						cell = App.session.highest_cell(false)
+					App.globe.select_cell(cell)
+					jeu._on_cell_selected(cell)
+				"chronique":
+					jeu.open_chronicle()
+					await _wait(0.3)
+					jeu.fiche.close()
+				_:
+					n.dismiss()
+			n.dismiss()
+	report["guide_phrases"] = hints
+	# Les pauses du guide ne changent pas l'histoire : même état du monde à
+	# 600 Ma avec ou sans arrêts (--arrets=non). L'empreinte du moteur compte
+	# aussi les événements, donc les ordres de pause : on compare l'état.
+	var fi: Dictionary = App.session.frame_info()
+	report["etat_600ma"] = "%s %d %s %s" % [fi["years"], int(fi["lineages"]), str(fi["o2"]), str(fi["biomass"])]
+	report["guide_vu"] = App.settings.get("guide_vu", [])
+	_log("guide : %s" % str(hints))
+	ok = ok and hints.size() >= 5
+
+	# La chronique : l'onglet du récit.
+	jeu.open_chronicle()
+	await _wait(0.5)
+	var ch = jeu.fiche
+	ch.tabs.current_tab = 1
+	var chapters: Array = App.session.story()
+	var titles := []
+	for c in chapters:
+		titles.append(c["title"])
+	report["recit_chapitres"] = titles
+	report["recit_premier"] = chapters[0]["text"] if not chapters.is_empty() else ""
+	await _wait(0.5)
+	await _shot("guide-recit")
+	ch.close()
+	ok = ok and chapters.size() >= 2
+
+	# L'absence : le joueur revient après une longue avance.
+	var since := _years()
+	jeu.looked_years = since
+	await _run_to(since + 3.0e8)
+	jeu.idle = jeu.ABSENT_AFTER + 1.0
+	var key := InputEventKey.new()
+	key.keycode = KEY_SHIFT
+	key.pressed = true
+	Input.parse_input_event(key)
+	var back := await _until(func(): return jeu.absence_card.visible, 5.0)
+	report["absence"] = jeu.absence_label.text
+	await _wait(0.5)
+	await _shot("guide-absence")
+	ok = ok and back
+	_finish(ok)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
 	report["graine"] = int(opts["graine"])
+	if opts.get("seul", "") == "guide":
+		await _guide_only()
+		return
 	# Bac à sable : les trois interventions passent sans attendre la recharge
 	# de l'influence (le coût reste compté).
 	App.session.start_game(opts["monde"], int(opts["graine"]), int(opts["niveau"]), 1.0, 1.0, 0.0, true)
