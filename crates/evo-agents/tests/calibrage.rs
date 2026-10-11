@@ -81,7 +81,7 @@ fn scene_kills_only_when_level_four_says_so() {
     );
     let mut scene = Scene::new(vec![prey, pred], 200.0, 5, 2.0);
     let start = scene.agents.len();
-    let mut seen = [0.0f32; 12];
+    let mut seen = [0.0f32; Act::ALL.len()];
     for _ in 0..(120.0 / 0.05) as usize {
         scene.step(0.05);
     }

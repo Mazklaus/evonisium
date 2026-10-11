@@ -15,10 +15,12 @@
 
 pub mod ambiance;
 pub mod musique;
+pub mod recit;
 pub mod synth;
 
 use ambiance::{Globe, Micro};
 use musique::{Lecture, Musique};
+use std::collections::VecDeque;
 use synth::{Biquad, Bus, FilterKind, Make, Reverb, Rng, Smooth, Voice};
 
 /// Ce que le son lit du monde publié (une fois par image suffit).
@@ -118,10 +120,30 @@ pub enum Ordre {
         interest: f64,
     },
     Bruit(Bruit),
-    /// Volumes de 0 à 1 : général, musique, ambiances, interface.
-    Volumes([f32; 4]),
+    /// Volumes de 0 à 1 : général, musique, ambiances, interface,
+    /// narrateur.
+    Volumes([f32; 5]),
     Muet(bool),
+    /// Phrase du narrateur, déjà synthétisée : mono, au taux du son. Les
+    /// phrases sont dites dans l'ordre, séparées d'un court silence ; la
+    /// musique et les ambiances s'effacent pendant qu'il parle.
+    Parole {
+        id: u64,
+        son: Vec<f32>,
+    },
+    /// Le narrateur se tait et oublie les phrases en attente.
+    Taire,
 }
+
+/// Ce que le son signale au fil principal (sous-titres, fin de phrase).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Annonce {
+    Debut(u64),
+    Fin(u64),
+}
+
+/// Silence entre deux phrases du narrateur, en secondes.
+const SOUFFLE: f32 = 0.45;
 
 const MAX_VOICES: usize = 160;
 /// Gain de sortie : environ -24 dB efficaces sur le globe au volume par défaut.
@@ -143,9 +165,16 @@ pub struct Son {
     pub vue: Vue,
     /// Part de chaque bus selon la vue (musique, ambiance), lissée.
     mix_music: Smooth,
-    volumes: [f32; 4],
+    volumes: [f32; 5],
     mute: Smooth,
     ctrl: usize,
+    paroles: VecDeque<(u64, Vec<f32>)>,
+    /// Phrase en cours et position, puis silence avant la suivante.
+    parole: Option<(u64, Vec<f32>, usize)>,
+    souffle: f32,
+    /// Retrait de la musique et des ambiances sous la voix, de 0 à 1.
+    duck: Smooth,
+    annonces: Vec<Annonce>,
 }
 
 /// Pas de contrôle, en échantillons.
@@ -170,9 +199,14 @@ impl Son {
             monde: None,
             vue: Vue::Menu,
             mix_music: Smooth::new(0.6),
-            volumes: [0.8, 0.7, 0.7, 0.6],
+            volumes: [0.8, 0.7, 0.7, 0.6, 0.9],
             mute: Smooth::new(1.0),
             ctrl: 0,
+            paroles: VecDeque::new(),
+            parole: None,
+            souffle: 0.0,
+            duck: Smooth::new(0.0),
+            annonces: Vec::new(),
         }
     }
 
@@ -188,6 +222,15 @@ impl Son {
             Ordre::Bruit(b) => self.bruit(b),
             Ordre::Volumes(v) => self.volumes = v.map(|x| x.clamp(0.0, 1.0)),
             Ordre::Muet(m) => self.mute.target = if m { 0.0 } else { 1.0 },
+            Ordre::Parole { id, son } => self.paroles.push_back((id, son)),
+            Ordre::Taire => {
+                if let Some((id, _, _)) = self.parole.take() {
+                    self.annonces.push(Annonce::Fin(id));
+                }
+                for (id, _) in self.paroles.drain(..) {
+                    self.annonces.push(Annonce::Fin(id));
+                }
+            }
         }
     }
 
@@ -307,16 +350,54 @@ impl Son {
             bus[1][0] += amb;
             bus[1][1] += amb;
             let mm = self.mix_music.step(dt, 2.0);
-            let [vg, vm, va, vi] = self.volumes;
-            let w = self.verb.run(send);
+            let [vg, vm, va, vi, vn] = self.volumes;
+            let voix = self.parler();
+            self.duck.target = if self.parle() { 1.0 } else { 0.0 };
+            let d = self.duck.step(dt, if self.duck.target > self.duck.value { 0.25 } else { 1.2 });
+            let (vm, va) = (vm * (1.0 - 0.6 * d), va * (1.0 - 0.45 * d));
+            let w = self.verb.run(send + voix * 0.06);
             let mute = self.mute.step(dt, 0.3);
             for ch in 0..2 {
                 let music = self.music_lp[ch].run(bus[0][ch]) * mm * vm;
-                let x = (music + bus[1][ch] * va + bus[2][ch] * vi + w[ch] * (vm + va) * 0.5) * vg * mute * GAIN;
+                let x = (music + bus[1][ch] * va + bus[2][ch] * vi + w[ch] * (vm + va) * 0.5) * vg * mute * GAIN + voix * vn * vg * mute;
                 // Limiteur doux : jamais de saturation dure.
                 frame[ch] = x.tanh() * 0.95;
             }
         }
+    }
+
+    /// Échantillon suivant de la voix du narrateur (0 entre deux phrases).
+    #[inline]
+    fn parler(&mut self) -> f32 {
+        if let Some((id, son, pos)) = &mut self.parole {
+            if *pos < son.len() {
+                let x = son[*pos];
+                *pos += 1;
+                return x;
+            }
+            self.annonces.push(Annonce::Fin(*id));
+            self.parole = None;
+            self.souffle = SOUFFLE;
+        }
+        if self.souffle > 0.0 {
+            self.souffle -= self.dt;
+            return 0.0;
+        }
+        if let Some((id, son)) = self.paroles.pop_front() {
+            self.annonces.push(Annonce::Debut(id));
+            self.parole = Some((id, son, 0));
+        }
+        0.0
+    }
+
+    /// Le narrateur parle, ou va reprendre après un silence.
+    pub fn parle(&self) -> bool {
+        self.parole.is_some() || !self.paroles.is_empty()
+    }
+
+    /// Débuts et fins de phrases depuis le dernier appel.
+    pub fn annonces(&mut self) -> Vec<Annonce> {
+        std::mem::take(&mut self.annonces)
     }
 
     pub fn voices(&self) -> usize {
@@ -363,7 +444,7 @@ mod tests {
     #[test]
     fn interface_sounds_play_and_end() {
         let mut son = Son::new(44_100.0, 3);
-        son.ordre(Ordre::Volumes([1.0, 0.0, 0.0, 1.0]));
+        son.ordre(Ordre::Volumes([1.0, 0.0, 0.0, 1.0, 0.0]));
         for b in [Bruit::Plume, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
             son.ordre(Ordre::Bruit(b));
         }
@@ -417,5 +498,26 @@ mod tests {
         assert_eq!(Moment::of_event("catastrophe", 0.85), Some(Moment::Froid));
         assert_eq!(Moment::of_event("extinction", 0.1), None);
         assert_eq!(Moment::of_event("speciation", 0.9), None);
+    }
+
+    #[test]
+    fn the_narrator_speaks_in_order_over_a_quieter_music() {
+        let mut son = Son::new(48_000.0, 3);
+        son.ordre(Ordre::Monde(Monde { o2: 1e-3, temperature_k: 300.0, ice: 0.0, ocean: 0.7, lineages: 80, paused: false }));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        render(&mut son, 3.0);
+        let phrase = |f: f32| (0..24_000).map(|i| (i as f32 * f * std::f32::consts::TAU / 48_000.0).sin() * 0.3).collect::<Vec<_>>();
+        son.ordre(Ordre::Parole { id: 1, son: phrase(200.0) });
+        son.ordre(Ordre::Parole { id: 2, son: phrase(300.0) });
+        render(&mut son, 0.1);
+        assert!(son.parle());
+        assert_eq!(son.annonces(), vec![Annonce::Debut(1)]);
+        render(&mut son, 1.0);
+        assert_eq!(son.annonces(), vec![Annonce::Fin(1), Annonce::Debut(2)]);
+        assert!(son.duck.value > 0.9);
+        son.ordre(Ordre::Taire);
+        assert_eq!(son.annonces(), vec![Annonce::Fin(2)]);
+        render(&mut son, 3.0);
+        assert!(!son.parle() && son.duck.value < 0.2);
     }
 }

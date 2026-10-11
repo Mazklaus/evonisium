@@ -43,10 +43,15 @@ pub enum Act {
     Communicate,
     Build,
     Rest,
+    /// Actions culturelles de l'étape 6.
+    MakeTool,
+    Teach,
+    Trade,
+    Rite,
 }
 
 impl Act {
-    pub const ALL: [Act; 12] = [
+    pub const ALL: [Act; 16] = [
         Act::Feed,
         Act::Hunt,
         Act::Flee,
@@ -59,6 +64,10 @@ impl Act {
         Act::Communicate,
         Act::Build,
         Act::Rest,
+        Act::MakeTool,
+        Act::Teach,
+        Act::Trade,
+        Act::Rite,
     ];
 
     pub fn index(self) -> usize {
@@ -73,8 +82,9 @@ impl Act {
             Act::Fight => 0.2,
             Act::Mate => 0.15,
             Act::Feed => 0.1,
-            Act::Care | Act::Build => 0.05,
-            Act::Hide | Act::Lay | Act::Communicate | Act::Rest => 0.0,
+            Act::Trade => 0.1,
+            Act::Care | Act::Build | Act::Teach | Act::Rite => 0.05,
+            Act::Hide | Act::Lay | Act::Communicate | Act::Rest | Act::MakeTool => 0.0,
         }
     }
 }
@@ -122,7 +132,7 @@ pub struct Agent {
     pub hidden: bool,
     pub age_s: f32,
     /// Durée cumulée de chaque action, s (calibrage et tests).
-    pub time_in: [f32; 12],
+    pub time_in: [f32; 16],
 }
 
 /// Clé stable d'un agent : espèce et identifiant de l'individu.
@@ -138,6 +148,9 @@ pub struct SpeciesState {
     pub radius_m: f32,
     /// Part du temps à se nourrir, d'après le bilan d'énergie.
     pub feed_share: f32,
+    /// Part du temps libre donnée aux actions culturelles (étape 6), tirée
+    /// de l'état culturel publié : affichage seulement.
+    pub culture: crate::learning::CultureHint,
 }
 
 /// Énergie brûlée au repos, par seconde (1 = réserves pleines).
@@ -191,7 +204,7 @@ impl Scene {
             };
             let r = sample.rates;
             total_rate += n as f64 * (r.birth + r.death + 2.0 * r.emigration);
-            species.push(SpeciesState { feed_share: feed_share(&sample), sample, anchor, radius_m });
+            species.push(SpeciesState { feed_share: feed_share(&sample), sample, anchor, radius_m, culture: Default::default() });
         }
         // Les ancres se rejoignent : les prédateurs au centre, les autres
         // près d'eux, pour que les uns voient les autres.
@@ -234,7 +247,7 @@ impl Scene {
         let think = self.rng.random::<f32>() * 0.5;
         let energy = 0.5 + 0.5 * self.rng.random::<f32>();
         let drive = self.rng.random::<f32>() * 0.5;
-        let time_in = [0.0; 12];
+        let time_in = [0.0; 16];
         self.agents.push(Agent {
             species,
             member,
@@ -274,6 +287,13 @@ impl Scene {
     }
 
     /// Avance la scène de `dt` secondes.
+    /// Donne à une espèce de la scène les actions culturelles de son groupe.
+    pub fn set_culture(&mut self, species: usize, hint: crate::learning::CultureHint) {
+        if let Some(s) = self.species.get_mut(species) {
+            s.culture = hint;
+        }
+    }
+
     pub fn step(&mut self, dt: f32) {
         let dt = dt.clamp(0.0, 0.25);
         self.clock += dt;
@@ -648,8 +668,25 @@ impl Scene {
             }
         }
         // Le reste du temps : se nourrir, se reposer, suivre le groupe,
-        // communiquer.
+        // communiquer, et ce que la culture de son groupe lui a appris.
         let r: f32 = self.rng.random();
+        let c = self.species[me.species as usize].culture;
+        if t.moves() && r < c.total() {
+            let (act, timer) = if r < c.tool {
+                (Act::MakeTool, 6.0)
+            } else if r < c.tool + c.teach {
+                (Act::Teach, 4.0)
+            } else if r < c.tool + c.teach + c.trade {
+                (Act::Trade, 3.0)
+            } else {
+                (Act::Rite, 8.0)
+            };
+            let a = &mut self.agents[i];
+            a.act = act;
+            a.timer = timer;
+            return;
+        }
+        let r = (r - c.total()) / (1.0 - c.total()).max(1e-6);
         let a = &mut self.agents[i];
         let (act, timer) = if !t.moves() {
             if r < 0.85 {

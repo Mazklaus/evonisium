@@ -17,6 +17,7 @@
 
 pub mod agents;
 pub mod bench;
+pub mod learning;
 pub mod sample;
 pub mod traits;
 pub mod zones;

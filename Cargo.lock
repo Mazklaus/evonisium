@@ -87,6 +87,7 @@ name = "evo-agents"
 version = "0.1.0"
 dependencies = [
  "evo-core",
+ "evo-culture",
  "evo-genetics",
  "evo-life",
  "evo-planet",
@@ -103,6 +104,18 @@ dependencies = [
  "libm",
  "rand",
  "rand_chacha",
+ "serde",
+]
+
+[[package]]
+name = "evo-culture"
+version = "0.1.0"
+dependencies = [
+ "evo-core",
+ "libm",
+ "rand",
+ "rand_distr",
+ "rayon",
  "serde",
 ]
 
@@ -138,6 +151,7 @@ dependencies = [
  "evo-agents",
  "evo-core",
  "evo-engine",
+ "evo-genetics",
  "evo-life",
  "evo-morph",
  "evo-planet",
