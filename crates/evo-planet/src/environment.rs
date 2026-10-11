@@ -478,6 +478,7 @@ impl Planet {
             area_m2: self.params.surface_area(),
             biotic_weathering: 1.0,
             land_phosphorus_routed: 0.0,
+            land_burial: 0.0,
         }
     }
 

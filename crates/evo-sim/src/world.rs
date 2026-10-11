@@ -429,8 +429,20 @@ impl World {
             if env.is_ocean || env.dry_area_m2 <= 0.0 {
                 continue;
             }
-            let land: f64 = pops.iter().filter(|p| p.phenotype.is_terrestrial() && p.phenotype.phototroph).map(|p| p.biomass).sum();
-            covered += env.dry_area_m2 * -(-land / (b0 * env.dry_area_m2)).dexp_m1();
+            let plants = pops.iter().filter(|p| p.phenotype.is_terrestrial() && p.phenotype.phototroph);
+            let (mut land, mut effect) = (0.0, 0.0);
+            for p in plants {
+                // Les racines des corps à plusieurs types de cellules ; les
+                // croûtes microbiennes n'altèrent qu'un peu.
+                let w = if p.phenotype.cell_types() >= 2 { 1.0 } else { self.planet.params.biotic_weathering_microbial };
+                land += p.biomass;
+                effect += w * p.biomass;
+            }
+            if land <= 0.0 {
+                total += env.dry_area_m2;
+                continue;
+            }
+            covered += env.dry_area_m2 * -(-land / (b0 * env.dry_area_m2)).dexp_m1() * effect / land;
             total += env.dry_area_m2;
         }
         let cover = if total > 0.0 { covered / total } else { 0.0 };
@@ -1083,6 +1095,7 @@ impl World {
             extinctions: u64,
             redox_correction: f64,
             soil_phosphorus: f64,
+            land_burial: f64,
         }
         let zero = || CellEco {
             exact: [0.0; WATER_POOL_COUNT],
@@ -1091,6 +1104,7 @@ impl World {
             extinctions: 0,
             redox_correction: 0.0,
             soil_phosphorus: 0.0,
+            land_burial: 0.0,
         };
         let total = self
             .communities
@@ -1114,6 +1128,12 @@ impl World {
                         let o = substep_with(pops, &caps, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
                         r.oxygen += o.oxygen;
                         r.soil_phosphorus += o.soil_phosphorus;
+                        r.land_burial += o.land_burial;
+                        // Échanges de la terre ferme avec l'air : ils sortent de
+                        // la couche vers les réservoirs comme ceux de l'eau.
+                        for i in 0..WATER_POOL_COUNT {
+                            r.exact[i] += o.land_air[i];
+                        }
                         r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
                         r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
                     }
@@ -1160,6 +1180,7 @@ impl World {
                 a.extinctions += b.extinctions;
                 a.redox_correction += b.redox_correction;
                 a.soil_phosphorus += b.soil_phosphorus;
+                a.land_burial += b.land_burial;
                 a
             });
         self.stats.local_extinctions += total.extinctions;
@@ -1185,6 +1206,10 @@ impl World {
         let mut ctx = self.planet.box_context(years);
         ctx.biotic_weathering = biotic;
         ctx.land_phosphorus_routed = routed;
+        // Litière enfouie : celle de l'écologie rapide, puis la même chaque
+        // année pour le reste du pas.
+        self.planet.reservoirs.organic_c += total.land_burial;
+        ctx.land_burial = total.land_burial / t_eco;
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le

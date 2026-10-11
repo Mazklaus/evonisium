@@ -129,6 +129,9 @@ pub struct PlanetParams {
     /// couverte de vie (racines, acides organiques, sols) : un facteur 4 à 7
     /// selon GEOCARB et COPSE (Berner, 2006 ; Lenton et coll., 2016).
     pub biotic_weathering_max: f64,
+    /// Part de cette accélération qu'apportent les croûtes microbiennes, sans
+    /// racines (les corps à plusieurs types de cellules l'apportent entière).
+    pub biotic_weathering_microbial: f64,
     /// Part du phosphore de l'altération des terres libérée dans les sols de
     /// la terre ferme (apatite des roches altérées sur place), avant que les
     /// eaux ne l'emportent vers l'océan ; le reste y arrive directement par
@@ -358,6 +361,7 @@ impl PlanetParams {
             gypsum_burial_years: 30e6,
             potential_evaporation_mm: 1000.0,
             biotic_weathering_max: 4.0,
+            biotic_weathering_microbial: 0.15,
             land_phosphorus_local_share: 0.5,
             soil_water_m: 0.05,
             soil_leaching_per_year: 5.0,

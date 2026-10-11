@@ -308,6 +308,8 @@ fn complexity(args: &[String]) {
     }
     let elapsed = start.elapsed().as_secs_f64();
     println!("{} simulés en {:.0} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
+    let s = world.summary();
+    println!("Bilans : carbone {:.1e}, phosphore {:.1e}, électrons {:.1e}", s.carbon_error, s.phosphorus_error, s.electron_error);
     if let Some(path) = opt(args, "--save") {
         world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
     }
@@ -326,7 +328,7 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
     let d = |now: f64, before: f64| (now - before) / dt;
     let l = &r.last;
     println!(
-        "    terre ferme : {:.2} % de la biomasse, altération ×{:.2} | O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
+        "    terre ferme : {:.2} % de la biomasse, altération ×{:.2} | O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | litière enfouie {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
         100.0 * world.communities.iter().flatten().filter(|p| p.phenotype.is_terrestrial()).map(|p| p.biomass).sum::<f64>()
             / world.communities.iter().flatten().map(|p| p.biomass).sum::<f64>().max(1e-300),
         world.biotic_weathering(),
@@ -338,6 +340,7 @@ fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget,
         d(b.seafloor_oxidation, previous.seafloor_oxidation),
         d(b.oxidative_weathering, previous.oxidative_weathering),
         d(b.sulfide, previous.sulfide),
+        d(b.land_burial, previous.land_burial),
         l.organic_export,
         l.organic_burial,
         100.0 * l.organic_burial / l.organic_export.max(1e-300),
@@ -367,6 +370,18 @@ fn trace_complex(world: &World) {
             if rows.len() > before {
                 cells += 1;
             }
+        }
+        if name == "terrestres" {
+            let possible = world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0 && !e.is_ocean).count();
+            let wet: Vec<f64> = world
+                .bio
+                .env
+                .iter()
+                .filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0 && !e.is_ocean)
+                .map(|e| e.moisture)
+                .collect();
+            let mean = wet.iter().sum::<f64>() / wet.len().max(1) as f64;
+            println!("      terre ferme habitable : {possible} cellules, humidité moyenne {mean:.2}");
         }
         if rows.is_empty() {
             println!("      {name} : aucun");

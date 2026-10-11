@@ -89,6 +89,9 @@ pub struct Physiology {
     /// Baisse de la croissance dans l'eau due à l'enveloppe protectrice, à
     /// résistance 1 (elle freine les échanges avec l'eau).
     pub cuticle_water_penalty: f64,
+    /// Part de la litière de la terre ferme enfouie (sédiments des deltas,
+    /// tourbes), le reste étant décomposé dans le sol.
+    pub land_burial_share: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
     /// Baisse relative du taux de croissance maximal par gène : répliquer un
@@ -198,6 +201,7 @@ impl Default for Physiology {
             terrestrial_tolerance: 0.5,
             desiccation_mortality: 200.0,
             cuticle_water_penalty: 0.5,
+            land_burial_share: 0.003,
             max_growth: 6000.0,
             replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,
@@ -611,7 +615,10 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     // l'eau, l'enveloppe protectrice freine les échanges.
     let (birth, desiccation) = if cond.on_land {
         if cond.has_land {
-            (birth, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * cond.moisture.clamp(0.0, 1.0)))
+            // La vie terrestre ne croît que mouillée : une part du temps qui
+            // suit l'humidité du sol.
+            let wet = cond.moisture.clamp(0.0, 1.0);
+            (birth * wet, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
         } else {
             (0.0, physio.desiccation_mortality)
         }

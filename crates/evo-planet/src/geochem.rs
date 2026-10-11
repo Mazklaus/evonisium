@@ -87,6 +87,9 @@ pub struct OxygenBudget {
     pub sulfide: f64,
     /// Oxydation de la croûte océanique jeune par l'eau de mer (étape 3).
     pub seafloor_oxidation: f64,
+    /// O₂ laissé par la litière de la terre ferme enfouie (source, étape 5).
+    #[serde(default)]
+    pub land_burial: f64,
 }
 
 impl OxygenBudget {
@@ -173,6 +176,9 @@ pub struct BoxContext {
     /// cellules de la terre ferme, mol·an⁻¹ : il rejoint l'océan profond par
     /// les eaux de ces cellules au lieu d'y entrer d'un coup.
     pub land_phosphorus_routed: f64,
+    /// Carbone de la litière de la terre ferme enfoui, mol·an⁻¹ : pris au CO₂
+    /// de l'air par la photosynthèse, il laisse son O₂ (étape 5).
+    pub land_burial: f64,
 }
 
 impl GlobalReservoirs {
@@ -627,6 +633,13 @@ impl GlobalReservoirs {
             self.carbonate_c += w;
             acc.weathering_co2 += w;
             let p_in = (land + params.seafloor_phosphorus_share * seafloor) * h * params.weathering_phosphorus_ratio;
+            // Litière enfouie (tourbes, deltas) : sans phosphore, il reste au
+            // sol.
+            let lb = (ctx.land_burial.max(0.0) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize].max(0.0));
+            self.atmosphere[Gas::Co2 as usize] -= lb;
+            self.atmosphere[Gas::O2 as usize] += lb;
+            self.organic_c += lb;
+            self.oxygen.land_burial += lb;
             // La part livrée aux sols arrive par les couches des cellules.
             let p_in = p_in - ctx.land_phosphorus_routed * h;
             self.deep_po4 += p_in;
@@ -846,6 +859,7 @@ mod tests {
             area_m2: params.surface_area(),
             biotic_weathering: 1.0,
             land_phosphorus_routed: 0.0,
+            land_burial: 0.0,
         }
     }
 
