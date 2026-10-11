@@ -213,6 +213,9 @@ dependencies = [
 [[package]]
 name = "evo-son"
 version = "0.1.0"
+dependencies = [
+ "evo-culture",
+]
 
 [[package]]
 name = "evo-view"

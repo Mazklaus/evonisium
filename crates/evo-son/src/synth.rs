@@ -153,6 +153,8 @@ pub enum Kind {
     Burst { filt: Biquad, kind: FilterKind, f0: f32, f1: f32, q: f32, att: f32, len: f32, brown: Option<Brown> },
     /// Coup sourd : sinus dont la hauteur tombe.
     Thump { f0: f32, dec: f32, phase: f32 },
+    /// Voix parlée ou chantée d'un peuple.
+    Gosier(Box<crate::peuples::Gosier>),
 }
 
 pub struct Voice {
@@ -268,6 +270,7 @@ impl Voice {
                 *phase = (*phase + f * dt).fract();
                 (TAU * *phase).sin() * (-t * 5.0 / *dec).exp()
             }
+            Kind::Gosier(g) => g.next(rng, dt)?,
         };
         Some(s * self.gain)
     }
