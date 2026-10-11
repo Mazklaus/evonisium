@@ -107,6 +107,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "evo-culture"
+version = "0.1.0"
+dependencies = [
+ "evo-core",
+ "libm",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "serde",
+]
+
+[[package]]
 name = "evo-engine"
 version = "0.1.0"
 dependencies = [
