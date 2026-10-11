@@ -428,6 +428,9 @@ pub fn substep_with(
             let buried = litter * physio.land_burial_share;
             let respired = litter - buried;
             out.land_burial += buried;
+            // En régime établi, les morts valent les naissances : l'excès
+            // d'une hécatombe passagère n'est pas une litière durable.
+            out.land_burial_steady += physio.land_burial_share * (litter - deaths + deaths.min(births));
             put(land, chem, &mut out.land_air, volume, WaterPool::O2, -respired * oxic_soil);
             put(land, chem, &mut out.land_air, volume, WaterPool::Dic, respired * (oxic_soil + 0.5 * (1.0 - oxic_soil)));
             put(land, chem, &mut out.land_air, volume, WaterPool::Ch4, 0.5 * respired * (1.0 - oxic_soil));
@@ -477,6 +480,9 @@ pub struct SubstepOutput {
     /// (positif : rendu à l'air), et carbone de sa litière enfoui.
     pub land_air: [f64; WATER_POOL_COUNT],
     pub land_burial: f64,
+    /// Même litière enfouie, réduite au régime établi (prolongée sur le
+    /// reste du pas).
+    pub land_burial_steady: f64,
 }
 
 #[cfg(test)]

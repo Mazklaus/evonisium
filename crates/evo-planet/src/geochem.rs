@@ -628,7 +628,7 @@ impl GlobalReservoirs {
                 * ctx.activity
                 * co2_factor.dpowf(0.23)
                 * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.seafloor_weathering_activation_k).dexp();
-            let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize]);
+            let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize].max(0.0));
             self.atmosphere[Gas::Co2 as usize] -= w;
             self.carbonate_c += w;
             acc.weathering_co2 += w;

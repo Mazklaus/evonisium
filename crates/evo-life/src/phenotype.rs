@@ -694,15 +694,6 @@ fn develop(
     signal: Option<f64>,
     physio: &Physiology,
 ) -> (Shape, f64, Vec<Zone>, Vec<Vec<bool>>) {
-    // Une matrice de soutien libère la taille du corps (étape 5) : elle
-    // n'est plus bornée que par la viabilité (masse portée, oxygène).
-    let (gain, cap) = if org.matrix > 0.0 && org.eukaryote {
-        ((org.adhesion - physio.clonal_adhesion).min(4.0), physio.max_body_cells)
-    } else {
-        ((org.adhesion - physio.clonal_adhesion).min(1.0), physio.max_colony_cells)
-    };
-    let doublings = 1.0 + physio.colony_doublings * gain;
-    let cells = doublings.dexp2().min(cap);
     let shape = if org.adhesion_nm < 500.0 {
         Shape::Filament
     } else if org.adhesion_nm > 800.0 {
@@ -710,6 +701,16 @@ fn develop(
     } else {
         Shape::Sphere
     };
+    // Une matrice de soutien libère la taille d'un corps massif ou d'une
+    // lame (étape 5) : elle n'est plus bornée que par la viabilité (masse
+    // portée, oxygène). Un filament reste une colonie.
+    let (gain, cap) = if org.matrix > 0.0 && org.eukaryote && shape != Shape::Filament {
+        ((org.adhesion - physio.clonal_adhesion).min(4.0), physio.max_body_cells)
+    } else {
+        ((org.adhesion - physio.clonal_adhesion).min(1.0), physio.max_colony_cells)
+    };
+    let doublings = 1.0 + physio.colony_doublings * gain;
+    let cells = doublings.dexp2().min(cap);
     // Géométrie : couches de cellules de la surface vers le centre
     // (poids, profondeur).
     let mut layout: Vec<(f64, f64)> = Vec::new();

@@ -1188,6 +1188,7 @@ impl World {
             redox_correction: f64,
             soil_phosphorus: f64,
             land_burial: f64,
+            land_burial_steady: f64,
         }
         let zero = || CellEco {
             exact: [0.0; WATER_POOL_COUNT],
@@ -1197,6 +1198,7 @@ impl World {
             redox_correction: 0.0,
             soil_phosphorus: 0.0,
             land_burial: 0.0,
+            land_burial_steady: 0.0,
         };
         let total = self
             .communities
@@ -1222,6 +1224,7 @@ impl World {
                         r.oxygen += o.oxygen;
                         r.soil_phosphorus += o.soil_phosphorus;
                         r.land_burial += o.land_burial;
+                        r.land_burial_steady += o.land_burial_steady;
                         // Échanges de la terre ferme avec l'air : ils sortent de
                         // la couche vers les réservoirs comme ceux de l'eau.
                         for i in 0..WATER_POOL_COUNT {
@@ -1276,6 +1279,7 @@ impl World {
                 a.redox_correction += b.redox_correction;
                 a.soil_phosphorus += b.soil_phosphorus;
                 a.land_burial += b.land_burial;
+                a.land_burial_steady += b.land_burial_steady;
                 a
             });
         self.stats.local_extinctions += total.extinctions;
@@ -1311,8 +1315,16 @@ impl World {
         r.organic_c += total.land_burial - burnt;
         r.atmosphere[Gas::Co2 as usize] += burnt;
         r.atmosphere[Gas::O2 as usize] -= burnt;
-        ctx.land_burial = total.land_burial * fire / t_eco;
+        ctx.land_burial = total.land_burial_steady * fire / t_eco;
+        let debug_co2 = std::env::var_os("EVO_DEBUG_CO2").is_some();
+        let co2_report = |stage: &str, r: &evo_planet::geochem::GlobalReservoirs| {
+            if debug_co2 && r.atmosphere[Gas::Co2 as usize] < 0.0 {
+                eprintln!("CO2 NÉGATIF {:.1} Ma après {stage} : {:.3e} mol", years / 1e6, r.atmosphere[Gas::Co2 as usize]);
+            }
+        };
+        co2_report("litière", &self.planet.reservoirs);
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
+        co2_report("écologie", &self.planet.reservoirs);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le
         // pas, alors que l'atmosphère qu'ils modifient change la vie qui les
@@ -1334,6 +1346,7 @@ impl World {
         // alimentait est freiné avec lui, à bilan d'électrons exact. Le
         // pouvoir oxydant ainsi déplacé est compté.
         let (moved, unpaired) = self.planet.reservoirs.integrate(&self.planet.params, &ctx, &rates, rest, &mut self.flux);
+        co2_report("couches", &self.planet.reservoirs);
         self.stats.redox_throttled += moved;
         self.stats.redox_unpaired += unpaired;
         if debug_rates() {
