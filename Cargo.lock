@@ -151,6 +151,7 @@ dependencies = [
  "evo-agents",
  "evo-core",
  "evo-engine",
+ "evo-genetics",
  "evo-life",
  "evo-morph",
  "evo-planet",
