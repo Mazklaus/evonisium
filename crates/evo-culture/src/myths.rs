@@ -155,7 +155,11 @@ pub fn generate<R: Rng>(
         Some(r) => format!("{text} Il ne faut plus toucher {}.", r.label()),
         None => text,
     };
-    let effects = Effects { cohesion: rng.random_range(0.02..0.08), cooperation: rng.random_range(0.0..0.03), legitimacy: rng.random_range(0.0..0.05) }
-        .bounded();
+    let effects = Effects {
+        cohesion: rng.random_range(0.02..0.08),
+        cooperation: rng.random_range(0.0..0.03),
+        legitimacy: rng.random_range(0.0..0.05),
+    }
+    .bounded();
     Myth { id, people, species, cell, year, phenomenon, intervention, theme, figure, title, text, effects, taboo }
 }

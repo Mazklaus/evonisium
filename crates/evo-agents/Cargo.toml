@@ -12,6 +12,7 @@ evo-planet.workspace = true
 evo-genetics.workspace = true
 evo-life.workspace = true
 evo-sim.workspace = true
+evo-culture.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
 libm.workspace = true

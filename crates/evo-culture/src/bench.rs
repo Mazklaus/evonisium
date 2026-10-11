@@ -10,7 +10,17 @@ use crate::world::CultureWorld;
 /// `link`. Le premier groupe fonde le peuple ; les autres en descendent, de
 /// proche en proche. Renvoie les cellules.
 #[allow(clippy::too_many_arguments)]
-pub fn grid(world: &mut CultureWorld, species: u32, cognition: Cognition, first: u32, w: u32, h: u32, population: f64, link: f64, ctx: Context) -> Vec<u32> {
+pub fn grid(
+    world: &mut CultureWorld,
+    species: u32,
+    cognition: Cognition,
+    first: u32,
+    w: u32,
+    h: u32,
+    population: f64,
+    link: f64,
+    ctx: Context,
+) -> Vec<u32> {
     if world.species(species).is_none() {
         world.add_species(species, cognition);
     }

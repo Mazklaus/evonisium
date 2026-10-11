@@ -87,6 +87,7 @@ name = "evo-agents"
 version = "0.1.0"
 dependencies = [
  "evo-core",
+ "evo-culture",
  "evo-genetics",
  "evo-life",
  "evo-planet",

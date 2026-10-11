@@ -401,7 +401,8 @@ impl CultureWorld {
         match self.species.binary_search_by_key(&id, |s| s.id) {
             Ok(i) => {
                 let old = &self.species[i];
-                self.species[i] = Species { gain: old.gain, positive_steps: old.positive_steps, historical_since: old.historical_since, ..s };
+                self.species[i] =
+                    Species { gain: old.gain, positive_steps: old.positive_steps, historical_since: old.historical_since, ..s };
             }
             Err(i) => self.species.insert(i, s),
         }
@@ -648,7 +649,17 @@ impl CultureWorld {
                     e.weight += w;
                     e.mastery = e.mastery.max(s.mastery);
                 }
-                _ => out.push(Import { id: s.id, pressure: p, freq: s.freq, weight: w, mastery: s.mastery, people, best: p, appeal: s.appeal, niche: s.niche }),
+                _ => out.push(Import {
+                    id: s.id,
+                    pressure: p,
+                    freq: s.freq,
+                    weight: w,
+                    mastery: s.mastery,
+                    people,
+                    best: p,
+                    appeal: s.appeal,
+                    niche: s.niche,
+                }),
             }
         }
         out
@@ -719,7 +730,8 @@ impl CultureWorld {
         let mut traits: Vec<Slot> = Vec::with_capacity(grp.traits.len() + 2);
         let mut lost = 0u64;
         for s in &grp.traits {
-            let (boost, floor_one) = if boosts.is_empty() { (1.0, false) } else { boosts.get(&(cell, sid, s.id)).copied().unwrap_or((1.0, false)) };
+            let (boost, floor_one) =
+                if boosts.is_empty() { (1.0, false) } else { boosts.get(&(cell, sid, s.id)).copied().unwrap_or((1.0, false)) };
             let niche = s.niche();
             // Les traits d'une même niche se partagent les apprenants.
             let room = niche.map(|k| (1.0 - (taken_of(k) - s.freq)).clamp(0.0, 1.0)).unwrap_or(1.0);
@@ -1133,7 +1145,9 @@ impl CultureWorld {
             next.retain(|s| s.niche().is_none_or(|k| best[&k].2 == s.id));
             next.sort_by_key(|s| s.id);
             if next.len() > MAX_TRAITS {
-                next.sort_by(|a, b| (a.id >= FIRST_GENERATED).cmp(&(b.id >= FIRST_GENERATED)).then(b.freq.total_cmp(&a.freq)).then(a.id.cmp(&b.id)));
+                next.sort_by(|a, b| {
+                    (a.id >= FIRST_GENERATED).cmp(&(b.id >= FIRST_GENERATED)).then(b.freq.total_cmp(&a.freq)).then(a.id.cmp(&b.id))
+                });
                 next.truncate(MAX_TRAITS);
                 next.sort_by_key(|s| s.id);
             }
@@ -1157,8 +1171,8 @@ impl CultureWorld {
             self.groups[g].lexicon = lex;
         }
         let mut core: BTreeMap<usize, usize> = BTreeMap::new();
-        for g in 0..self.groups.len() {
-            let c = core.entry(comp[g]).or_insert(g);
+        for (g, &k) in comp.iter().enumerate() {
+            let c = core.entry(k).or_insert(g);
             if self.groups[g].population > self.groups[*c].population {
                 *c = g;
             }
@@ -1192,7 +1206,13 @@ impl CultureWorld {
                 let name = self.peoples[people as usize].name.clone();
                 let ph = self.phonology_of(g);
                 let m = myths::generate(&mut rng, id, people, &name, grp.species, cell, self.year, phenomenon, intervention, &ph);
-                let d = Generated { kind: TraitKind::Myth(id), name: m.title.clone(), effects: m.effects, appeal: 1.2, topic: phenomenon as u8 };
+                let d = Generated {
+                    kind: TraitKind::Myth(id),
+                    name: m.title.clone(),
+                    effects: m.effects,
+                    appeal: 1.2,
+                    topic: phenomenon as u8,
+                };
                 let tid = self.register(d, g);
                 // Tout le groupe a vu le phénomène : le mythe part répandu.
                 let slot = self.slot_for(tid, 0.5, 1.0, self.year);
@@ -1205,7 +1225,15 @@ impl CultureWorld {
                 None
             };
             let grp = &self.groups[g];
-            self.unexplained.push(Unexplained { year: self.year, cell, species: grp.species, people: grp.people, phenomenon, intervention, myth });
+            self.unexplained.push(Unexplained {
+                year: self.year,
+                cell,
+                species: grp.species,
+                people: grp.people,
+                phenomenon,
+                intervention,
+                myth,
+            });
         }
         born
     }
@@ -1245,7 +1273,7 @@ impl CultureWorld {
         }
         // Traits générés sans porteurs : retirés du registre (les mythes
         // restent dans leur propre registre).
-        if self.tick % 64 == 0 {
+        if self.tick.is_multiple_of(64) {
             let mut carried = std::collections::BTreeSet::new();
             for g in &self.groups {
                 for s in &g.traits {

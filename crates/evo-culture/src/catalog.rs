@@ -329,10 +329,7 @@ pub static CATALOG: [Technique; 16] = [
         prerequisites: &[F::Cord, F::BoneTool],
         combustion: false,
         benefit: 0.3,
-        variants: &[
-            v(R::Standard, "filet et hameçon", 400.0, 0.7, 0.6, 0.7, true),
-            v(R::Aquatic, "filet", 390.0, 0.65, 0.6, 0.7, true),
-        ],
+        variants: &[v(R::Standard, "filet et hameçon", 400.0, 0.7, 0.6, 0.7, true), v(R::Aquatic, "filet", 390.0, 0.65, 0.6, 0.7, true)],
         reference: "pêche des poissons à écailles abandonnée en Tasmanie",
     },
 ];

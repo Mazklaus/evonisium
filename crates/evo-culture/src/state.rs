@@ -303,7 +303,14 @@ impl CulturalState {
             unexplained: w
                 .unexplained
                 .iter()
-                .map(|u| UnexplainedView { year: u.year, cell: u.cell, people: u.people, phenomenon: u.phenomenon, intervention: u.intervention, myth: u.myth })
+                .map(|u| UnexplainedView {
+                    year: u.year,
+                    cell: u.cell,
+                    people: u.people,
+                    phenomenon: u.phenomenon,
+                    intervention: u.intervention,
+                    myth: u.myth,
+                })
                 .collect(),
         }
     }

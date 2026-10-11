@@ -40,5 +40,10 @@ fn main() {
         st.notables.iter().filter(|n| n.alive).count(),
         st.myths.len()
     );
-    println!("{years} ans en {dt:.2} s : {:.0} années par seconde ({} fils) ; publication {:.1} ms", years as f64 / dt, rayon::current_num_threads(), publish * 1e3);
+    println!(
+        "{years} ans en {dt:.2} s : {:.0} années par seconde ({} fils) ; publication {:.1} ms",
+        years as f64 / dt,
+        rayon::current_num_threads(),
+        publish * 1e3
+    );
 }

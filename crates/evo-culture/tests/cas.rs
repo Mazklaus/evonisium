@@ -101,7 +101,10 @@ fn koshima_diffusion() {
 /// transmises au moins dix générations ; elles diffèrent selon la lignée.
 #[test]
 fn traditions_in_several_lineages() {
-    for (world, species) in [("terre", vec![(3, presets::chimpanzee(), Organ::Hand, Milieu::Land), (4, presets::crow(), Organ::Beak, Milieu::Land)]), ("mer", vec![(5, presets::dolphin(), Organ::Mouth, Milieu::Water)])] {
+    for (world, species) in [
+        ("terre", vec![(3, presets::chimpanzee(), Organ::Hand, Milieu::Land), (4, presets::crow(), Organ::Beak, Milieu::Land)]),
+        ("mer", vec![(5, presets::dolphin(), Organ::Mouth, Milieu::Water)]),
+    ] {
         let mut w = CultureWorld::new(7);
         for (i, &(id, cog, organ, milieu)) in species.iter().enumerate() {
             let ctx = Context { milieu, o2_percent: 21.0, organ };
