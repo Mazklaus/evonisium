@@ -464,6 +464,11 @@ impl Son {
         std::mem::take(&mut self.annonces)
     }
 
+    /// Manière de célébrer du chant en cours, s'il y en a un.
+    pub fn chant(&self) -> Option<peuples::Forme> {
+        self.chant.as_ref().map(|c| c.forme)
+    }
+
     pub fn voices(&self) -> usize {
         self.voices.len()
     }
