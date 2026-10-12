@@ -161,6 +161,26 @@ pub enum Kind {
     /// Rhombe : planchette qui tourne au bout d'une corde, vrombissement
     /// dont la hauteur monte et descend à chaque tour.
     Rhombe { filt: Biquad, f: f32, tour: f32, ph: f32, dur: f32 },
+    /// Appel animal : un ton (avec ses harmoniques) ou un bruit filtré qui
+    /// glisse de `f0` à `f1`, haché en impulsions (`puls` par seconde, plus
+    /// ou moins sèches selon `net`). Couvre trilles d'insectes, bourdons
+    /// d'ailes, croassements, grognements de poissons, clics et sifflets.
+    Trille(Box<Trille>),
+}
+
+/// Paramètres et état d'un appel animal (`Kind::Trille`).
+pub struct Trille {
+    pub f0: f32,
+    pub f1: f32,
+    pub puls: f32,
+    pub net: f32,
+    pub bruit: f32,
+    pub harm: f32,
+    pub dur: f32,
+    pub att: f32,
+    phase: f32,
+    pph: f32,
+    filt: Biquad,
 }
 
 pub struct Voice {
@@ -277,6 +297,39 @@ impl Voice {
                 (TAU * *phase).sin() * (-t * 5.0 / *dec).exp()
             }
             Kind::Gosier(g) => g.next(rng, dt)?,
+            Kind::Trille(tr) => {
+                let tr = &mut **tr;
+                if t > tr.dur {
+                    return None;
+                }
+                let f = tr.f0 + (tr.f1 - tr.f0) * (t / tr.dur);
+                tr.phase = (tr.phase + f * dt).fract();
+                let p = TAU * tr.phase;
+                let ton = if tr.bruit < 1.0 { p.sin() + tr.harm * (0.5 * (2.0 * p).sin() + 0.3 * (3.0 * p).sin()) } else { 0.0 };
+                let bruit = if tr.bruit > 0.0 { tr.filt.run(rng.bipolar()) * 2.5 } else { 0.0 };
+                let x = ton * (1.0 - tr.bruit) + bruit * tr.bruit;
+                let am = if tr.puls > 0.0 {
+                    tr.pph = (tr.pph + tr.puls * dt).fract();
+                    // Montée brève puis chute : sans saut, donc sans clic.
+                    let a = 0.02 + 0.3 * (1.0 - tr.net);
+                    if tr.pph < a {
+                        tr.pph / a
+                    } else {
+                        ((1.0 - tr.pph) / (1.0 - a)).powf(1.0 + 14.0 * tr.net)
+                    }
+                } else {
+                    1.0
+                };
+                let rel = (tr.dur * 0.25).min(0.06);
+                let env = if t < tr.att {
+                    t / tr.att
+                } else if t > tr.dur - rel {
+                    (tr.dur - t) / rel
+                } else {
+                    1.0
+                };
+                x * am * env
+            }
             Kind::Flute { f, phase, dur, att, rauque, souffle, vph } => {
                 if t > *dur {
                     return None;
@@ -367,6 +420,12 @@ impl Make {
             souffle: Biquad::new(FilterKind::BandPass, f * 2.0, 2.5, self.rate),
             vph: 0.0,
         }
+    }
+    /// Appel animal ; voir `Kind::Trille`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn trille(&self, f0: f32, f1: f32, puls: f32, net: f32, bruit: f32, harm: f32, dur: f32, att: f32) -> Kind {
+        let filt = Biquad::new(FilterKind::BandPass, f0.clamp(40.0, self.rate * 0.4), 3.0, self.rate);
+        Kind::Trille(Box::new(Trille { f0, f1, puls, net, bruit, harm, dur, att: att.max(0.001), phase: 0.0, pph: 0.0, filt }))
     }
     pub fn rhombe(&self, f: f32, tour: f32, dur: f32) -> Kind {
         Kind::Rhombe { filt: Biquad::new(FilterKind::BandPass, f, 6.0, self.rate), f, tour, ph: 0.0, dur }

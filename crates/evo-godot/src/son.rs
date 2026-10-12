@@ -9,6 +9,7 @@
 //! dédié la lance phrase par phrase, en avance sur la lecture, et passe le
 //! son au mixage. Sans voix installée, rien n'est dit.
 
+use crate::ground::EvoGround;
 use crate::session::EvoSession;
 use evo_son::{recit, Annonce, Bruit, Monde, Ordre, Son, Vue};
 use godot::classes::{AudioServer, AudioStreamGenerator, AudioStreamGeneratorPlayback, AudioStreamPlayer, INode, Node};
@@ -481,6 +482,75 @@ impl EvoSon {
         self.last = None;
         self.taire();
         self.send(Ordre::Peuple(None));
+        self.send(Ordre::Faune(None));
+    }
+
+    /// Voix des espèces de la scène au sol (livraison 2) : chaque espèce
+    /// simulée qui a un organe sonore appelle à son rythme, d'autant plus
+    /// souvent qu'elle est nombreuse dans la scène. Les figurants se taisent.
+    #[func]
+    fn faune(&mut self, ground: Gd<EvoGround>) {
+        let organes = {
+            let g = ground.bind();
+            let Some(crowd) = g.crowd() else { return };
+            let mut nombre = vec![0u32; crowd.species.len()];
+            for i in &crowd.individuals {
+                if i.scale > 0.0 {
+                    if let Some(n) = nombre.get_mut(i.species as usize) {
+                        *n += 1;
+                    }
+                }
+            }
+            crowd.species.iter().zip(nombre).filter_map(|(sp, n)| Some((organe(&sp.sound?), n))).filter(|(_, n)| *n > 0).collect::<Vec<_>>()
+        };
+        self.send(Ordre::Faune(Some(organes)));
+    }
+
+    /// Plus aucune espèce au sol.
+    #[func]
+    fn sans_faune(&mut self) {
+        self.send(Ordre::Faune(None));
+    }
+
+    /// L'espèce `k` de la scène appelle tout près (quand la caméra la suit).
+    #[func]
+    fn cri(&mut self, ground: Gd<EvoGround>, k: i64) {
+        let o = {
+            let g = ground.bind();
+            g.crowd().and_then(|c| c.species.get(k.max(0) as usize)).and_then(|s| s.sound).map(|s| organe(&s))
+        };
+        if let Some(o) = o {
+            self.send(Ordre::Cri(o));
+        }
+    }
+}
+
+/// Organe sonore du moteur, dans le vocabulaire du son.
+fn organe(s: &evo_life::body::SoundOrgan) -> evo_son::faune::Organe {
+    use evo_life::body::{CallTime, SoundKind};
+    use evo_son::faune::{Genre, Heure};
+    evo_son::faune::Organe {
+        genre: match s.kind {
+            SoundKind::Stridulation => Genre::Stridulation,
+            SoundKind::Tymbal => Genre::Tymbale,
+            SoundKind::Wings => Genre::Ailes,
+            SoundKind::Syrinx => Genre::Syrinx,
+            SoundKind::Larynx => Genre::Larynx,
+            SoundKind::Sac => Genre::Sac,
+            SoundKind::Percussion => Genre::Percussion,
+            SoundKind::SwimBladder => Genre::Vessie,
+            SoundKind::Clicks => Genre::Clics,
+        },
+        taille_m: s.size_m as f32,
+        puissance: s.power as f32,
+        complexite: s.complexity as f32,
+        choeur: s.chorus,
+        heure: match s.time {
+            CallTime::Day => Heure::Jour,
+            CallTime::Dusk => Heure::Crepuscule,
+            CallTime::Night => Heure::Nuit,
+        },
+        graine: s.seed,
     }
 }
 

@@ -106,7 +106,7 @@ impl EvoGround {
         });
     }
 
-    fn crowd(&self) -> Option<&Crowd> {
+    pub(crate) fn crowd(&self) -> Option<&Crowd> {
         self.built.as_ref().map(|b| &b.crowd)
     }
 }

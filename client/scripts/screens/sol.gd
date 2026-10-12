@@ -153,8 +153,18 @@ func _people_sound(on: bool) -> void:
 	else:
 		Son.son.sans_peuple()
 
+## Les voix des espèces de la scène (fil Design sonore, `EvoSon.faune`).
+func _fauna_sound(on: bool) -> void:
+	if not is_instance_valid(Son) or Son.son == null:
+		return
+	if on:
+		Son.son.faune(ground)
+	else:
+		Son.son.sans_faune()
+
 func _exit_tree() -> void:
 	_people_sound(false)
+	_fauna_sound(false)
 
 func _setup_scene() -> void:
 	ready_done = true
@@ -241,6 +251,7 @@ func _setup_scene() -> void:
 	_build_camp()
 	if not camp.is_empty():
 		_people_sound(true)
+	_fauna_sound(true)
 	# Actions du lexique.
 	keys = [""]
 	actions_box.add_item(App.t("ground_free_behaviour"))
@@ -334,6 +345,8 @@ func follow_species(k: int) -> void:
 		var d: Dictionary = ground.individual(followed)
 		target_distance = clampf(float(d["size_m"]) * 4.5, 0.3, 300.0)
 		distance = target_distance
+		if is_instance_valid(Son) and Son.son != null:
+			Son.son.cri(ground, k)
 	follow_button.text = App.t("ground_free")
 
 func _follow_next() -> void:
