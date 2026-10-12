@@ -572,6 +572,8 @@ pub struct SceneSpecies {
     pub kind: Option<BenchKind>,
     /// Espèce dont les individus sont des agents du moteur (`evo-agents`).
     pub engine: bool,
+    /// Organe sonore de l'espèce simulée (étape 5), lu par le son.
+    pub sound: Option<evo_life::body::SoundOrgan>,
 }
 
 impl SceneSpecies {
@@ -589,7 +591,22 @@ impl SceneSpecies {
             .collect();
         let rig = rig(&plan, &bones, aquatic);
         let foot = (centre[1] - lo[1]) * k;
-        SceneSpecies { name, signature, plan, body, rig, centre, size_m, foot, aquatic, predator: false, social: 0.5, kind, engine: false }
+        SceneSpecies {
+            name,
+            signature,
+            plan,
+            body,
+            rig,
+            centre,
+            size_m,
+            foot,
+            aquatic,
+            predator: false,
+            social: 0.5,
+            kind,
+            engine: false,
+            sound: None,
+        }
     }
 
     /// Nombre de nombres par os dans la texture des poses.
@@ -622,6 +639,7 @@ pub fn real_species(
         }
         let mut s = SceneSpecies::new(sv.name.clone(), Some(sv.signature), plan, probe.extent_m, aquatic, None);
         s.social = 0.8;
+        s.sound = sv.body_plan.as_deref().and_then(|p| p.modules.first()).and_then(|m| m.function.sound);
         out.push(s);
     }
     out
