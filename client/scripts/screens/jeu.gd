@@ -2,7 +2,8 @@ extends Control
 ## L'écran de la partie : le globe au centre, la barre du temps en haut, les
 ## calques à gauche, l'inspecteur à droite, la frise en bas, les alertes et
 ## le narrateur ; les fiches (espèce, arbre, chronique, interventions,
-## sauvegarde, réglages) s'ouvrent au centre.
+## sauvegarde, réglages) s'ouvrent au centre. Les fiches, les réglages et
+## l'inspecteur se déplacent en les tenant par leur titre.
 
 const BarreTemps := preload("res://scripts/ui/barre_temps.gd")
 const Frise := preload("res://scripts/ui/frise.gd")
@@ -22,8 +23,10 @@ const Strates := preload("res://scripts/ui/strates.gd")
 const Anatomie := preload("res://scripts/ui/anatomie.gd")
 const Comparateur := preload("res://scripts/ui/comparateur.gd")
 const Sol := preload("res://scripts/screens/sol.gd")
+const Lame := preload("res://scripts/screens/lame.gd")
 const Peuples := preload("res://scripts/ui/peuples.gd")
 const FichePeuple := preload("res://scripts/ui/fiche_peuple.gd")
+const Deplacable := preload("res://scripts/ui/deplacable.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -31,7 +34,7 @@ var calques: PanelContainer
 var inspecteur: PanelContainer
 var alertes: VBoxContainer
 var narrateur: PanelContainer
-var overlay: CenterContainer
+var overlay: Control
 var notice: Label
 var fiche: Control
 
@@ -52,6 +55,7 @@ var absence_events: Array = []
 var idle := 0.0
 var looked_years := -1.0
 var sol: Control
+var lame: Control
 
 func setup(params: Dictionary) -> void:
 	var g = App.globe
@@ -77,12 +81,15 @@ func setup(params: Dictionary) -> void:
 	calques.peoples_toggled.connect(_toggle_peoples)
 
 	inspecteur = Inspecteur.new()
-	inspecteur.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	inspecteur.offset_left = -392
-	inspecteur.offset_right = -10
-	inspecteur.offset_top = 96
-	inspecteur.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	var dock := func():
+		inspecteur.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		inspecteur.offset_left = -392
+		inspecteur.offset_right = -10
+		inspecteur.offset_top = 96
+		inspecteur.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	dock.call()
 	add_child(inspecteur)
+	Deplacable.attach(inspecteur, inspecteur.title_label, "inspecteur", dock)
 	inspecteur.species_requested.connect(open_species)
 	inspecteur.tool_requested.connect(open_tool)
 	inspecteur.people_requested.connect(open_people)
@@ -128,7 +135,7 @@ func setup(params: Dictionary) -> void:
 	notice.add_theme_color_override("font_color", Atlas.VERMILION)
 	add_child(notice)
 
-	overlay = CenterContainer.new()
+	overlay = Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(overlay)
@@ -443,6 +450,8 @@ func open_tool(tool: String, cell: int) -> void:
 	narrateur.tool_opened(tool)
 	if tool == "sol":
 		descend(cell)
+	elif tool == "lame":
+		open_slide(cell)
 	elif tool == "reseau":
 		var f = _open(Reseau.new())
 		f.open(cell)
@@ -463,6 +472,7 @@ func descend(cell: int) -> void:
 		return
 	App.globe.go_to_cell(cell, 1.03)
 	var s = Sol.new()
+	s.cell = cell
 	s.modulate.a = 0.0
 	add_child(s)
 	s.open(g, App.session.camp_at(cell) if App.globe.peoples_ready else {})
@@ -481,6 +491,36 @@ func ascend() -> void:
 	var tw := create_tween()
 	tw.tween_property(s, "modulate:a", 0.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.4)
 	tw.tween_callback(s.queue_free)
+
+## Lame de microscope en 3D : la goutte d'eau de la cellule se pose par-dessus
+## le globe ; les fiches d'espèce s'ouvrent au-dessus d'elle.
+func open_slide(cell: int) -> void:
+	if cell < 0 or lame != null or sol != null:
+		return
+	var sl = App.session.open_slide(cell)
+	if sl == null:
+		return
+	var l = Lame.new()
+	l.modulate.a = 0.0
+	add_child(l)
+	move_child(overlay, -1)
+	l.open(sl, cell)
+	l.closed.connect(close_slide)
+	l.species_requested.connect(open_species)
+	lame = l
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.4)
+
+func close_slide() -> void:
+	if lame == null:
+		return
+	var l := lame
+	lame = null
+	if fiche and is_instance_valid(fiche):
+		fiche.queue_free()
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 0.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.3)
+	tw.tween_callback(l.queue_free)
 
 func open_save() -> void:
 	_open(Sauvegarde.new())

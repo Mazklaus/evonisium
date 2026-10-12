@@ -2,7 +2,9 @@
 
 Feuille de route (document Vision, étape 5) : evo-morph au palier 2 avec des corps complets, un squelette automatique, une animation procédurale et des foules en imposteurs ; le zoom jusqu'à l'individu et une caméra de suivi ; la descente au sol vers une scène locale (globe, incrément G4) ; une animation par action du lexique commun (12 actions). Porte : suivre un individu au sol à 60 images/s avec au moins 1 000 individus animés et 100 000 imposteurs.
 
-Ce volet a été fait en parallèle du moteur (calibrage et cellules complexes), sans toucher à son code. Le moteur ne publie pas encore d'individus : **la scène est peuplée de figurants d'essai**, dont les corps viennent de plans de construction au format du moteur (`evo_life::BodyPlan`). L'écran le dit au joueur.
+Ce volet a été fait en parallèle du moteur (calibrage et cellules complexes), sans toucher à son code. Le moteur ne publiait pas encore d'individus : **la scène était peuplée de figurants d'essai**, dont les corps viennent de plans de construction au format du moteur (`evo_life::BodyPlan`).
+
+**Depuis le 12 octobre 2026, la descente d'une partie n'a plus de figurants** : seules les espèces vraies de la cellule dont le corps mesure au moins un millimètre y vivent, tirées de leur population par le moteur (crate `evo-agents`). Une cellule dont la vie est microscopique montre son paysage vide et renvoie à la loupe de l'inspecteur. Les figurants ne restent que dans les essais (`--porte5`, `EvoGround.bench`).
 
 **Verdict : porte franchie pour ce que ce conteneur peut vérifier ; les 60 images/s restent à mesurer sur une vraie carte graphique.** Le scénario `--porte5` passe de bout en bout et tourne dans l'intégration continue.
 

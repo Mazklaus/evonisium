@@ -18,7 +18,7 @@ var title_italic: FontFile
 var text_font: FontVariation
 var text_italic: FontVariation
 var text_bold: FontVariation
-var readable_font: FontFile
+var readable_font: Font
 var theme: Theme
 
 func _ready() -> void:
@@ -203,9 +203,9 @@ func _triangle_icon(c: Color, size: int) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 ## Titre à la plume (IM Fell English).
-func title(text: String, size: int = 30) -> Label:
+func title(s: String, size: int = 30) -> Label:
 	var l := Label.new()
-	l.text = text
+	l.text = s
 	l.add_theme_font_override("font", heading_font())
 	l.add_theme_font_size_override("font_size", int(round(size * App.text_scale())))
 	return l

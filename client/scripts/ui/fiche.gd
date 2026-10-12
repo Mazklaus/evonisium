@@ -1,7 +1,10 @@
 extends PanelContainer
 ## Fiche de l'Atlas : cartouche à filet d'encre, titre à la plume, bouton de
 ## fermeture. Les panneaux de la partie (espèce, arbre, chronique,
-## interventions, sauvegarde) en héritent.
+## interventions, sauvegarde) en héritent. Elles s'ouvrent au centre et se
+## déplacent en les tenant par leur titre.
+
+const Deplacable := preload("res://scripts/ui/deplacable.gd")
 
 signal closed
 
@@ -19,6 +22,8 @@ func _init() -> void:
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_label.clip_text = true
 	header.add_child(title_label)
+	var s: Script = get_script()
+	Deplacable.attach(self, title_label, s.resource_path.get_file().get_basename(), Deplacable.centre.bind(self))
 	var x := Atlas.button("×", close, App.t("close"))
 	x.add_theme_font_size_override("font_size", 22)
 	header.add_child(x)
