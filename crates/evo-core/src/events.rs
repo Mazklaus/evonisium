@@ -92,6 +92,18 @@ pub enum EventKind {
         order: u64,
         reason: Cow<'static, str>,
     },
+    /// Extinction de masse (étape 5) : le nombre de lignées vivantes perd
+    /// au moins 40 % de son maximum récent en peu de temps.
+    MassExtinction {
+        lost_share: f64,
+        lineages_before: u32,
+    },
+    /// Radiation (étape 5) : le nombre de lignées vivantes double au moins
+    /// en peu de temps.
+    Radiation {
+        gain: f64,
+        lineages: u32,
+    },
 }
 
 impl EventKind {
@@ -109,6 +121,8 @@ impl EventKind {
             EventKind::PlateReorganisation { .. } => "réorganisation des plaques",
             EventKind::OrderApplied { .. } => "ordre appliqué",
             EventKind::OrderRefused { .. } => "ordre refusé",
+            EventKind::MassExtinction { .. } => "extinction de masse",
+            EventKind::Radiation { .. } => "radiation",
         }
     }
 
@@ -132,6 +146,10 @@ impl EventKind {
             EventKind::PlateReorganisation { plates } => format!("Les plaques se réorganisent ({plates} plaques)."),
             EventKind::OrderApplied { label, .. } => format!("Ordre appliqué : {label}."),
             EventKind::OrderRefused { reason, .. } => format!("Ordre refusé : {reason}."),
+            EventKind::MassExtinction { lost_share, .. } => {
+                format!("Extinction de masse : {:.0} % des lignées disparaissent.", 100.0 * lost_share)
+            }
+            EventKind::Radiation { gain, .. } => format!("Radiation : le nombre de lignées est multiplié par {gain:.1}."),
         }
     }
 
@@ -149,6 +167,8 @@ impl EventKind {
             EventKind::PlateReorganisation { .. } => 0.3,
             EventKind::OrderApplied { .. } => 0.5,
             EventKind::OrderRefused { .. } => 0.3,
+            EventKind::MassExtinction { .. } => 0.9,
+            EventKind::Radiation { .. } => 0.6,
         }
     }
 }

@@ -329,7 +329,20 @@ pub struct Progress {
     /// ([`ANIMAL_STAGES`], étape 5) : date et événement.
     pub animal_years: [Option<f64>; ANIMAL_STAGE_COUNT],
     pub animal_events: [Option<u64>; ANIMAL_STAGE_COUNT],
+    /// Lignées vivantes à la fin des dernières fenêtres de 10 Ma (la plus
+    /// récente en dernier ; 0 : pas encore mesurée), fenêtre et niveau de la
+    /// grille du vivant de la dernière mesure, et épisodes en cours.
+    pub diversity: [u32; DIVERSITY_WINDOWS],
+    pub diversity_window: u64,
+    pub diversity_level: u32,
+    pub extinction_episode: bool,
+    pub radiation_episode: bool,
 }
+
+/// Extinctions de masse et radiations : fenêtres de mesure du nombre de
+/// lignées vivantes.
+pub const DIVERSITY_WINDOWS: usize = 6;
+pub const DIVERSITY_WINDOW_YEARS: f64 = 10e6;
 
 /// Étapes de la complexité suivies et signalées (chemin des « cellules
 /// complexes ») ; chacune est datée à sa première apparition sur la planète,
@@ -1654,6 +1667,52 @@ impl World {
         self.stats.occupied_cell_steps += occupied;
     }
 
+    /// Extinctions de masse et radiations (étape 5) : à la fin de chaque
+    /// fenêtre de 10 Ma, le nombre de lignées vivantes est comparé aux
+    /// fenêtres précédentes. Une chute d'au moins 40 % sous leur maximum est
+    /// une extinction de masse, un doublement au-dessus de leur minimum une
+    /// radiation (un épisode à la fois). Le changement de grille du vivant
+    /// multiplie les lignées sans rien dire de l'histoire : il remet la
+    /// mesure à zéro.
+    fn diversity_bookkeeping(&mut self, years: f64) {
+        let window = (years / DIVERSITY_WINDOW_YEARS) as u64;
+        let progress = &mut self.progress;
+        if window <= progress.diversity_window {
+            return;
+        }
+        progress.diversity_window = window;
+        let level = self.bio.grid.level;
+        if level != progress.diversity_level {
+            progress.diversity_level = level;
+            progress.diversity = [0; DIVERSITY_WINDOWS];
+        }
+        let living = self.lineages.living_count() as u32;
+        let previous: Vec<u32> = progress.diversity.iter().copied().filter(|&n| n > 0).collect();
+        progress.diversity.rotate_left(1);
+        progress.diversity[DIVERSITY_WINDOWS - 1] = living;
+        if previous.len() < 2 {
+            return;
+        }
+        let (max, min) = (previous.iter().copied().max().unwrap_or(0), previous.iter().copied().min().unwrap_or(0));
+        let now = f64::from(living);
+        if max >= 50 && now <= 0.6 * f64::from(max) {
+            if !progress.extinction_episode {
+                progress.extinction_episode = true;
+                self.events.push(years, None, EventKind::MassExtinction { lost_share: 1.0 - now / f64::from(max), lineages_before: max });
+            }
+        } else if now >= 0.8 * f64::from(max) {
+            progress.extinction_episode = false;
+        }
+        if living >= 50 && min > 0 && now >= 2.0 * f64::from(min) {
+            if !progress.radiation_episode {
+                progress.radiation_episode = true;
+                self.events.push(years, None, EventKind::Radiation { gain: now / f64::from(min), lineages: living });
+            }
+        } else if now < 1.5 * f64::from(min) {
+            progress.radiation_episode = false;
+        }
+    }
+
     fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>) {
         let years = self.years;
         // Lignées éteintes.
@@ -1665,6 +1724,7 @@ impl World {
         for id in clades {
             self.events.push(years, None, EventKind::LineageExtinct { lineage: id });
         }
+        self.diversity_bookkeeping(years);
 
         // Innovations : première apparition d'une étape sur la planète.
         let mut best: Option<(u8, usize, usize, GenomeChangeCause)> = None;
