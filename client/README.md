@@ -47,6 +47,9 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | F3 | Mesures de performance : images par seconde, pire image, vitesse tenue, postes les plus lourds ; tant que le cadre est ouvert, une ligne par seconde s'écrit dans `user://mesures/` (sous Windows `%APPDATA%\Godot\app_userdata\Evonisium\mesures`), que le bouton du cadre ouvre |
 | Glisser, molette, flèches, + et − | Tourner et zoomer le globe ; double clic : s'approcher d'un lieu |
 | Échap | Fermer la fiche ouverte |
+| Tenir le titre d'une fenêtre | Déplacer la fiche, les réglages ou l'inspecteur ; double clic sur le titre : la remettre à sa place |
+| Arbre du vivant | Molette : zoomer autour du pointeur ; tirer : déplacer ; double clic : s'approcher d'un clade ; clic sur une feuille : fiche de l'espèce ; « Vue d'ensemble » |
+| « Raconter » | Fiche d'espèce, inspecteur (la loupe) et scène au sol : le narrateur raconte ce qu'on regarde, même si la lecture automatique est décochée |
 
 ## Mesures de performance
 

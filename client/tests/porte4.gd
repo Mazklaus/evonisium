@@ -211,6 +211,30 @@ func _ground_only() -> void:
 	ok = ok and report["fiche_centree"]
 	_finish(ok)
 
+## Essai de l'arbre du vivant fractal : la partie court jusqu'à `fin` Ma,
+## puis l'arbre s'ouvre en vue d'ensemble et zoome sur un petit clade.
+func _tree_only() -> void:
+	App.session.set_rules_profile("aucun")
+	App.session.set_speed(1.0e7)
+	await _run_to(float(opts.get("fin", "300")) * 1.0e6)
+	var jeu = _screen()
+	jeu.open_tree()
+	await _wait(2.0)
+	var f = jeu.fiche
+	report["arbre_noeuds"] = f.count
+	report["arbre_vivantes"] = int(f.data.get("living", 0))
+	await _shot("arbre-ensemble")
+	# Un clade d'une dizaine de lignées, cadré de près.
+	var k := -1
+	for i in f.count:
+		if f.leaves[i] >= 6 and f.leaves[i] <= 14:
+			k = i
+	if k >= 0:
+		f._frame(k, false)
+		await _wait(0.5)
+		await _shot("arbre-clade")
+	_finish(f.count > 0 and k >= 0)
+
 ## Essai des corps simulés : la Terre tourne jusqu'à sa première colonie
 ## pluricellulaire, dont on ouvre la fiche, l'anatomie et le comparateur.
 func _colony_only() -> void:
@@ -418,6 +442,9 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "sol":
 		await _ground_only()
+		return
+	if opts.get("seul", "") == "arbre":
+		await _tree_only()
 		return
 	if opts.get("seul", "") == "colonie":
 		await _colony_only()

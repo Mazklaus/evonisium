@@ -20,6 +20,7 @@ pub mod culture;
 pub mod decor;
 pub mod foodweb;
 pub mod format;
+pub mod fractal;
 pub mod frame;
 pub mod ground;
 pub mod guide;
