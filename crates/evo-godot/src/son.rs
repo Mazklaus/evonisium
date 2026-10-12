@@ -24,8 +24,23 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 /// Durée du tampon de Godot et avance du fil de synthèse, en secondes.
+/// L'avance couvre un fil de synthèse privé de processeur un instant par le
+/// moteur (pas de 60 à 230 ms en fin de partie) ; elle retarde d'autant les
+/// bruits de l'interface, d'où une valeur modérée.
 const GODOT_BUFFER: f32 = 0.15;
-const AHEAD: f32 = 0.08;
+const AHEAD: f32 = 0.15;
+
+/// Donne au fil courant (la synthèse du son) une priorité au-dessus des
+/// fils du moteur, là où le système le permet sans droits particuliers.
+fn prioritaire() {
+    #[cfg(windows)]
+    // SAFETY : GetCurrentThread renvoie un pseudo-handle toujours valide
+    // pour le fil appelant ; SetThreadPriority n'a pas d'autre effet.
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL};
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    }
+}
 
 #[derive(Default)]
 struct Shared {
@@ -139,6 +154,7 @@ impl INode for EvoSon {
         self.worker = std::thread::Builder::new()
             .name("evo-son".into())
             .spawn(move || {
+                prioritaire();
                 let mut son = Son::new(rate, seed);
                 let mut chunk = vec![[0.0f32; 2]; 256];
                 while !shared.stop.load(Ordering::Relaxed) {
