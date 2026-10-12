@@ -348,7 +348,9 @@ pub fn common_ancestor(lineages: &[LineageFrame], a: u32, b: u32) -> Option<Line
             x.extinct_years.is_some().cmp(&y.extinct_years.is_some()).then(x.born_years.total_cmp(&y.born_years)).then(x.id.cmp(&y.id))
         })
     };
-    let find = |id: u32| lineages.get(id as usize).filter(|l| l.id == id).or_else(|| lineages.iter().find(|l| l.id == id));
+    let find = |id: u32| {
+        lineages.get(id as usize).filter(|l| l.id == id).or_else(|| lineages.binary_search_by_key(&id, |l| l.id).ok().map(|i| &lineages[i]))
+    };
     let chain = |start: &LineageFrame| {
         let mut out = vec![*start];
         let mut cur = *start;
