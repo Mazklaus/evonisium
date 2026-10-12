@@ -265,6 +265,14 @@ impl Store {
             }
         }
         self.stored_events = world.events.events.len();
+        // La grille du vivant s'affine quand les multicellulaires gagnent les
+        // terres : la table des régions suit (les grilles sont emboîtées,
+        // une région garde son numéro).
+        if self.region_of.len() != world.bio.len() {
+            let regions = BioGrid::new(&world.bio.grid, REGION_LEVEL.min(world.bio.grid.level));
+            self.regions = regions.len();
+            self.region_of = regions.parent;
+        }
         let samples = world.history.samples.len();
         if samples > self.stored_samples {
             let years = world.history.samples[samples - 1].years;
@@ -612,4 +620,39 @@ pub fn cell_detail(world: &World, cell: u32) -> Option<CellDetail> {
         chemistry: evo_planet::WATER_POOLS.iter().map(|&p| (p.label(), world.chemistry[b][p as usize])).collect(),
         populations: world.communities[b].iter().map(evo_sim::world::population_view).collect(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use evo_sim::WorldConfig;
+
+    /// Les régions suivent l'affinage de la grille du vivant (panique
+    /// « index out of bounds: the len is 642 but the index is 642 » vers
+    /// 1,3 Ga, au premier échantillon après l'affinage).
+    #[test]
+    fn regions_follow_the_refined_life_grid() {
+        let mut cfg = WorldConfig::new(11, 4);
+        cfg.bio_level = 3;
+        cfg.step_years = 1000.0;
+        let mut world = World::new(cfg);
+        world.seed_life();
+        world.step();
+        let dir = std::env::temp_dir().join(format!("evo-regions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut store = Store::open(&dir.join("base.sqlite"), &world).unwrap();
+        world.refine_life_grid();
+        let samples = world.history.samples.len();
+        world.config.step_years = 1e6;
+        for _ in 0..100 {
+            world.step();
+            store.record(&world).unwrap();
+            if world.history.samples.len() > samples {
+                break;
+            }
+        }
+        assert!(world.history.samples.len() > samples, "un échantillon doit tomber après l'affinage");
+        assert_eq!(store.region_of.len(), world.bio.len());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
