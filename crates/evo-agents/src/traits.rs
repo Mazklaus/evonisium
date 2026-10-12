@@ -6,14 +6,18 @@
 //! des comportements « paramétrés par le phénotype (sens, système nerveux,
 //! locomotion) ».
 //!
-//! [Simplification] À ce jour, le phénotype ne porte ni organe des sens, ni
-//! système nerveux, ni muscle : ces familles arrivent avec le fil « Animaux
-//! et écosystèmes ». En attendant, la perception, le système nerveux et la
-//! sociabilité sont tirés de mesures voisines (signal entre cellules, nombre
-//! de cellules, types cellulaires) ; chaque trait ainsi deviné est marqué
-//! dans [`Traits::proxies`]. Les vitesses suivent des lois d'échelle
-//! simples (en √longueur), du bon ordre de grandeur pour la marche, la nage
-//! et le vol, sans prétendre à mieux.
+//! Pour un animal (au sens du moteur, `evo_sim::world::animal_bits`), la
+//! taille, la masse, la vitesse, la portée de détection, le système nerveux
+//! et la défense sont lus dans [`Phenotype::animal`], tels que le moteur les
+//! fait jouer dans la prédation.
+//!
+//! [Simplification] Pour les autres corps, et pour la sociabilité et le soin
+//! des petits de tous, faute de famille de gènes dédiée, ces traits sont
+//! tirés de mesures voisines (signal entre cellules, nombre de cellules,
+//! types cellulaires) ; chaque trait ainsi deviné est marqué dans
+//! [`Traits::proxies`]. Hors animaux, les vitesses suivent des lois
+//! d'échelle simples (en √longueur), du bon ordre de grandeur pour la
+//! marche, la nage et le vol, sans prétendre à mieux.
 
 use evo_core::math::Det;
 use evo_life::body::{BodyPlan, Covering, JointKind, Material, ModuleKind, Profile};
@@ -93,6 +97,8 @@ impl Traits {
     /// Traits d'un génotype vivant dans un milieu aquatique ou non.
     pub fn of(p: &Phenotype, plan: &BodyPlan, rates: &GrowthRates, aquatic: bool) -> Traits {
         let mut proxies = 0u8;
+        let animal = evo_sim::world::animal_bits(p) & 1 != 0;
+        let a = &p.animal;
         // Dimensions : le plus grand module (le tronc, à ce jour).
         let main = plan.modules.iter().max_by(|a, b| a.dimensions.length_m.total_cmp(&b.dimensions.length_m));
         let (length_m, width_m, thick_m, profile) = main
@@ -107,7 +113,12 @@ impl Traits {
             })
             .sum::<f64>()
             .max(std::f64::consts::PI / 6.0 * length_m * width_m * thick_m);
-        let mass_kg = 1000.0 * volume;
+        let (length_m, mass_kg) = if animal && a.length_m > 0.0 {
+            // Masse : la sphère de même volume que le corps du moteur.
+            (a.length_m, 1000.0 * std::f64::consts::PI / 6.0 * a.mass_length_m * a.mass_length_m * a.mass_length_m)
+        } else {
+            (length_m, 1000.0 * volume)
+        };
 
         // Appendices articulés et muscles.
         let mut limbs = 0u32;
@@ -129,6 +140,10 @@ impl Traits {
                     flat_limbs += m.symmetry.copies.max(1);
                 }
             }
+        }
+        if animal && limbs == 0 {
+            // Appendices que le moteur compte sans que le plan les montre.
+            limbs = 2 * a.limb_pairs as u32;
         }
         let autotroph = rates.heterotroph_share < 0.5 && rates.prey_share < 0.1;
         let locomotion = if limbs >= 2 && flat_limbs >= 2 && !aquatic {
@@ -172,15 +187,25 @@ impl Traits {
             }
             1.0
         };
-        let sprint_m_s = base * muscle_factor;
-        let cruise_m_s = 0.3 * sprint_m_s;
+        let (cruise_m_s, sprint_m_s) = if animal && a.speed_m_s > 0.0 {
+            // Le moteur donne la croisière ; la pointe en vaut un peu plus du
+            // triple, comme ailleurs.
+            proxies &= !proxy::MUSCLE;
+            (a.speed_m_s, a.speed_m_s / 0.3)
+        } else {
+            let sprint = base * muscle_factor;
+            (0.3 * sprint, sprint)
+        };
 
         // Système nerveux deviné : taille du corps (en cellules), diversité
         // des types cellulaires et signal entre cellules.
         let cells = p.cells().max(1.0);
         let types = p.cell_types().max(1) as f64;
         let signal = p.signalling.clamp(0.0, 1.0);
-        let nervous = if p.is_multicellular() {
+        let nervous = if animal {
+            // Tissu nerveux (de 0 à 3) et coordination du corps qu'il permet.
+            (-(-a.neural).dexp_m1() * a.coordination).clamp(0.0, 1.0)
+        } else if p.is_multicellular() {
             proxies |= proxy::NERVOUS;
             (0.45 * (libm::log10(cells) / 10.0).clamp(0.0, 1.0) + 0.35 * signal + 0.2 * ((types - 1.0) / 6.0).clamp(0.0, 1.0))
                 .clamp(0.0, 1.0)
@@ -191,8 +216,12 @@ impl Traits {
 
         // Perception chimique : quelques longueurs, plus loin avec le signal
         // et le système nerveux.
-        proxies |= proxy::PERCEPTION;
-        let perception_m = length_m * (5.0 + 25.0 * signal + 60.0 * nervous);
+        let perception_m = if animal && a.detection_m > 0.0 {
+            a.detection_m
+        } else {
+            proxies |= proxy::PERCEPTION;
+            length_m * (5.0 + 25.0 * signal + 60.0 * nervous)
+        };
 
         let diet = if rates.prey_share >= 0.3 || (p.engulfment > 0.0 && rates.prey_uptake > 0.0) {
             Diet::Predator
@@ -218,6 +247,9 @@ impl Traits {
                 _ => 0.0,
             };
             defence = defence.max((c + s).min(1.0));
+        }
+        if animal {
+            defence = defence.max(a.defense.clamp(0.0, 1.0));
         }
 
         proxies |= proxy::SOCIALITY | proxy::CARE;
