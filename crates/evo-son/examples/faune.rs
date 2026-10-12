@@ -76,8 +76,17 @@ fn main() -> std::io::Result<()> {
         println!("{nom} : {t:.0} s");
         wav(&out.join(nom), rate as u32, &seules(voix, t + 1.0, rate))?;
     }
-    // Trois scènes au sol, avec la musique du jeu.
-    let scenes: [(&str, Vec<(Organe, u32)>); 3] = [
+    // Quatre scènes au sol, avec la musique du jeu ; la jungle, foisonnante,
+    // montre le dosage (premier plan qui tourne, tours de parole).
+    let jungle: Vec<(Organe, u32)> = (0..14u64)
+        .map(|i| {
+            let g = [Genre::Stridulation, Genre::Tymbale, Genre::Larynx, Genre::Sac, Genre::Percussion, Genre::Stridulation, Genre::Larynx]
+                [i as usize % 7];
+            let taille = g.taille_type() * (0.4 + 0.3 * i as f32);
+            (Organe { taille_m: taille, ..organe(g, 0.2 + 0.05 * i as f32, 400 + i) }, 10 + 5 * i as u32)
+        })
+        .collect();
+    let scenes: [(&str, Vec<(Organe, u32)>); 4] = [
         (
             "foret",
             vec![
@@ -106,16 +115,17 @@ fn main() -> std::io::Result<()> {
                 (Organe { taille_m: 0.03, ..organe(Genre::Clics, 0.3, 304) }, 12),
             ],
         ),
+        ("jungle", jungle),
     ];
     for (nom, especes) in scenes {
         let mut son = Son::new(rate, 3);
         son.ordre(Ordre::Monde(Monde { o2: 0.2, temperature_k: 290.0, ocean: 0.7, lineages: 300, ..Default::default() }));
         son.ordre(Ordre::Vue(Vue::Sol));
         son.ordre(Ordre::Faune(Some(especes)));
-        let mut buf = vec![[0.0f32; 2]; (rate * 45.0) as usize];
+        let mut buf = vec![[0.0f32; 2]; (rate * 90.0) as usize];
         let t = std::time::Instant::now();
         son.rendre(&mut buf);
-        println!("scène {nom} : {:.1} % d'un cœur", t.elapsed().as_secs_f32() / 45.0 * 100.0);
+        println!("scène {nom} : {:.1} % d'un cœur", t.elapsed().as_secs_f32() / 90.0 * 100.0);
         wav(&out.join(format!("scene-{nom}.wav")), rate as u32, &buf)?;
     }
     Ok(())

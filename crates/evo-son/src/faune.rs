@@ -264,19 +264,74 @@ struct Espece {
     prochain: f32,
 }
 
-/// La faune d'une scène au sol : chaque espèce appelle à son rythme.
+impl Espece {
+    /// Appels par unité de temps : une espèce puissante et nombreuse appelle
+    /// plus souvent ; celles du crépuscule et de la nuit, rarement en plein
+    /// jour.
+    fn rythme(&self) -> f32 {
+        let o = &self.organe;
+        let heure = match o.heure {
+            Heure::Jour => 1.0,
+            Heure::Crepuscule => 0.45,
+            Heure::Nuit => 0.2,
+        };
+        heure * (0.3 + 0.7 * o.puissance) * (1.0 + self.abondance.max(1.0).ln() * 0.5)
+    }
+}
+
+/// Bandes de hauteur (octaves au-dessus de 60 Hz) où deux appels ne se
+/// chevauchent pas.
+const BANDES: usize = 8;
+
+fn bande(o: &Organe) -> usize {
+    ((base(o) / 60.0).max(1.0).log2() as usize).min(BANDES - 1)
+}
+
+/// La faune d'une scène au sol, dosée pour ne pas tourner à la cacophonie.
+///
+/// Comme dans un vrai paysage sonore (hypothèse de la niche acoustique) :
+/// - quelques espèces seulement tiennent le devant de la scène à la fois
+///   (`SOLISTES`), et la main tourne toutes les 25 à 60 s ; les autres
+///   appellent rarement, au loin ;
+/// - deux espèces qui appellent dans la même octave ne se coupent pas la
+///   parole : la seconde attend que la première ait fini ;
+/// - deux appels ne commencent jamais ensemble (`ECART`).
 #[derive(Default)]
 pub struct Faune {
     especes: Vec<Espece>,
+    horloge: f32,
+    /// Fin de l'appel en cours dans chaque bande.
+    bandes: [f32; BANDES],
+    solistes: Vec<usize>,
+    relais: f32,
+    /// Instant où un nouvel appel peut commencer.
+    libre: f32,
 }
 
 /// Voix d'appels au plus en même temps.
 pub const MAX_VOIX: usize = 48;
 
+/// Espèces au premier plan en même temps.
+pub const SOLISTES: usize = 3;
+
+/// Écart minimal entre les débuts de deux appels du premier plan, s (la
+/// moitié pour un appel lointain).
+pub const ECART: f32 = 1.5;
+
+/// Part des appels d'une espèce hors du premier plan qui se font entendre.
+const ARRIERE_PLAN: f32 = 0.25;
+
 impl Faune {
     /// Les espèces de la scène (organe, individus visibles).
     pub fn new(especes: &[(Organe, u32)], rng: &mut Rng) -> Self {
-        Self { especes: especes.iter().map(|&(organe, n)| Espece { organe, abondance: n as f32, prochain: rng.range(1.0, 8.0) }).collect() }
+        Self {
+            especes: especes.iter().map(|&(organe, n)| Espece { organe, abondance: n as f32, prochain: rng.range(1.0, 8.0) }).collect(),
+            horloge: 0.0,
+            bandes: [0.0; BANDES],
+            solistes: Vec::new(),
+            relais: 0.0,
+            libre: 0.0,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -287,28 +342,61 @@ impl Faune {
         self.especes.is_empty()
     }
 
+    /// Tire les espèces du premier plan, au prorata de leur rythme.
+    fn distribuer(&mut self, rng: &mut Rng) {
+        self.solistes.clear();
+        let mut poids: Vec<f32> = self.especes.iter().map(|e| e.rythme()).collect();
+        while self.solistes.len() < SOLISTES.min(self.especes.len()) {
+            let total: f32 = poids.iter().sum();
+            if total <= 0.0 {
+                break;
+            }
+            let mut r = rng.range(0.0, total);
+            let k = poids.iter().position(|&w| {
+                r -= w;
+                r <= 0.0
+            });
+            let k = k.unwrap_or(poids.len() - 1);
+            self.solistes.push(k);
+            poids[k] = 0.0;
+        }
+        self.relais = rng.range(25.0, 60.0);
+    }
+
     /// Avance de `dt` ; `voix` : appels qui sonnent déjà.
     pub fn tick(&mut self, dt: f32, voix: usize, mk: &Make, rng: &mut Rng, out: &mut Vec<Voice>) {
-        for e in &mut self.especes {
+        self.horloge += dt;
+        self.relais -= dt;
+        if self.relais <= 0.0 {
+            self.distribuer(rng);
+        }
+        for k in 0..self.especes.len() {
+            let e = &mut self.especes[k];
             e.prochain -= dt;
             if e.prochain > 0.0 {
                 continue;
             }
             let o = e.organe;
-            // Une espèce puissante et nombreuse appelle plus souvent ; celles
-            // du crépuscule et de la nuit, rarement en plein jour.
-            let heure = match o.heure {
-                Heure::Jour => 1.0,
-                Heure::Crepuscule => 0.45,
-                Heure::Nuit => 0.2,
-            };
-            let rythme = heure * (0.3 + 0.7 * o.puissance) * (1.0 + e.abondance.max(1.0).ln() * 0.5);
-            e.prochain = rng.range(6.0, 18.0) / rythme.max(0.05) + duree(&o);
+            let b = bande(&o);
+            // Quelqu'un parle déjà dans cette octave, ou un appel vient de
+            // commencer : on attend son tour.
+            let attente = self.bandes[b].max(self.libre) - self.horloge;
+            if attente > 0.0 {
+                e.prochain = attente + rng.range(0.2, 1.5);
+                continue;
+            }
+            e.prochain = rng.range(6.0, 18.0) / e.rythme().max(0.05) + duree(&o);
+            let soliste = self.solistes.contains(&k);
+            if !soliste && !rng.chance(ARRIERE_PLAN) {
+                continue;
+            }
             if voix + out.len() >= MAX_VOIX {
                 continue;
             }
-            let distance = rng.range(4.0, 40.0);
-            appel(&o, distance, rng.bipolar() * 0.85, 0.0, true, mk, rng, out);
+            let distance = if soliste { rng.range(4.0, 30.0) } else { rng.range(45.0, 90.0) };
+            appel(&o, distance, rng.bipolar() * 0.85, 0.0, soliste, mk, rng, out);
+            self.bandes[b] = self.horloge + duree(&o);
+            self.libre = self.horloge + if soliste { ECART } else { ECART * 0.5 };
         }
     }
 }
@@ -396,5 +484,25 @@ mod tests {
         }
         // Neuf espèces sur deux minutes : chacune appelle, mais pas sans arrêt.
         assert!((15..=200).contains(&appels), "{appels} appels");
+    }
+
+    #[test]
+    fn calls_take_turns_and_few_species_lead() {
+        let mk = Make { rate: 48_000.0 };
+        let mut rng = Rng::new(8);
+        let especes: Vec<(Organe, u32)> = (0..12).map(|i| (organe(Genre::TOUS[i % 9], 0.5, i as u64), 40)).collect();
+        let mut f = Faune::new(&especes, &mut rng);
+        let mut out = Vec::new();
+        let mut dernier = -10.0f32;
+        for pas in 0..(300 * 20) {
+            out.clear();
+            f.tick(0.05, 0, &mk, &mut rng, &mut out);
+            if !out.is_empty() {
+                let t = pas as f32 * 0.05;
+                assert!(t - dernier >= ECART * 0.5 - 0.06, "deux appels presque ensemble à {t} s");
+                dernier = t;
+            }
+            assert!(f.solistes.len() <= SOLISTES);
+        }
     }
 }
