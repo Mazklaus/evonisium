@@ -107,7 +107,7 @@ impl Musique {
             cooldown: 0.0,
             pending: Vec::new(),
             cle: None,
-            phrase: Phrase::Verre,
+            phrase: Phrase::Flute,
         }
     }
 

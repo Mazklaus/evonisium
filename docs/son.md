@@ -12,7 +12,7 @@ Conception : doc « Evonisium : design sonore » (choix de l'utilisateur du 10 o
 | Menus | Musique seule, plus douce | — |
 | Interface | Plume à l'ouverture d'une fiche, page tournée au changement d'écran, tampon quand un point de sauvegarde est écrit | — |
 
-Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des bulles et de rares phrases douces (verre doux par défaut ; flûte douce et harpe feutrée au choix). La kalimba et les cloches de verre du premier jet, trop vives et trop tintantes, ont été retirées.
+Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des bulles et de rares phrases douces (flûte douce, choisie par l'utilisateur le 2026-10-12 ; harpe feutrée et verre doux restent dans le code). La kalimba et les cloches de verre du premier jet, trop vives et trop tintantes, ont été retirées.
 
 - plus de lignées vivantes, plus de voix ;
 - plus chaud, mode plus lumineux (du phrygien au lydien) et registre plus haut ;
