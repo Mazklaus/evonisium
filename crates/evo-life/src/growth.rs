@@ -537,15 +537,18 @@ fn monod(c: f64, k: f64) -> f64 {
 
 /// Horloge métabolique d'un corps : les flux par unité de masse (entretien,
 /// ingestion, mortalité de fond) baissent comme la masse à la puissance
-/// −1/4 (Kleiber ; Brown et coll., 2004). Comptée sur le nombre de cellules,
-/// pour qu'une cellule seule garde les taux microbiens.
+/// −1/4 (Kleiber). Cette loi naît du réseau qui distribue les ressources
+/// dans le corps (West, Brown et Enquist, 1997) : une circulation chez
+/// l'animal, des vaisseaux dans les tissus de soutien chez la plante. Sans
+/// réseau (colonie, corps de cellules qui vivent chacune pour soi), chaque
+/// cellule garde les taux d'un microbe. Comptée sur le nombre de cellules.
 #[inline]
 fn metabolic_clock(p: &Phenotype) -> f64 {
-    if p.body.is_some() {
-        1.0 / p.cells().max(1.0).sqrt().sqrt()
-    } else {
-        1.0
+    if p.body.is_none() || !p.is_eukaryote() || p.cell_types() < 2 {
+        return 1.0;
     }
+    let network = p.animal.circulation.max((p.animal.support / 3.0).min(1.0)).clamp(0.0, 1.0);
+    1.0 / (1.0 + network * (p.cells().max(1.0).sqrt().sqrt() - 1.0))
 }
 
 /// Recherche des proies : demi-saturation de l'ingestion (mol·m⁻³). Un

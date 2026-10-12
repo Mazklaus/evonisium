@@ -729,13 +729,23 @@ fn develop(
         Shape::Sphere => {
             // Rayon en cellules d'une boule de `cells` cellules.
             let radius = 0.62 * cells.dcbrt();
-            let zones = (radius.ceil() as usize).clamp(1, physio.max_body_zones);
-            let step = radius / zones as f64;
+            // Un corps massif, plus grand qu'une colonie, a une peau d'une
+            // cellule : seule elle voit la lumière et l'eau ; l'intérieur se
+            // partage les autres zones.
+            let skin = if cells > physio.max_colony_cells { 1.0 } else { 0.0 };
+            if skin > 0.0 {
+                let inner = radius - skin;
+                layout.push((1.0 - inner * inner * inner / (radius * radius * radius), 0.0));
+            }
+            let core = radius - skin;
+            let zones = (core.ceil() as usize).clamp(1, physio.max_body_zones - usize::from(skin > 0.0));
+            let step = core / zones as f64;
             for k in 0..zones {
-                let outer = radius - k as f64 * step;
+                let outer = core - k as f64 * step;
                 let inner = (outer - step).max(0.0);
                 let weight = (outer * outer * outer - inner * inner * inner) / (radius * radius * radius);
-                layout.push((weight, k as f64 * step));
+                // Sous la peau, chaque zone est vue à mi-épaisseur.
+                layout.push((weight, if skin > 0.0 { skin + (k as f64 + 0.5) * step } else { k as f64 * step }));
             }
         }
     }
