@@ -9,6 +9,8 @@ signal tool_requested(tool: String, cell: int)
 ## Fiche du peuple qui habite la cellule (étape 6).
 signal people_requested(id: int)
 
+const Raconter := preload("res://scripts/ui/raconter.gd")
+
 var cell := -1
 var body: VBoxContainer
 var title_label: Label
@@ -129,11 +131,13 @@ func _fill(with_loupe: bool = true) -> void:
 		share.custom_minimum_size.x = 48
 		row.add_child(share)
 		body.add_child(row)
-	var tools := HBoxContainer.new()
+	var tools := HFlowContainer.new()
 	body.add_child(tools)
 	tools.add_child(Atlas.button(App.t("food_web"), tool_requested.emit.bind("reseau", cell)))
 	tools.add_child(Atlas.button(App.t("strata"), tool_requested.emit.bind("strates", cell)))
 	tools.add_child(Atlas.button(App.t("ground_down"), tool_requested.emit.bind("sol", cell)))
+	var here := cell
+	tools.add_child(Raconter.new(func(): return Son.raconter_lieu(here)))
 	if keep_loupe:
 		body.add_child(Atlas.hsep())
 		body.add_child(loupe_caption)

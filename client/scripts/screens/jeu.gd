@@ -2,7 +2,8 @@ extends Control
 ## L'écran de la partie : le globe au centre, la barre du temps en haut, les
 ## calques à gauche, l'inspecteur à droite, la frise en bas, les alertes et
 ## le narrateur ; les fiches (espèce, arbre, chronique, interventions,
-## sauvegarde, réglages) s'ouvrent au centre.
+## sauvegarde, réglages) s'ouvrent au centre. Les fiches, les réglages et
+## l'inspecteur se déplacent en les tenant par leur titre.
 
 const BarreTemps := preload("res://scripts/ui/barre_temps.gd")
 const Frise := preload("res://scripts/ui/frise.gd")
@@ -24,6 +25,7 @@ const Comparateur := preload("res://scripts/ui/comparateur.gd")
 const Sol := preload("res://scripts/screens/sol.gd")
 const Peuples := preload("res://scripts/ui/peuples.gd")
 const FichePeuple := preload("res://scripts/ui/fiche_peuple.gd")
+const Deplacable := preload("res://scripts/ui/deplacable.gd")
 
 var bar: PanelContainer
 var frise: PanelContainer
@@ -31,7 +33,7 @@ var calques: PanelContainer
 var inspecteur: PanelContainer
 var alertes: VBoxContainer
 var narrateur: PanelContainer
-var overlay: CenterContainer
+var overlay: Control
 var notice: Label
 var fiche: Control
 
@@ -77,12 +79,15 @@ func setup(params: Dictionary) -> void:
 	calques.peoples_toggled.connect(_toggle_peoples)
 
 	inspecteur = Inspecteur.new()
-	inspecteur.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	inspecteur.offset_left = -392
-	inspecteur.offset_right = -10
-	inspecteur.offset_top = 96
-	inspecteur.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	var dock := func():
+		inspecteur.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		inspecteur.offset_left = -392
+		inspecteur.offset_right = -10
+		inspecteur.offset_top = 96
+		inspecteur.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	dock.call()
 	add_child(inspecteur)
+	Deplacable.attach(inspecteur, inspecteur.title_label, "inspecteur", dock)
 	inspecteur.species_requested.connect(open_species)
 	inspecteur.tool_requested.connect(open_tool)
 	inspecteur.people_requested.connect(open_people)
@@ -128,7 +133,7 @@ func setup(params: Dictionary) -> void:
 	notice.add_theme_color_override("font_color", Atlas.VERMILION)
 	add_child(notice)
 
-	overlay = CenterContainer.new()
+	overlay = Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(overlay)
@@ -463,6 +468,7 @@ func descend(cell: int) -> void:
 		return
 	App.globe.go_to_cell(cell, 1.03)
 	var s = Sol.new()
+	s.cell = cell
 	s.modulate.a = 0.0
 	add_child(s)
 	s.open(g, App.session.camp_at(cell) if App.globe.peoples_ready else {})

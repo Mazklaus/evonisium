@@ -28,6 +28,8 @@ var settings := {
 	"narrator": true,
 	## Phrases du narrateur déjà dites (gardées d'une partie à l'autre).
 	"guide_vu": [],
+	## Place des fenêtres déplacées par le joueur, par fenêtre (scripts/ui/deplacable.gd).
+	"fenetres": {},
 }
 var current_screen := ""
 ## Mesures de performance (F3, scripts/ui/mesures.gd) : microsecondes passées
@@ -72,7 +74,8 @@ const TEXT := {
 	"story_empty": ["Le récit commence quand la vie est déposée.", "The story begins once life is seeded."],
 	"ground_down": ["Descendre au sol", "Go down to the ground"],
 	"ground_title": ["Au sol", "On the ground"],
-	"ground_extras": ["Les espèces de la cellule assez grandes pour se voir sont des individus tirés de leur population par le moteur ; les autres corps sont des figurants d'essai. Rien de ce qu'ils font ne change l'histoire.", "Species of this cell large enough to be seen are individuals the engine draws from their population; the other bodies are test extras. Nothing they do ever changes history."],
+	"ground_extras": ["Les êtres que tu vois sont des individus tirés de leur population par le moteur. Rien de ce qu'ils font ne change l'histoire.", "The beings you see are individuals the engine draws from their population. Nothing they do ever changes history."],
+	"ground_empty": ["Rien ne vit ici d'assez grand pour être vu à l'œil nu (1 mm au moins) : la vie de cette cellule se regarde à la loupe de l'inspecteur.", "Nothing here is large enough to be seen with the naked eye (1 mm or more): this cell's life is seen through the inspector's microscope."],
 	"ground_wait": ["Préparation de la scène…", "Preparing the scene…"],
 	"ground_up": ["Remonter", "Back up"],
 	"ground_free": ["Survol libre", "Free flight"],
@@ -172,6 +175,11 @@ const TEXT := {
 	"cell": ["Cellule", "Cell"],
 	"none": ["aucune", "none"],
 	"close": ["Fermer", "Close"],
+	"window_drag": ["Tenir pour déplacer la fenêtre ; double clic pour la remettre à sa place", "Hold to move the window; double-click to put it back"],
+	"narrate": ["Raconter", "Narrate"],
+	"narrate_stop": ["Se taire", "Stop"],
+	"narrate_none": ["Pas de voix : installe-la dans les réglages ou rallume le son", "No voice: narration is in French only"],
+	"narrate_hint": ["Le narrateur raconte ce que tu regardes", "The narrator tells about what you are looking at"],
 	"major": ["Événement majeur", "Major event"],
 	"preset_terre": ["Terre archéenne", "Archean Earth"],
 	"preset_ocean": ["Monde océan", "Ocean world"],

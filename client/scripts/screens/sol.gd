@@ -5,14 +5,17 @@ extends Control
 ##
 ## Les espèces vraies de la cellule assez grandes pour se voir sont des
 ## agents du moteur (individus tirés de leur population, comportements tirés
-## de leurs traits) ; les autres sont des figurants de banc d'essai. Rien de
-## ce qu'ils font ne change l'histoire.
+## de leurs traits) ; une cellule dont la vie est microscopique montre son
+## paysage vide et invite à la loupe. Les figurants de banc d'essai ne
+## restent que dans les essais (`EvoGround.bench`). Rien de ce que font les
+## êtres de la scène ne change l'histoire.
 
 signal closed
 
 const AnimalShader := preload("res://shaders/animal.gdshader")
 const ImpostorShader := preload("res://shaders/imposteur.gdshader")
 const TerrainShader := preload("res://shaders/sol_terrain.gdshader")
+const Raconter := preload("res://scripts/ui/raconter.gd")
 
 ## Individus animés (les plus proches de la caméra).
 var animated := 1000
@@ -41,6 +44,8 @@ var people := {}
 var rite_clock := 0.0
 
 var followed := -1
+## Cellule de la descente (récit du narrateur), -1 sur un banc d'essai.
+var cell := -1
 var free_target := Vector3.ZERO
 var yaw := 0.6
 var pitch := 0.35
@@ -118,6 +123,7 @@ func _build_ui() -> void:
 	follow_button = Atlas.button(App.t("ground_free"), _toggle_follow)
 	row.add_child(follow_button)
 	row.add_child(Atlas.button(App.t("ground_next"), _follow_next))
+	row.add_child(Raconter.new(func(): return Son.raconter_lieu(cell) if cell >= 0 else -1))
 	var row2 := HBoxContainer.new()
 	v.add_child(row2)
 	var al := Atlas.text(App.t("ground_action"), 15)
@@ -169,6 +175,8 @@ func _exit_tree() -> void:
 func _setup_scene() -> void:
 	ready_done = true
 	waiting_label.visible = false
+	if ground.species_count() == 0:
+		notice_label.text = App.t("ground_empty")
 	var t: Dictionary = ground.terrain()
 	sky = t["sky"]
 	is_water = bool(t["water"])

@@ -201,6 +201,14 @@ func _ground_only() -> void:
 	jeu.ascend()
 	await _wait(1.0)
 	ok = ok and jeu.sol == null
+	# Les fiches s'ouvrent au centre de l'écran (elles sont déplaçables).
+	jeu.open_tree()
+	await _wait(1.5)
+	var f: Control = jeu.fiche
+	var gap := (f.get_viewport_rect().size - f.size) / 2.0 - f.global_position
+	report["fiche_centree"] = gap.length() < 2.0
+	await _shot("fiche-centree")
+	ok = ok and report["fiche_centree"]
 	_finish(ok)
 
 ## Essai des corps simulés : la Terre tourne jusqu'à sa première colonie

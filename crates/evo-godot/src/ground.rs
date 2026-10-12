@@ -16,7 +16,7 @@ use evo_morph::artefact::{self, Artefact};
 use evo_morph::body::{impostor_views, Action, Locomotion, Mesh};
 use evo_view::camp::{folk_species, layout, Placed};
 use evo_view::culture::CampView;
-use evo_view::ground::{bench_species, real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
+use evo_view::ground::{real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
 use godot::classes::Image;
 use godot::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -53,10 +53,11 @@ impl IRefCounted for EvoGround {
     }
 }
 
-/// Construit la scène : figurants du milieu, puis les espèces vraies. Une
-/// espèce vraie dont le moteur a tiré un échantillon (`samples`, par
-/// signature) devient une espèce d'agents ; les autres gardent les gestes
-/// des figurants.
+/// Construit la scène avec les espèces vraies de la cellule assez grandes
+/// pour se voir, sans figurant d'essai : une cellule dont la vie est
+/// microscopique montre son paysage vide (l'écran le dit). Une espèce vraie
+/// dont le moteur a tiré un échantillon (`samples`, par signature) devient
+/// une espèce d'agents ; les autres gardent les gestes des figurants.
 ///
 /// Avec `camp` (étape 6 : le groupe culturel de la cellule et le nom de son
 /// peuple), un campement se pose près du centre avec ses gens.
@@ -70,7 +71,7 @@ pub fn build(
 ) -> Built {
     let t0 = Instant::now();
     let patch = Patch::new(site.clone(), seed);
-    let mut species = bench_species(&site, seed, 6);
+    let mut species = Vec::new();
     let mut samples: Vec<Option<evo_agents::Sample>> = samples.into_iter().map(Some).collect();
     let mut agents = Vec::new();
     for sp in real {
@@ -82,7 +83,8 @@ pub fn build(
     }
     let folk = camp.as_ref().map(|(_, name)| folk_species(&format!("{name} (peuple d'essai)"), seed ^ 0x666F));
     let plans: Vec<_> = species.iter().chain(agents.iter().map(|a| &a.0)).chain(folk.iter()).map(|s| s.plan.clone()).collect();
-    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * plans.len() * 4];
+    // Une ligne au moins : l'atlas d'une scène vide reste une image valide.
+    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * plans.len().max(1) * 4];
     let row = IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * 4;
     for (k, plan) in plans.iter().enumerate() {
         atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
