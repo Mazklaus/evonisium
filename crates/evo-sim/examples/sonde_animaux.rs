@@ -38,12 +38,24 @@ fn main() {
     let skip: usize = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
     let max_cells: usize = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(6);
     println!("{:.3} Ga", world.years() / 1e9);
+    for (c, pops) in world.communities.iter().enumerate() {
+        for p in pops.iter().filter(|p| p.phenotype.is_eukaryote()) {
+            println!(
+                "eucaryote cellule {c} : {:.2e} mol C, terre {}, cellules {}",
+                p.biomass,
+                p.phenotype.is_terrestrial() as u8,
+                p.phenotype.cells()
+            );
+        }
+    }
     let mut shown = 0;
     for c in 0..world.communities.len() {
         let pops = &world.communities[c];
-        let Some(host) =
-            pops.iter().find(|p| p.phenotype.is_multicellular() && p.phenotype.is_eukaryote() && !p.phenotype.is_terrestrial())
-        else {
+        let Some(host) = pops.iter().find(|p| {
+            (p.phenotype.is_multicellular() || std::env::var_os("SONDE_EUK").is_some())
+                && p.phenotype.is_eukaryote()
+                && !p.phenotype.is_terrestrial()
+        }) else {
             continue;
         };
         if c < skip {
