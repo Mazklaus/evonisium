@@ -290,6 +290,8 @@ const TEXT := {
 	"clear_focus": ["Effacer l'aire", "Clear range"],
 	"layer_none": ["Aucun calque : vue naturelle", "No layer: natural view"],
 	"go_menu": ["Revenir au menu (la partie est sauvegardée)", "Back to menu (the game is saved)"],
+	"engine_stopped": ["Le moteur s'est arrêté sur un bogue : recharge ta dernière sauvegarde", "The engine stopped on a bug: reload your last save"],
+	"engine_waiting": ["Le moteur calcule un pas depuis %d s", "The engine has been computing one step for %d s"],
 	"perf_open": ["Ouvrir le dossier des mesures", "Open the measurements folder"],
 	"perf_fps": ["images/s", "fps"],
 	"perf_worst": ["pire image", "worst frame"],

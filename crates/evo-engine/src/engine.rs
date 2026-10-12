@@ -172,7 +172,7 @@ impl Engine {
         let (tx, rx) = channel();
         let next_id = world.orders.next_id();
         let sh = shared.clone();
-        let thread = std::thread::Builder::new().name("evonisium-simulation".into()).spawn(move || run(world, pool, store, rx, sh))?;
+        let thread = std::thread::Builder::new().name("evonisium-simulation".into()).spawn(move || guarded(world, pool, store, rx, sh))?;
         Ok(Engine { tx: Mutex::new((tx, next_id)), shared, grid, thread: Some(thread), workdir })
     }
 
@@ -253,6 +253,25 @@ fn pool(threads: usize) -> io::Result<rayon::ThreadPool> {
 fn frame_of(world: &World) -> Frame {
     let p = &world.publication;
     Frame { current: p.current.clone().expect("le monde publie dès sa création"), previous: p.previous.clone() }
+}
+
+/// Le fil de simulation, gardé : une panique (bogue du moteur) est notée
+/// dans le statut au lieu de laisser le client attendre un pas qui ne
+/// viendra jamais. Le message complet, avec le lieu, part aussi sur la
+/// sortie d'erreur.
+fn guarded(world: World, pool: rayon::ThreadPool, store: Store, rx: Receiver<Command>, shared: Arc<Shared>) {
+    let sh = shared.clone();
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || run(world, pool, store, rx, sh)));
+    if let Err(p) = r {
+        let what = p
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| p.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "panique sans message".into());
+        let mut st = shared.status.lock().unwrap_or_else(|e| e.into_inner());
+        st.error = Some(format!("le moteur s'est arrêté : {what}"));
+        st.running = false;
+    }
 }
 
 /// Boucle du fil de simulation.

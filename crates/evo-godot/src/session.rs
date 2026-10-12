@@ -639,10 +639,14 @@ impl EvoSession {
         // Le moteur publie sa vitesse de calcul, hors attente du frein ; la
         // vitesse tenue se mesure ici, à l'horloge du client. Avant deux pas,
         // la vitesse de calcul plafonnée à la demande en tient lieu.
+        let mut waiting = 0.0;
         let real = {
             let mut m = self.meter.borrow_mut();
             let now = m.0.elapsed().as_secs_f64();
             m.1.observe(now, st.years, st.paused);
+            if !st.paused {
+                waiting = m.1.since_last_step(now).unwrap_or(0.0);
+            }
             match m.1.rate(now) {
                 _ if st.paused => 0.0,
                 Some(r) => r,
@@ -654,6 +658,10 @@ impl EvoSession {
         d.set("step_seconds", status.last_step_seconds);
         d.set("compute_speed", status.years_per_second);
         d.set("engine_error", status.error.unwrap_or_default().as_str());
+        d.set("engine_running", status.running);
+        // Secondes depuis le dernier pas, partie en marche : un pas très
+        // long, ou un moteur arrêté.
+        d.set("waiting_s", waiting);
         d.set("bridge_ms", self.bridge_ms);
         d
     }

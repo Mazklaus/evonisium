@@ -37,6 +37,12 @@ impl Meter {
         }
     }
 
+    /// Secondes depuis l'arrivée du dernier pas, partie en marche ; `None`
+    /// en pause ou avant le premier pas.
+    pub fn since_last_step(&self, now: f64) -> Option<f64> {
+        self.samples.back().map(|&(t, _)| now - t)
+    }
+
     /// Vitesse tenue à l'instant `now`, années par seconde ; `None` tant que
     /// deux pas ne sont pas arrivés. Quand le pas suivant tarde plus que
     /// l'intervalle moyen, l'attente en cours compte : la vitesse affichée
