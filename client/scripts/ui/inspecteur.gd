@@ -136,6 +136,8 @@ func _fill(with_loupe: bool = true) -> void:
 	tools.add_child(Atlas.button(App.t("food_web"), tool_requested.emit.bind("reseau", cell)))
 	tools.add_child(Atlas.button(App.t("strata"), tool_requested.emit.bind("strates", cell)))
 	tools.add_child(Atlas.button(App.t("ground_down"), tool_requested.emit.bind("sol", cell)))
+	if not pops.is_empty():
+		tools.add_child(Atlas.button(App.t("slide_down"), tool_requested.emit.bind("lame", cell)))
 	var here := cell
 	tools.add_child(Raconter.new(func(): return Son.raconter_lieu(here)))
 	if keep_loupe:

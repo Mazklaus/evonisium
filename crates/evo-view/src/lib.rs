@@ -31,6 +31,7 @@ pub mod pace;
 pub mod palette;
 pub mod pick;
 pub mod save;
+pub mod slide;
 pub mod species;
 pub mod story;
 pub mod terrain;

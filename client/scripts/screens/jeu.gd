@@ -23,6 +23,7 @@ const Strates := preload("res://scripts/ui/strates.gd")
 const Anatomie := preload("res://scripts/ui/anatomie.gd")
 const Comparateur := preload("res://scripts/ui/comparateur.gd")
 const Sol := preload("res://scripts/screens/sol.gd")
+const Lame := preload("res://scripts/screens/lame.gd")
 const Peuples := preload("res://scripts/ui/peuples.gd")
 const FichePeuple := preload("res://scripts/ui/fiche_peuple.gd")
 const Deplacable := preload("res://scripts/ui/deplacable.gd")
@@ -54,6 +55,7 @@ var absence_events: Array = []
 var idle := 0.0
 var looked_years := -1.0
 var sol: Control
+var lame: Control
 
 func setup(params: Dictionary) -> void:
 	var g = App.globe
@@ -448,6 +450,8 @@ func open_tool(tool: String, cell: int) -> void:
 	narrateur.tool_opened(tool)
 	if tool == "sol":
 		descend(cell)
+	elif tool == "lame":
+		open_slide(cell)
 	elif tool == "reseau":
 		var f = _open(Reseau.new())
 		f.open(cell)
@@ -487,6 +491,36 @@ func ascend() -> void:
 	var tw := create_tween()
 	tw.tween_property(s, "modulate:a", 0.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.4)
 	tw.tween_callback(s.queue_free)
+
+## Lame de microscope en 3D : la goutte d'eau de la cellule se pose par-dessus
+## le globe ; les fiches d'espèce s'ouvrent au-dessus d'elle.
+func open_slide(cell: int) -> void:
+	if cell < 0 or lame != null or sol != null:
+		return
+	var sl = App.session.open_slide(cell)
+	if sl == null:
+		return
+	var l = Lame.new()
+	l.modulate.a = 0.0
+	add_child(l)
+	move_child(overlay, -1)
+	l.open(sl, cell)
+	l.closed.connect(close_slide)
+	l.species_requested.connect(open_species)
+	lame = l
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.4)
+
+func close_slide() -> void:
+	if lame == null:
+		return
+	var l := lame
+	lame = null
+	if fiche and is_instance_valid(fiche):
+		fiche.queue_free()
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 0.0, 0.0 if bool(App.settings["reduce_motion"]) else 0.3)
+	tw.tween_callback(l.queue_free)
 
 func open_save() -> void:
 	_open(Sauvegarde.new())

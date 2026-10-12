@@ -211,6 +211,47 @@ func _ground_only() -> void:
 	ok = ok and report["fiche_centree"]
 	_finish(ok)
 
+## Essai de la lame de microscope en 3D : la goutte d'eau d'une cellule
+## peuplée se construit, ses microbes nagent, un clic ouvre une fiche
+## d'espèce au-dessus, puis « Remonter » rend le globe.
+func _slide_only() -> void:
+	await _run_to(float(opts.get("fin", "300")) * 1.0e6)
+	var jeu = _screen()
+	# La cellule la plus peuplée d'un échantillon du globe.
+	var best := -1
+	var most := 0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 60:
+		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
+		var c: int = App.session.cell_at(dir)
+		App.session.cell_info(c)
+		await _wait(0.1)
+		var n: int = (App.session.cell_info(c).get("populations", []) as Array).size()
+		if n > most:
+			most = n
+			best = c
+	report["lame_cellule"] = best
+	jeu.open_tool("lame", best)
+	var ok := await _until(func(): return jeu.lame != null and jeu.lame.ready_done, 60.0)
+	await _wait(2.0)
+	if ok:
+		report["lame_especes"] = jeu.lame.slide.species_count()
+		ok = jeu.lame.slide.species_count() > 0
+	await _shot("lame-ensemble")
+	if ok:
+		jeu.lame.target_distance = 25.0
+		await _wait(2.0)
+		await _shot("lame-proche")
+		jeu.open_species(int(jeu.lame.slide.species_info(0)["species"]))
+		await _wait(1.5)
+		await _shot("lame-fiche")
+		ok = jeu.fiche.get_parent() == jeu.overlay and jeu.overlay.get_index() > jeu.lame.get_index()
+	jeu.close_slide()
+	await _wait(1.0)
+	ok = ok and jeu.lame == null
+	_finish(ok)
+
 ## Essai de l'arbre du vivant fractal : la partie court jusqu'à `fin` Ma,
 ## puis l'arbre s'ouvre en vue d'ensemble et zoome sur un petit clade.
 func _tree_only() -> void:
@@ -442,6 +483,9 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "sol":
 		await _ground_only()
+		return
+	if opts.get("seul", "") == "lame":
+		await _slide_only()
 		return
 	if opts.get("seul", "") == "arbre":
 		await _tree_only()

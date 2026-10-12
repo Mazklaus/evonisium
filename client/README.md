@@ -29,8 +29,9 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | `shaders/globe_atlas.gdshader` | Le rendu Atlas du globe : lavis de la mer par passes de profondeur, isobathes, terres à l'aquarelle, trait de côte à l'encre, graticule, hachures de nuit, calques de données en lavis ; territoires des peuples en lavis à leur couleur, liseré et frontière à l'encre (étape 6). |
 | `shaders/contour_encre.gdshader` | Contour à l'encre en post-traitement (sauts de profondeur et de normale), qui monte avec le zoom. |
 | `shaders/corps_atlas.gdshader`, `corps_contour.gdshader`, `organe.gdshader` | Corps du vivant (palier 2) : lavis du pigment, hachures dans l'ombre, irisation, contour à la plume, voile de la vue anatomie, organes colorés par appareil. |
+| `shaders/microbe.gdshader` | Microbes de la lame en 3D : lavis translucide du pigment, cerne d'encre, hachures légères. |
 | `shaders/atmosphere.gdshader` | Limbe de l'atmosphère (couleur tirée de sa composition) et contour du globe en double filet. |
-| `scripts/screens/` | Accueil, création de la planète, ensemencement, partie, chargement. |
+| `scripts/screens/` | Accueil, création de la planète, ensemencement, partie, chargement ; descente au sol (`sol.gd`) et lame de microscope en 3D (`lame.gd`). |
 | `scripts/ui/` | Barre du temps, frise, calques et légende, inspecteur et loupe, fiche d'espèce, arbre du vivant, chronique (événements, récit en chapitres, règles d'arrêt), alertes, interventions, sauvegarde, réglages, narrateur (guide de la première partie, puis conseiller ; voir `docs/guide-et-recit.md`) ; à l'étape 4 : « avec et sans » (`avec_sans.gd`), réseau trophique (`reseau.gd`), colonne stratigraphique (`strates.gd`), portrait 3D (`portrait.gd`), anatomie (`anatomie.gd`), comparateur (`comparateur.gd`) ; à l'étape 6, sur peuples d'essai : fenêtre des peuples avec arbres des peuples et des langues et personnages (`peuples.gd`), fiches de peuple et de personnage (`fiche_peuple.gd`), onglet des mythes de la chronique, peuple de la cellule dans l'inspecteur, mode historique dans la barre du temps ; voir `docs/etape-6-client.md`. |
 | `tests/porte.gd`, `tests/porte4.gd` | Scénarios des portes des étapes 3 et 4 (voir plus bas). |
 
@@ -49,7 +50,8 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | Échap | Fermer la fiche ouverte |
 | Tenir le titre d'une fenêtre | Déplacer la fiche, les réglages ou l'inspecteur ; double clic sur le titre : la remettre à sa place |
 | Arbre du vivant | Molette : zoomer autour du pointeur ; tirer : déplacer ; double clic : s'approcher d'un clade ; clic sur une feuille : fiche de l'espèce ; « Vue d'ensemble » |
-| « Raconter » | Fiche d'espèce, inspecteur (la loupe) et scène au sol : le narrateur raconte ce qu'on regarde, même si la lecture automatique est décochée |
+| « Raconter » | Fiche d'espèce, inspecteur (la loupe), lame de microscope et scène au sol : le narrateur raconte ce qu'on regarde, même si la lecture automatique est décochée |
+| Lame de microscope (« Plonger dans la lame » dans l'inspecteur) | Tirer : tourner ; clic droit ou flèches : se déplacer ; molette : zoomer ; clic sur une cellule : fiche de son espèce ; Échap ou « Remonter » : revenir au globe |
 
 ## Mesures de performance
 
@@ -91,6 +93,10 @@ godot --path client --resolution 1600x900 -- --porte4 --seul=guide --sortie=/tmp
 # Étape 6 sur peuples d'essai : territoires et noms sur le globe, fiches,
 # arbres, mythes, mode historique, puis le campement au sol (palier 3)
 godot --path client --resolution 1600x900 -- --porte4 --seul=peuples --sortie=/tmp/peuples
+
+# Lame de microscope en 3D : la cellule la plus peuplée d'un échantillon,
+# vue d'ensemble, vue proche, puis une fiche d'espèce par-dessus
+godot --path client --resolution 1600x900 -- --porte4 --seul=lame --fin=300 --sortie=/tmp/lame
 ```
 
 Le scénario écrit `rapport.json` et une capture par écran ; code de sortie 0 si la porte est franchie. Rapport complet : `docs/etape-4-client.md`.

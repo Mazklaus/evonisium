@@ -9,6 +9,7 @@
 mod bodies;
 mod culture;
 mod region;
+mod slide;
 mod son;
 mod story;
 mod tools;
