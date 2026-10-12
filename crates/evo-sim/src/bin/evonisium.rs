@@ -275,6 +275,26 @@ fn complexity(args: &[String]) {
         if world.years() >= next {
             next += every;
             let s = world.summary();
+            if std::env::var_os("EVO_DEBUG_MEM").is_some() {
+                let m = world.memory_bytes();
+                let mut bodies = 0usize;
+                for p in world.communities.iter().flatten() {
+                    if let Some(b) = &p.phenotype.body {
+                        bodies += b.types.len() * std::mem::size_of::<evo_life::Phenotype>()
+                            + b.types.iter().map(|t| t.enzymes.capacity() * 40).sum::<usize>();
+                    }
+                }
+                println!(
+                    "  MÉMOIRE populations {:.0} Mo, génomes {:.0} Mo ({} distincts), corps {:.0} Mo, lignées {:.0} Mo ({} fiches), journal {:.0} Mo",
+                    m.populations as f64 / 1e6,
+                    m.genomes as f64 / 1e6,
+                    m.distinct_genomes,
+                    bodies as f64 / 1e6,
+                    m.lineages as f64 / 1e6,
+                    world.lineages.records.len(),
+                    m.journal as f64 / 1e6
+                );
+            }
             let mut euk = 0.0;
             let mut phago = 0.0;
             let mut multi = 0.0;
