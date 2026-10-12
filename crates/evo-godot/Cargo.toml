@@ -24,3 +24,8 @@ evo-culture.workspace = true
 mimalloc.workspace = true
 rayon.workspace = true
 godot = { version = "0.5", features = ["api-4-6"] }
+
+# Priorité du fil de synthèse du son sous Windows : le moteur occupe tous
+# les cœurs moins deux, et un fil de son affamé craque.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Threading"] }

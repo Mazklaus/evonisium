@@ -3,7 +3,7 @@
 //! décide de ce qui est joué (B), et tout est joué par la même famille de
 //! timbres acoustiques (A). Livraison 1 : les ères microbiennes.
 //!
-//! - plus de lignées vivantes, plus de voix ;
+//! - plus de lignées vivantes, plus de petites phrases ;
 //! - plus chaud, mode plus lumineux et registre plus haut ;
 //! - plus d'oxygène, timbre plus clair (filtre du bus) ;
 //! - de longs repos où ne reste que la nappe, pour ne jamais saturer une
@@ -12,17 +12,42 @@
 use crate::synth::{degree, Bus, Make, Rng, Smooth, Voice};
 use crate::{Moment, Monde};
 
-/// Modes, du plus sombre au plus lumineux.
-pub const MODES: [(&str, [i32; 7]); 5] = [
+/// Modes, du plus sombre au plus lumineux ; l'ionien (majeur), en dernier,
+/// ne sert qu'aux boucles du fond qui sont en majeur.
+pub const MODES: [(&str, [i32; 7]); 6] = [
     ("phrygien", [0, 1, 3, 5, 7, 8, 10]),
     ("éolien", [0, 2, 3, 5, 7, 8, 10]),
     ("dorien", [0, 2, 3, 5, 7, 9, 10]),
     ("mixolydien", [0, 2, 4, 5, 7, 9, 10]),
     ("lydien", [0, 2, 4, 6, 7, 9, 11]),
+    ("ionien", [0, 2, 4, 5, 7, 9, 11]),
 ];
 
 /// Pas de la musique, en secondes.
 pub const STEP: f32 = 0.2;
+
+/// Timbre des petites phrases mélodiques (la kalimba du premier jet était
+/// trop vive : l'utilisateur l'a refusée le 2026-10-11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phrase {
+    /// Flûte douce, sans souffle rauque, une octave sous la kalimba.
+    Flute,
+    /// Harpe feutrée : corde pincée très sombre, dans le grave.
+    Harpe,
+    /// Verre doux : notes qui enflent et s'éteignent lentement.
+    Verre,
+}
+
+impl Phrase {
+    pub const TOUTES: [Phrase; 3] = [Phrase::Flute, Phrase::Harpe, Phrase::Verre];
+    pub fn nom(self) -> &'static str {
+        match self {
+            Phrase::Flute => "flûte douce",
+            Phrase::Harpe => "harpe feutrée",
+            Phrase::Verre => "verre doux",
+        }
+    }
+}
 
 pub struct Musique {
     step: u64,
@@ -41,6 +66,8 @@ pub struct Musique {
     /// Tonalité imposée par la boucle du fond qui joue (tonique MIDI, mode) :
     /// les couches générées s'y accordent et la nappe se tait.
     pub cle: Option<(i32, usize)>,
+    /// Timbre des petites phrases.
+    pub phrase: Phrase,
 }
 
 /// Valeurs de 0 à 1 que la musique lit dans le monde publié.
@@ -80,6 +107,7 @@ impl Musique {
             cooldown: 0.0,
             pending: Vec::new(),
             cle: None,
+            phrase: Phrase::Flute,
         }
     }
 
@@ -139,7 +167,6 @@ impl Musique {
             }
         }
         let sc = MODES[self.mode].1;
-        let voices = 1 + (l.bio * 6.0).round() as usize;
         // Bulles des sources chaudes : moins nombreuses quand l'oxygène monte.
         if rng.chance(0.3 * (1.0 - l.o2) * (0.3 + 0.7 * p)) {
             let f0 = rng.range(140.0, 320.0);
@@ -147,26 +174,23 @@ impl Musique {
                 Voice::new(mk.chirp(f0, f0 * rng.range(2.0, 3.0), rng.range(0.03, 0.07)), Bus::Musique, 0.05).pan(rng.bipolar() * 0.8),
             );
         }
-        // Cloches de verre : une par lignée « audible », pas de mélodie encore.
-        if i.is_multiple_of(2) {
-            for v in 0..voices.min(3) {
-                if rng.chance((0.1 + 0.25 * l.bio) * p) {
-                    let d = self.chord + rng.pick(&[0, 2, 4, 6]);
-                    let ratio = if v % 2 == 1 { 1.41 } else { 2.0 };
-                    let kind = mk.bell(degree(self.base + 24, &sc, d), ratio, 1.2, 4.0);
-                    out.push(Voice::new(kind, Bus::Musique, 0.03).at(v as f32 * 0.05, r).pan(rng.bipolar() * 0.7).send(0.45));
-                }
-            }
-        }
-        // Kalimba pincée, rare : une petite phrase quand la vie se diversifie.
-        if i % 16 == 8 && rng.chance(0.35 * l.bio * p) {
+        // Petite phrase douce, rare : quand la vie se diversifie.
+        if i % 16 == 8 && rng.chance(0.3 * l.bio * p) {
             let mut d = self.chord + 7 + rng.pick(&[0, 2, 4]);
             let mut t = 0.0;
             for _ in 0..rng.pick(&[3, 4, 5]) {
                 d += rng.pick(&[-2, -1, 1, 1, 2]);
-                let k = mk.pluck(rng, degree(self.base, &sc, d), 0.25 + 0.6 * l.o2, 2.2);
-                out.push(Voice::new(k, Bus::Musique, 0.16).at(t, r).pan(-0.25).send(0.35));
-                t += rng.pick(&[0.3, 0.45, 0.6]);
+                let pas = rng.pick(&[0.6, 0.8, 1.0]);
+                let v = match self.phrase {
+                    Phrase::Flute => Voice::new(mk.flute(degree(self.base, &sc, d), pas * 1.1, 0.0), Bus::Musique, 0.045).send(0.5),
+                    Phrase::Harpe => Voice::new(mk.pluck(rng, degree(self.base - 12, &sc, d), 0.07, 2.6), Bus::Musique, 0.11).send(0.45),
+                    Phrase::Verre => {
+                        let k = mk.pad(rng, &[degree(self.base + 12, &sc, d)], pas * 1.8, pas * 0.6, true, 1400.0);
+                        Voice::new(k, Bus::Musique, 0.035).send(0.6)
+                    }
+                };
+                out.push(v.at(t, r).pan(rng.range(-0.4, 0.1)));
+                t += pas;
             }
         }
         // Motifs des moments forts de la chronique.
@@ -182,19 +206,22 @@ impl Musique {
         let r = mk.rate;
         let sc = MODES[self.mode].1;
         match m {
+            // Les motifs enflent doucement, sans attaque de cloche : les
+            // cloches de verre tintaient trop (refusées le 2026-10-12).
             Moment::Jalon => {
                 for (j, d) in [0, 2, 4].into_iter().enumerate() {
-                    let k = mk.bell(degree(self.base + 12, &sc, self.chord + d), 2.0, 1.4, 3.5);
-                    out.push(Voice::new(k, Bus::Musique, 0.08).at(j as f32 * 0.12, r).pan(rng.range(-0.4, 0.4)).send(0.5));
+                    let k = mk.pad(rng, &[degree(self.base + 12, &sc, self.chord + d)], 2.4, 0.5, true, 1600.0);
+                    out.push(Voice::new(k, Bus::Musique, 0.04).at(j as f32 * 0.35, r).pan(rng.range(-0.4, 0.4)).send(0.6));
                 }
             }
             Moment::Froid => {
-                let k = mk.bell(degree(self.base + 24, &sc, self.chord), 1.41, 1.0, 6.0);
-                out.push(Voice::new(k, Bus::Musique, 0.05).send(0.6));
+                let notes = [degree(self.base + 12, &sc, self.chord), degree(self.base + 12, &sc, self.chord + 3)];
+                out.push(Voice::new(mk.pad(rng, &notes, 4.0, 1.2, true, 900.0), Bus::Musique, 0.035).send(0.7));
             }
             Moment::Extinction => {
                 out.push(Voice::new(mk.thump(46.0, 2.6), Bus::Musique, 0.5).send(0.3));
-                out.push(Voice::new(mk.bell(38.0, 1.41, 3.0, 6.0), Bus::Musique, 0.08).send(0.4));
+                let k = mk.pad(rng, &[degree(self.base - 12, &sc, self.chord)], 5.0, 0.8, true, 500.0);
+                out.push(Voice::new(k, Bus::Musique, 0.07).send(0.4));
             }
         }
     }

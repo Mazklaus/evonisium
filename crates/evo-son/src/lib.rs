@@ -612,7 +612,7 @@ mod tests {
         son.ordre(Ordre::Monde(Monde { o2: 1e-6, temperature_k: 290.0, lineages: 40, ..Default::default() }));
         son.ordre(Ordre::Vue(Vue::Globe));
         let pcm: Vec<[f32; 2]> = (0..48_000 * 20).map(|k| [(k as f32 * 0.02).sin() * 0.3; 2]).collect();
-        son.ordre(Ordre::Boucle(Boucle { ere: 2, pcm, tonique: 45, mode: 2, gain: 1.0 }));
+        son.ordre(Ordre::Boucle(Boucle { ere: 2, son: fond::Contenu::Pcm(std::sync::Arc::new(pcm)), tonique: 45, mode: 2, gain: 1.0 }));
         // Pas de boucle pour l'ère 0 : tout reste généré.
         render(&mut son, 10.0);
         assert!(!son.fond.joue() && son.musique.cle.is_none());
