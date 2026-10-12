@@ -111,7 +111,7 @@ func _process(_delta: float) -> void:
 	var total := _http.get_body_size()
 	if total > 0:
 		var n := _http.get_downloaded_bytes()
-		progression.emit("Téléchargement : %d / %d Mo" % [n / 1000000, total / 1000000], float(n) / float(total))
+		progression.emit("Téléchargement : %d / %d Mo" % [n / 1000000.0, total / 1000000.0], float(n) / float(total))
 
 func _telecharge(result: int, code: int, _h: PackedStringArray, _b: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:

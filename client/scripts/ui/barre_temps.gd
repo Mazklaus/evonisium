@@ -4,7 +4,6 @@ extends PanelContainer
 ## vitesse réellement tenue, et les grandeurs globales en clair.
 
 signal next_requested
-signal panel_requested(name: String)
 
 const SPEEDS := [1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7]
 

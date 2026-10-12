@@ -106,6 +106,7 @@ func _draw_curves() -> void:
 		var mid := (tmax + tmin) * 0.5
 		tmin = mid - 2.5
 		tmax = mid + 2.5
+	@warning_ignore("integer_division")
 	var stride: int = max(1, years.size() / int(max(w, 1.0)))
 	for i in range(0, years.size(), stride):
 		var x := _x_of(years[i], t0, t1, w)

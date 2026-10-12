@@ -60,8 +60,8 @@ func _draw_tree() -> void:
 	if tree.is_empty():
 		return
 	var ids: PackedInt32Array = tree["ids"]
+	var font := Atlas.body_font()
 	if ids.is_empty():
-		var font := Atlas.body_font()
 		canvas.draw_string(font, Vector2(20, 40), App.t("no_species"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(18 * App.text_scale()), Atlas.INK)
 		return
 	var parents: PackedInt32Array = tree["parents"]
@@ -71,7 +71,6 @@ func _draw_tree() -> void:
 	var living: PackedByteArray = tree["living"]
 	var collapsed: PackedInt32Array = tree["collapsed"]
 	var names: PackedStringArray = tree["names"]
-	var font := Atlas.body_font()
 	var italic: Font = Atlas.text_italic
 	var fs := int(14 * App.text_scale())
 	# Échelle du temps en haut.

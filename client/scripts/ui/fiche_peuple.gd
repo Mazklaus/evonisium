@@ -25,8 +25,8 @@ func _clear() -> void:
 	for c in body.get_children():
 		c.queue_free()
 
-func _para(t: String, size: int = 17, italic: bool = false) -> Label:
-	var l := Atlas.text(t, size, italic)
+func _para(t: String, font_size: int = 17, italic: bool = false) -> Label:
+	var l := Atlas.text(t, font_size, italic)
 	l.custom_minimum_size.x = 640
 	body.add_child(l)
 	return l

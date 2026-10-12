@@ -388,8 +388,8 @@ func list_saves() -> Array:
 	out.sort_custom(func(a, b): return a["time"] > b["time"])
 	return out
 
-func save_path(name: String) -> String:
-	var clean := name.to_lower().replace(" ", "-").validate_filename()
+func save_path(save_name: String) -> String:
+	var clean := save_name.to_lower().replace(" ", "-").validate_filename()
 	return ProjectSettings.globalize_path("%s/%s.evo" % [SAVE_DIR, clean])
 
 ## Ajoute `usec` microsecondes au poste `key` des mesures (F3).

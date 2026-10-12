@@ -100,10 +100,10 @@ func _fill_categories() -> void:
 		sw.color = pal.get_pixel(i + 1, 0)
 		sw.custom_minimum_size = Vector2(14, 14)
 		h.add_child(sw)
-		var name: String = names[i]
-		if name.length() > 64:
-			name = name.substr(0, 62) + "…"
-		var l := Atlas.text(name, 14)
+		var label: String = names[i]
+		if label.length() > 64:
+			label = label.substr(0, 62) + "…"
+		var l := Atlas.text(label, 14)
 		l.custom_minimum_size.x = 180
 		h.add_child(l)
 		guild_labels.add_child(h)

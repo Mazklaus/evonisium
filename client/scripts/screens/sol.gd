@@ -302,6 +302,7 @@ func _build_camp() -> void:
 			world.add_child(mi)
 			if which == 0:
 				var buf: PackedFloat32Array = fixed[k]
+				@warning_ignore("integer_division")
 				mm.instance_count = buf.size() / 12
 				if buf.size() > 0:
 					mm.buffer = buf
@@ -326,6 +327,7 @@ func _update_props() -> void:
 	for k in prop_mms.size():
 		var buf: PackedFloat32Array = props[k]
 		var mm: MultiMesh = prop_mms[k]
+		@warning_ignore("integer_division")
 		var n := buf.size() / 12
 		if n > mm.instance_count:
 			mm.instance_count = max(8, nearest_po2(n))
@@ -454,10 +456,10 @@ func _update_animated() -> void:
 		var img: Image = ground.poses(k, ids, rows)
 		if img == null:
 			continue
-		var size := Vector2i(img.get_width(), img.get_height())
-		if s["tex"] == null or s["tex_size"] != size:
+		var dims := Vector2i(img.get_width(), img.get_height())
+		if s["tex"] == null or s["tex_size"] != dims:
 			s["tex"] = ImageTexture.create_from_image(img)
-			s["tex_size"] = size
+			s["tex_size"] = dims
 			(s["mat"] as ShaderMaterial).set_shader_parameter("poses", s["tex"])
 		else:
 			(s["tex"] as ImageTexture).update(img)

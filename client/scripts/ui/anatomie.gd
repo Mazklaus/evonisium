@@ -22,9 +22,9 @@ func open(s: int) -> void:
 	portrait.show_body(App.session.request_body(s))
 
 ## Banc d'essai : un plan tiré au hasard.
-func open_test(seed: int) -> void:
-	set_title("%s — %s %d" % [App.t("anatomy"), App.t("test_body"), seed])
-	portrait.show_body(App.session.request_test_body(seed))
+func open_test(body_seed: int) -> void:
+	set_title("%s — %s %d" % [App.t("anatomy"), App.t("test_body"), body_seed])
+	portrait.show_body(App.session.request_test_body(body_seed))
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(820, 0)
