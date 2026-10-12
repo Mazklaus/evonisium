@@ -513,7 +513,8 @@ impl GlobalReservoirs {
         // CO₂ de l'air en quelques siècles à quelques millénaires).
         let mut steps = (dt / 10_000.0).ceil();
         for (i, &r) in surface_rates.iter().enumerate() {
-            if r < 0.0 {
+            // Le méthane pris à l'air est freiné à part, implicitement.
+            if r < 0.0 && crate::pools::WATER_POOLS[i] != WaterPool::Ch4 {
                 if let Some(&stock) = self.counterpart_ref(crate::pools::WATER_POOLS[i]) {
                     if stock > 0.0 {
                         steps = steps.max((dt * -r / (0.02 * stock)).ceil());
@@ -540,11 +541,30 @@ impl GlobalReservoirs {
             //    facteur (le carbone reste équilibré cellule par cellule), que
             //    suit l'O₂ libéré par la fixation ; les autres pools ont le leur.
             let mut moles = surface_rates.map(|r| r * h);
+            // Le méthane que les couches prennent à l'air y est oxydé
+            // (méthanotrophes : par l'O₂, ou par le sulfate sans O₂). Quand
+            // l'air n'en a pas assez, cette oxydation ralentit seule, avec son
+            // oxydant et le CO₂ qu'elle rend (bilans de carbone et d'électrons
+            // inchangés), au lieu de freiner tous les flux carbonés.
+            let ch4 = WaterPool::Ch4 as usize;
+            if moles[ch4] < 0.0 {
+                let stock = initial[ch4];
+                let f = if stock > 0.0 { (stock / (stock - moles[ch4])).min(1.0) } else { 0.0 };
+                let u = (1.0 - f) * -moles[ch4];
+                moles[ch4] += u;
+                moles[WaterPool::Dic as usize] -= u;
+                if moles[WaterPool::O2 as usize] < 0.0 || moles[WaterPool::Sulfate as usize] >= 0.0 {
+                    moles[WaterPool::O2 as usize] += 2.0 * u;
+                } else {
+                    moles[WaterPool::Sulfate as usize] += u;
+                    moles[WaterPool::H2s as usize] -= u;
+                }
+            }
             let mut phi = [1.0f64; WATER_POOL_COUNT];
             let mut phi_carbon: f64 = 1.0;
             for (i, &m) in moles.iter().enumerate() {
                 let pool = crate::pools::WATER_POOLS[i];
-                if m < 0.0 {
+                if m < 0.0 && i != ch4 {
                     if let Some(&r) = self.counterpart_ref(pool) {
                         let f = if initial[i] > 0.0 { (r.max(0.0) / (initial[i] - m)).min(1.0) } else { 0.0 };
                         if pool.carbon_atoms() > 0.0 {

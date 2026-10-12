@@ -1380,6 +1380,8 @@ impl World {
             let names = ["DIC", "DOC", "H2", "CH4", "O2", "SO4", "H2S", "Fe2", "Mn2", "FeOx", "MnOx", "PO4"];
             let r: Vec<String> = rates.iter().zip(names).map(|(x, n)| format!("{n} {x:.2e}")).collect();
             eprintln!("{:.1} Ma : sources {:.3e} ; {}", years / 1e6, vents * rest, r.join(", "));
+            let e: Vec<String> = total.exact.iter().zip(names).map(|(x, n)| format!("{n} {x:.2e}")).collect();
+            eprintln!("   exact (t_eco {t_eco:.1e}) : {}", e.join(", "));
         }
     }
 

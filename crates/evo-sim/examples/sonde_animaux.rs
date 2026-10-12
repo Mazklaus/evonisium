@@ -29,6 +29,8 @@ fn strip(g: &mut Genome, light: u32) {
     }
 }
 
+type Variant<'a> = (&'a str, Box<dyn Fn(&mut Genome)>);
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let world = World::load_file(Path::new(&args[1])).expect("lecture");
@@ -39,7 +41,8 @@ fn main() {
     let mut shown = 0;
     for c in 0..world.communities.len() {
         let pops = &world.communities[c];
-        let Some(host) = pops.iter().find(|p| p.phenotype.is_multicellular() && p.phenotype.is_eukaryote() && !p.phenotype.is_terrestrial())
+        let Some(host) =
+            pops.iter().find(|p| p.phenotype.is_multicellular() && p.phenotype.is_eukaryote() && !p.phenotype.is_terrestrial())
         else {
             continue;
         };
@@ -53,7 +56,12 @@ fn main() {
         let ctx = CellContext { env: &world.bio.env[c], light_biomass_per_m2: world.config.light_biomass_per_m2 };
         let cond = ctx.conditions_of(pops, &physio);
         let chem = &world.chemistry[c];
-        println!("cellule {c} : volume {:.2e} m³, O₂ {:.2e}, {} populations", world.bio.env[c].water_volume_m3, chem[evo_planet::WaterPool::O2 as usize], pops.len());
+        println!(
+            "cellule {c} : volume {:.2e} m³, O₂ {:.2e}, {} populations",
+            world.bio.env[c].water_volume_m3,
+            chem[evo_planet::WaterPool::O2 as usize],
+            pops.len()
+        );
         for p in pops {
             let ph = &p.phenotype;
             println!(
@@ -81,53 +89,69 @@ fn main() {
             println!("    organite {k} : {}", fams.join(" "));
         }
         let light = (1u32 << 5) | (1 << 6) | (1 << 7) | (1 << 8);
-        let variants: Vec<(&str, Box<dyn Fn(&mut Genome)>)> = vec![
+        let variants: Vec<Variant> = vec![
             ("résident", Box::new(|_g: &mut Genome| {})),
-            ("sans photosynthèse", Box::new(move |g: &mut Genome| {
-                strip(g, light)
-            })),
-            ("+ engloutir", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-            })),
-            ("+ moteurs", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-                add(g, DomainFamily::Motor, 1.0);
-            })),
-            ("+ sens, nerfs", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-                add(g, DomainFamily::Motor, 1.0);
-                add(g, DomainFamily::Sensor, 1.0);
-                add(g, DomainFamily::Neural, 0.5);
-            })),
-            ("+ matrice", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-                add(g, DomainFamily::Motor, 1.0);
-                add(g, DomainFamily::Sensor, 1.0);
-                add(g, DomainFamily::Neural, 0.5);
-                add(g, DomainFamily::Matrix, 1.0);
-            })),
-            ("+ grand corps", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-                add(g, DomainFamily::Motor, 1.0);
-                add(g, DomainFamily::Sensor, 1.0);
-                add(g, DomainFamily::Neural, 0.5);
-                add(g, DomainFamily::Matrix, 1.0);
-                add(g, DomainFamily::Adhesion, 1.5);
-            })),
-            ("+ très grand", Box::new(move |g: &mut Genome| {
-                strip(g, light);
-                add(g, DomainFamily::Cytoskeleton, 0.5);
-                add(g, DomainFamily::Motor, 1.5);
-                add(g, DomainFamily::Sensor, 1.0);
-                add(g, DomainFamily::Neural, 1.0);
-                add(g, DomainFamily::Matrix, 2.0);
-                add(g, DomainFamily::Adhesion, 3.0);
-            })),
+            ("sans photosynthèse", Box::new(move |g: &mut Genome| strip(g, light))),
+            (
+                "+ engloutir",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                }),
+            ),
+            (
+                "+ moteurs",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                    add(g, DomainFamily::Motor, 1.0);
+                }),
+            ),
+            (
+                "+ sens, nerfs",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                    add(g, DomainFamily::Motor, 1.0);
+                    add(g, DomainFamily::Sensor, 1.0);
+                    add(g, DomainFamily::Neural, 0.5);
+                }),
+            ),
+            (
+                "+ matrice",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                    add(g, DomainFamily::Motor, 1.0);
+                    add(g, DomainFamily::Sensor, 1.0);
+                    add(g, DomainFamily::Neural, 0.5);
+                    add(g, DomainFamily::Matrix, 1.0);
+                }),
+            ),
+            (
+                "+ grand corps",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                    add(g, DomainFamily::Motor, 1.0);
+                    add(g, DomainFamily::Sensor, 1.0);
+                    add(g, DomainFamily::Neural, 0.5);
+                    add(g, DomainFamily::Matrix, 1.0);
+                    add(g, DomainFamily::Adhesion, 1.5);
+                }),
+            ),
+            (
+                "+ très grand",
+                Box::new(move |g: &mut Genome| {
+                    strip(g, light);
+                    add(g, DomainFamily::Cytoskeleton, 0.5);
+                    add(g, DomainFamily::Motor, 1.5);
+                    add(g, DomainFamily::Sensor, 1.0);
+                    add(g, DomainFamily::Neural, 1.0);
+                    add(g, DomainFamily::Matrix, 2.0);
+                    add(g, DomainFamily::Adhesion, 3.0);
+                }),
+            ),
         ];
         for (name, f) in &variants {
             let mut g = (*host.genome).clone();
