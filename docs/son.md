@@ -12,13 +12,13 @@ Conception : doc « Evonisium : design sonore » (choix de l'utilisateur du 10 o
 | Menus | Musique seule, plus douce | — |
 | Interface | Plume à l'ouverture d'une fiche, page tournée au changement d'écran, tampon quand un point de sauvegarde est écrit | — |
 
-Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des cloches de verre, des bulles et de rares phrases douces (verre doux par défaut ; flûte douce et harpe feutrée au choix, la kalimba du premier jet ayant été refusée).
+Musique (C + B + A) : l'ère microbienne n'a pas encore de mélodie, seulement une nappe grave, des bulles et de rares phrases douces (verre doux par défaut ; flûte douce et harpe feutrée au choix). La kalimba et les cloches de verre du premier jet, trop vives et trop tintantes, ont été retirées.
 
 - plus de lignées vivantes, plus de voix ;
 - plus chaud, mode plus lumineux (du phrygien au lydien) et registre plus haut ;
 - plus d'oxygène, timbre plus clair et moins de bulles ;
 - des repos de 25 à 50 s, après des phrases de 50 à 90 s, où ne reste que la nappe : le son ne doit jamais être bruyant en continu sur une partie de 20 à 60 heures ;
-- les moments forts de la chronique (score d'intérêt ≥ 0,5) ont un motif : jalon ou innovation (accord de cloches), catastrophe (cloche froide), extinction (coup grave). Un motif au plus toutes les 8 s.
+- les moments forts de la chronique (score d'intérêt ≥ 0,5) ont un motif : jalon ou innovation (trois notes qui enflent), catastrophe (accord froid), extinction (coup grave et note basse). Un motif au plus toutes les 8 s.
 
 Le vent ne fait jamais de fond continu : des rafales de 5 à 12 s, séparées de 30 à 150 s de calme, plus rares quand le climat est froid ou pris par la glace (retour d'écoute de l'utilisateur du 10 octobre 2026 : vent et ressac trop présents). Les orages sont rares et tombent plutôt pendant les rafales.
 
@@ -51,7 +51,7 @@ Volet « peuples » de la livraison 3 (`evo-son/src/peuples.rs`), lu dans l'éta
 
 Sur demande de l'utilisateur (2026-10-11), le fond de chaque ère n'est plus
 seulement généré : des morceaux composés avec Suno, découpés en boucles,
-jouent sous les couches générées (cloches, phrases douces, bulles, motifs de la
+jouent sous les couches générées (phrases douces, bulles, motifs de la
 chronique), qui restent pilotées par l'état de la planète.
 
 - Les boucles sont dans `client/musique/fond/` (Ogg Vorbis, dossier ignoré
