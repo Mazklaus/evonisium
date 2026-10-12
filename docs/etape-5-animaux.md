@@ -66,21 +66,32 @@ La coordination d'un corps est n / (n + 0,3 × doublements / 12), où n est le t
 
 ## Résultats
 
-Commande `evonisium complexite --suivre --bilan`, niveau 4 puis 6, un tour d'évolution par 300 ka.
+Commande `evonisium complexite --suivre --bilan`, niveau 4 puis 6, un tour d'évolution par 300 ka, jusqu'à 3,5 Ga, environ 760 ka/s sur 4 cœurs (porte : 100 ka/s sur 6 cœurs). Bilans de carbone, de phosphore et d'électrons à 10⁻¹⁰ près sur toutes les parties. ⚑ : après l'accélérateur de la complexité.
 
 | Monde | Eucaryote | Multicellulaire à 2 types | Animal mobile | Système nerveux | Squelette | Plante de terre | Animal hors de l'eau | Organe sonore |
 |---|---|---|---|---|---|---|---|---|
-| Terre, graine 2026 | 533 Ma | 1,39 Ga | 1,60 Ga | 1,75 Ga | 2,51 Ga | 2,51 Ga | 1,60 Ga | 2,65 Ga |
+| Terre, graine 2026 | 933 Ma | 2,32 Ga ⚑ | 2,32 Ga | 2,35 Ga | 2,37 Ga | 2,37 Ga | 2,32 Ga | 2,37 Ga |
+| Terre, graine 7 | 1,93 Ga ⚑ | 3,03 Ga ⚑ | non | non | non | non | non | non |
+| Sans lune | 892 Ma | 2,54 Ga ⚑ | 2,54 Ga | non | non | non | non | non |
 
-Terre, graine 2026, de 0,6 à 3,0 Ga :
-- O₂ entre 7 % et 26 % de l'atmosphère, CO₂ entre 260 et 6 000 Pa, glace sur 23 à 31 % de la surface ;
-- bilans de carbone, de phosphore et d'électrons à 10⁻¹¹ près ;
-- 731 ka/s sur 4 cœurs, sur toute la partie.
+O₂ (part de l'atmosphère) :
+- Terre, graine 2026 : 13 à 25 % de 1,5 à 2,5 Ga.
+- Terre, graine 7 : 23 à 25 % de 2,5 à 3 Ga.
+- Sans lune : 0,2 à 8 %.
 
-De 3,1 à 3,5 Ga, la planète oscille entre des glaciations globales et des épisodes chauds (cycle limite : dégazage faible, altération forte). Ce sont les glaciations du Cryogénien, à la même distance de l'apparition de la vie (Mills et coll., 2011), mais elles ne s'arrêtent pas avant 3,5 Ga.
+Il retombe en fin de partie sur les deux Terres : sous 0,1 % vers 3 Ga (graine 2026), 0,06 % à 3,5 Ga (graine 7).
+
+**Verdict : porte pas encore franchie.** Les animaux, leurs nerfs, leurs squelettes, les plantes de terre et les organes sonores apparaissent sans script sur la Terre (graine 2026). Mais :
+- les deux autres parties n'ont pas d'animaux à terre ;
+- le premier animal naît déjà terrestre au lieu de suivre les plantes ;
+- l'O₂ ne tient pas jusqu'à la fin ;
+- la fin de partie oscille entre glaciations globales et épisodes chauds (cycle limite à dégazage faible, Mills et coll., 2011).
+
+Sur une partie précédente (graine 2026, avant le correctif de l'enveloppe), la chronologie était meilleure : animaux à 1,60 Ga, squelette et plantes de terre à 2,51 Ga, O₂ de 7 à 26 % de 0,6 à 3,0 Ga.
 
 ## Reste à faire
 
+- La porte : animaux et sortie des eaux sur deux mondes de la vague 1, plantes avant animaux, O₂ tenu jusqu'à la fin.
 - Une sortie du cycle des glaciations de fin de partie.
 - Les extinctions et radiations, suivies par un compteur.
 - Les lectures cognitives du fil Cognition (`evo_culture::cognition::Cognition`), après la fusion.
