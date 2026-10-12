@@ -23,7 +23,7 @@ pub struct LineageRecord {
     pub origin_cell: u32,
     /// Réactions catalysées à la fondation (bits).
     pub signature: u32,
-    /// Génome fondateur archivé (oublié pour une lignée éteinte sans fille).
+    /// Génome fondateur, tant que la lignée vit.
     pub founder: Option<Arc<Genome>>,
     pub extinct_years: Option<f64>,
     /// Lignées filles fondées.
@@ -78,8 +78,12 @@ impl LineageRegistry {
             }
             let rec = &mut records[id as usize];
             rec.extinct_years = Some(years);
+            // [Simplification] Le génome fondateur d'une lignée éteinte est
+            // oublié, clade ou non : la signature suffit à l'arbre, et les
+            // millions de lignées des corps complexes ne tiendraient pas en
+            // mémoire avec leurs génomes.
+            rec.founder = None;
             if rec.children == 0 {
-                rec.founder = None;
                 leaves += 1;
             } else {
                 clades.push(id);
