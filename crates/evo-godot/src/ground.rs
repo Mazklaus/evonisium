@@ -16,7 +16,7 @@ use evo_morph::artefact::{self, Artefact};
 use evo_morph::body::{impostor_views, Action, Locomotion, Mesh};
 use evo_view::camp::{folk_species, layout, Placed};
 use evo_view::culture::CampView;
-use evo_view::ground::{real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
+use evo_view::ground::{bench_species, real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
 use godot::classes::Image;
 use godot::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -53,9 +53,10 @@ impl IRefCounted for EvoGround {
     }
 }
 
-/// Construit la scène avec les espèces vraies de la cellule assez grandes
-/// pour se voir, sans figurant d'essai : une cellule dont la vie est
-/// microscopique montre son paysage vide (l'écran le dit). Une espèce vraie
+/// Construit la scène avec les espèces de `real` : dans une partie, les
+/// espèces vraies de la cellule assez grandes pour se voir, sans figurant
+/// d'essai (une cellule dont la vie est microscopique montre son paysage
+/// vide, l'écran le dit) ; sur le banc d'essai, des figurants. Une espèce vraie
 /// dont le moteur a tiré un échantillon (`samples`, par signature) devient
 /// une espèce d'agents ; les autres gardent les gestes des figurants.
 ///
@@ -175,7 +176,10 @@ impl EvoGround {
         };
         let mut g = Gd::<EvoGround>::default();
         let (seed, total) = (seed as u64, total.clamp(1, 1_000_000) as usize);
-        g.bind_mut().start(true, move || build(site, Vec::new(), Vec::new(), total, seed, None));
+        g.bind_mut().start(true, move || {
+            let extras = bench_species(&site, seed, 6);
+            build(site, extras, Vec::new(), total, seed, None)
+        });
         g
     }
 
