@@ -415,7 +415,16 @@ pub fn substep_with(
             if land {
                 litter += rest;
             } else {
-                chem[WaterPool::Doc as usize] += rest / volume;
+                // Les restes non digérés d'un mangeur de proies multicellulaire
+                // (pelotes fécales, débris) coulent comme ses cadavres, d'autant
+                // plus qu'il est gros : la pompe biologique des animaux (Turner,
+                // 2015). Ils emportent leur phosphore. Ceux des brouteurs
+                // unicellulaires restent dans la boucle microbienne.
+                let share = if p.phenotype.is_multicellular() { physio.sinking_share_of(p.phenotype.body_size) } else { 0.0 };
+                let sink = (rest * share).min(chem[WaterPool::Po4 as usize].max(0.0) * volume * cp);
+                out.sinking_carbon += sink;
+                chem[WaterPool::Po4 as usize] -= sink / cp / volume;
+                chem[WaterPool::Doc as usize] += (rest - sink) / volume;
             }
             debug_assert!(digested + incorporated <= carbon * (1.0 + 1e-9) + 1e-12, "proies : {digested} + {incorporated} > {carbon}");
         }
