@@ -819,7 +819,8 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     } else {
         (birth * (1.0 - physio.cuticle_water_penalty * p.desiccation_tolerance), 0.0)
     };
-    let mortality = if dormant { 0.0 } else { clock * physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
+    let mortality =
+        if dormant { 0.0 } else { clock * physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
 
     out.energy_kj = carbon_energy + b.supplement;
     out.autotroph_energy_kj = b.auto;

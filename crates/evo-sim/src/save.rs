@@ -32,7 +32,7 @@ use std::sync::Arc;
 /// Signature des fichiers de sauvegarde.
 pub const MAGIC: &[u8; 9] = b"EVONISIUM";
 /// Version du format ; une sauvegarde d'une autre version est refusée.
-pub const FORMAT_VERSION: u32 = 10;
+pub const FORMAT_VERSION: u32 = 11;
 
 #[derive(Serialize, Deserialize)]
 struct SavedPopulation {
@@ -70,7 +70,7 @@ struct SaveState<'a> {
     communities: Vec<Vec<SavedPopulation>>,
     /// Registre des lignées sans les génomes fondateurs, rangés dans la
     /// table des génomes (`founders`, un indice par lignée).
-    lineages: LineageRegistry,
+    lineages: Cow<'a, LineageRegistry>,
     founders: Vec<Option<u32>>,
     events: Cow<'a, EventLog>,
     journal: Cow<'a, GenomeJournal>,
@@ -116,10 +116,6 @@ impl World {
             })
             .collect();
         let founders = self.lineages.records.iter().map(|r| r.founder.as_ref().map(|g| index(g, &mut genomes))).collect();
-        let mut lineages = self.lineages.clone();
-        for r in &mut lineages.records {
-            r.founder = None;
-        }
         let pl = &self.planet;
         let state = SaveState {
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -140,7 +136,7 @@ impl World {
             chemistry: Cow::Borrowed(&self.chemistry),
             genomes,
             communities,
-            lineages,
+            lineages: Cow::Borrowed(&self.lineages),
             founders,
             events: Cow::Borrowed(&self.events),
             journal: Cow::Borrowed(&self.journal),
@@ -210,7 +206,8 @@ impl World {
             return Err(invalid("taille de la grille du vivant incohérente"));
         }
         let mut world = World::assemble(cfg, planet, bio, s.chemistry.into_owned(), communities);
-        world.lineages = s.lineages;
+        world.lineages = s.lineages.into_owned();
+        world.lineages.repair();
         if s.founders.len() != world.lineages.records.len() {
             return Err(invalid("génomes fondateurs incohérents"));
         }

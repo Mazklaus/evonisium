@@ -1722,6 +1722,7 @@ impl World {
         present.sort_unstable();
         present.dedup();
         let (clades, leaves) = self.lineages.retire_absent(&present, years);
+        self.lineages.prune(years);
         self.stats.leaf_extinctions += leaves as u64;
         for id in clades {
             self.events.push(years, None, EventKind::LineageExtinct { lineage: id });
@@ -2142,10 +2143,10 @@ impl World {
     /// Met à jour la cellule d'origine de chaque signature avec les
     /// lignées fondées depuis le dernier appel.
     fn scan_species_origins(&mut self) {
-        for r in &self.lineages.records[self.origin_scanned..] {
+        for r in self.lineages.since(self.origin_scanned as u32) {
             self.species_origin.entry(r.signature).or_insert(r.origin_cell);
         }
-        self.origin_scanned = self.lineages.records.len();
+        self.origin_scanned = self.lineages.total();
     }
 
     pub fn species(&self) -> Vec<SpeciesView> {
@@ -2279,7 +2280,7 @@ impl World {
             h.f(e.temperature_k);
         }
         h.u(self.events.events.len() as u64);
-        h.u(self.lineages.records.len() as u64);
+        h.u(self.lineages.total() as u64);
         h.u(self.journal.total());
         h.u(self.disturbances.barriers.len() as u64);
         h.u(self.disturbances.anomalies.len() as u64);
@@ -2324,7 +2325,7 @@ impl World {
             populations: self.communities.iter().map(Vec::len).sum(),
             biomass: self.biomass(),
             guilds,
-            lineages_total: self.lineages.records.len(),
+            lineages_total: self.lineages.total(),
             lineages_living: self.lineages.living_count(),
             thermal_mismatch_k: if weight > 0.0 { mismatch / weight } else { f64::NAN },
             mean_genes: mean(self.communities.iter().flatten().map(|p| p.genome.genes.len() as f64)),
