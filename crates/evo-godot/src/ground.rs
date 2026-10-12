@@ -7,11 +7,15 @@
 //! (trois texels RGBAF par os, une ligne par instance) que le shader des
 //! animaux lit avec `INSTANCE_ID`.
 //!
-//! Les individus sont des figurants (voir `evo_view::ground`) : rien de ce
+//! Les individus sont des agents du moteur pour les espèces vraies assez
+//! grandes, des figurants ailleurs (voir `evo_view::ground`) : rien de ce
 //! qu'ils font ne remonte au moteur.
 
 use crate::session::{image_rgba8, image_rgbaf};
+use evo_morph::artefact::{self, Artefact};
 use evo_morph::body::{impostor_views, Action, Locomotion, Mesh};
+use evo_view::camp::{folk_species, layout, Placed};
+use evo_view::culture::CampView;
 use evo_view::ground::{bench_species, real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
 use godot::classes::Image;
 use godot::prelude::*;
@@ -49,18 +53,45 @@ impl IRefCounted for EvoGround {
     }
 }
 
-/// Construit la scène : figurants du milieu, puis les espèces vraies.
-pub fn build(site: Site, real: Vec<SceneSpecies>, total: usize, seed: u64) -> Built {
+/// Construit la scène : figurants du milieu, puis les espèces vraies. Une
+/// espèce vraie dont le moteur a tiré un échantillon (`samples`, par
+/// signature) devient une espèce d'agents ; les autres gardent les gestes
+/// des figurants.
+///
+/// Avec `camp` (étape 6 : le groupe culturel de la cellule et le nom de son
+/// peuple), un campement se pose près du centre avec ses gens.
+pub fn build(
+    site: Site,
+    real: Vec<SceneSpecies>,
+    samples: Vec<evo_agents::Sample>,
+    total: usize,
+    seed: u64,
+    camp: Option<(CampView, String)>,
+) -> Built {
     let t0 = Instant::now();
     let patch = Patch::new(site.clone(), seed);
     let mut species = bench_species(&site, seed, 6);
-    species.extend(real);
-    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * species.len() * 4];
-    let row = IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * 4;
-    for (k, s) in species.iter().enumerate() {
-        atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(&s.plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
+    let mut samples: Vec<Option<evo_agents::Sample>> = samples.into_iter().map(Some).collect();
+    let mut agents = Vec::new();
+    for sp in real {
+        let found = samples.iter_mut().find(|x| x.as_ref().is_some_and(|x| Some(x.signature) == sp.signature)).and_then(|x| x.take());
+        match found {
+            Some(sample) => agents.push((sp, sample)),
+            None => species.push(sp),
+        }
     }
-    let crowd = Crowd::new(patch, species, total, seed);
+    let folk = camp.as_ref().map(|(_, name)| folk_species(&format!("{name} (peuple d'essai)"), seed ^ 0x666F));
+    let plans: Vec<_> = species.iter().chain(agents.iter().map(|a| &a.0)).chain(folk.iter()).map(|s| s.plan.clone()).collect();
+    let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * plans.len() * 4];
+    let row = IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * 4;
+    for (k, plan) in plans.iter().enumerate() {
+        atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
+    }
+    let mut crowd = Crowd::with_agents(patch, species, agents, total, seed);
+    if let (Some((view, name)), Some(folk)) = (camp, folk) {
+        let c = layout(&view, &name, &crowd.patch, seed);
+        crowd.add_camp(c, folk);
+    }
     Built { crowd, atlas, ms: t0.elapsed().as_secs_f64() * 1000.0 }
 }
 
@@ -142,7 +173,7 @@ impl EvoGround {
         };
         let mut g = Gd::<EvoGround>::default();
         let (seed, total) = (seed as u64, total.clamp(1, 1_000_000) as usize);
-        g.bind_mut().start(true, move || build(site, Vec::new(), total, seed));
+        g.bind_mut().start(true, move || build(site, Vec::new(), Vec::new(), total, seed, None));
         g
     }
 
@@ -206,6 +237,7 @@ impl EvoGround {
         d.set("name", s.name.as_str());
         d.set("size_m", s.size_m as f64);
         d.set("bench", s.signature.is_none());
+        d.set("agents", s.engine);
         d.set("predator", s.predator);
         d.set("aquatic", s.aquatic);
         d.set("locomotion", locomotion_label(s.rig.locomotion, s.aquatic, self.fr).as_str());
@@ -260,6 +292,84 @@ impl EvoGround {
 
     /// Tampon `MultiMesh` (12 nombres par instance) des individus donnés,
     /// complété par des instances nulles jusqu'à `rows`.
+    /// Maillage d'un objet du palier 3 (rang dans `Artefact::ALL`), en
+    /// mètres : sommets, normales, couleurs, indices.
+    #[func]
+    fn artefact_mesh(&self, index: i64) -> VarDictionary {
+        let a = Artefact::from_index(index.max(0) as usize);
+        let m = artefact::mesh(a, 11);
+        let mut d = VarDictionary::new();
+        let verts: Vec<Vector3> = m.positions.iter().map(|p| Vector3::new(p[0], p[1], p[2])).collect();
+        let normals: Vec<Vector3> = m.normals.iter().map(|n| Vector3::new(n[0], n[1], n[2])).collect();
+        let colours: Vec<Color> = m.colours.iter().map(|c| Color::from_rgb(c[0], c[1], c[2])).collect();
+        let mut idx = Vec::with_capacity(m.indices.len());
+        for t in m.indices.chunks(3) {
+            idx.extend_from_slice(&[t[0] as i32, t[2] as i32, t[1] as i32]);
+        }
+        d.set("key", a.key());
+        d.set("label", a.label(self.fr));
+        d.set("vertices", &PackedVector3Array::from(&verts[..]));
+        d.set("normals", &PackedVector3Array::from(&normals[..]));
+        d.set("colors", &PackedColorArray::from(&colours[..]));
+        d.set("indices", &PackedInt32Array::from(&idx[..]));
+        d
+    }
+
+    /// Gens du campement proches de la caméra qui célèbrent un rite.
+    #[func]
+    fn camp_rite_count(&self) -> i64 {
+        let Some(c) = self.crowd() else { return 0 };
+        let Some(folk) = c.folk else { return 0 };
+        c.near
+            .iter()
+            .filter(|&&i| {
+                let ind = &c.individuals[i as usize];
+                ind.species == folk && ind.action == Action::Rite
+            })
+            .count() as i64
+    }
+
+    /// Nombre d'objets du palier 3.
+    #[func]
+    fn artefact_count(&self) -> i64 {
+        Artefact::ALL.len() as i64
+    }
+
+    /// Le campement de la scène : peuple, centre, espèce de ses gens ; vide
+    /// sans campement.
+    #[func]
+    fn camp_info(&self) -> VarDictionary {
+        let mut d = VarDictionary::new();
+        let Some(c) = self.crowd() else { return d };
+        let (Some(camp), Some(folk)) = (&c.camp, c.folk) else { return d };
+        let y = c.patch.height_at(camp.centre.0, camp.centre.1);
+        d.set("people", camp.people.as_str());
+        d.set("centre", Vector3::new(camp.centre.0, y, camp.centre.1));
+        d.set("folk_species", folk as i64);
+        d.set("folk", camp.folk as i64);
+        d.set("fixed", camp.fixed.len() as i64);
+        d
+    }
+
+    /// Instances d'objets, rangées par objet : `fixed` pour les objets posés
+    /// du campement, sinon les objets tenus et portés de l'image. Pour
+    /// chaque rang d'objet, les transformations (12 nombres par instance).
+    #[func]
+    fn camp_instances(&self, fixed: bool) -> VarArray {
+        let mut out = VarArray::new();
+        let Some(c) = self.crowd() else { return out };
+        let Some(camp) = &c.camp else { return out };
+        let list: Vec<Placed> = if fixed { camp.fixed.clone() } else { c.props() };
+        let mut by: Vec<Vec<f32>> = vec![Vec::new(); Artefact::ALL.len()];
+        for p in &list {
+            by[p.artefact.index()].extend_from_slice(&p.rows());
+        }
+        for v in by {
+            out.push(&PackedFloat32Array::from(&v[..]).to_variant());
+        }
+        out
+    }
+
     #[func]
     fn transforms(&self, ids: PackedInt32Array, rows: i64) -> PackedFloat32Array {
         let Some(c) = self.crowd() else { return PackedFloat32Array::new() };
@@ -349,7 +459,7 @@ impl EvoGround {
         c.individuals
             .iter()
             .enumerate()
-            .filter(|(_, i)| i.species as i64 == k)
+            .filter(|(_, i)| i.species as i64 == k && i.scale > 0.0)
             .min_by(|a, b| (a.1.x.hypot(a.1.z)).total_cmp(&b.1.x.hypot(b.1.z)))
             .map_or(-1, |(i, _)| i as i64)
     }

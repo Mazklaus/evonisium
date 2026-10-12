@@ -312,18 +312,27 @@ fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver
                 st.years_per_second = speed;
             }
         }
-        // Freinage : le pas suivant ne commence pas avant son heure.
-        if let (Some(max), true) = (throttle, advanced > 0.0) {
-            let wanted = advanced / max;
-            if wanted > elapsed {
-                match rx.recv_timeout(Duration::from_secs_f64(wanted - elapsed)) {
-                    Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
-                    Ok(c) => {
-                        if let Flow::Stop = handle(&mut world, &mut store, &mut throttle, c) {
-                            break;
-                        }
-                    }
-                    Err(RecvTimeoutError::Timeout) => {}
+        // Freinage : le pas suivant ne commence pas avant son heure. Les
+        // commandes reçues pendant l'attente (observation, requêtes du
+        // client, plusieurs fois par seconde) ne l'écourtent pas : sans
+        // cela, le frein ne tenait presque jamais et la partie filait à la
+        // vitesse de calcul. Un ordre (pause, intervention) la termine, pour
+        // être appliqué tout de suite ; un nouveau frein la recalcule.
+        if let (Some(_), true) = (throttle, advanced > 0.0) {
+            while let Some(max) = throttle {
+                let wanted = Duration::from_secs_f64(advanced / max);
+                let spent = t0.elapsed();
+                if spent >= wanted {
+                    break;
+                }
+                match rx.recv_timeout(wanted - spent) {
+                    Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break 'outer,
+                    Ok(c) => match handle(&mut world, &mut store, &mut throttle, c) {
+                        Flow::Stop => break 'outer,
+                        Flow::Dirty => break,
+                        Flow::Quiet => {}
+                    },
+                    Err(RecvTimeoutError::Timeout) => break,
                 }
             }
         }

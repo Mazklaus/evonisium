@@ -13,10 +13,14 @@ crate-type = ["cdylib"]
 evo-core.workspace = true
 evo-planet.workspace = true
 evo-life.workspace = true
+evo-genetics.workspace = true
 evo-sim.workspace = true
 evo-engine.workspace = true
 evo-view.workspace = true
 evo-morph.workspace = true
+evo-agents.workspace = true
+evo-son.workspace = true
+evo-culture.workspace = true
 mimalloc.workspace = true
 rayon.workspace = true
 godot = { version = "0.5", features = ["api-4-6"] }

@@ -1,0 +1,659 @@
+//! Son du client Evonisium, indépendant de Godot (le crate `evo-godot` n'en
+//! est que le pont). Voir le doc « Evonisium : design sonore » et le
+//! paragraphe « Son » du doc d'architecture.
+//!
+//! Le son lit seulement l'état publié par le moteur et la chronique ; il
+//! n'écrit jamais dans le moteur et n'utilise pas son hasard, donc il ne
+//! change jamais l'histoire. Tout est synthétisé, sauf le fond musical de
+//! chaque ère (`fond`) : des boucles enregistrées, sous les couches générées.
+//!
+//! Livraison 1 : musique des ères microbiennes, souffle du globe, monde
+//! liquide de la loupe, bruits de papier et d'encre de l'interface.
+
+// Affichage seulement : rien de ce crate n'entre dans l'état simulé, les
+// mathématiques de la plateforme y suffisent (voir clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
+pub mod ambiance;
+pub mod fond;
+pub mod musique;
+pub mod peuples;
+pub mod recit;
+pub mod synth;
+
+use ambiance::{Globe, Micro};
+use fond::{Boucle, Fond};
+use musique::{Lecture, Musique};
+use peuples::{Chant, Peuple, Rumeur};
+use std::collections::VecDeque;
+use synth::{Biquad, Bus, FilterKind, Make, Reverb, Rng, Smooth, Voice};
+
+/// Ce que le son lit du monde publié (une fois par image suffit).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Monde {
+    /// Fraction molaire d'O₂ (0,21 sur la Terre actuelle).
+    pub o2: f64,
+    pub temperature_k: f64,
+    pub ice: f64,
+    pub ocean: f64,
+    pub lineages: u32,
+    pub paused: bool,
+}
+
+/// Vue où se trouve le joueur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Vue {
+    /// Écrans d'accueil, de création, de chargement.
+    Menu,
+    Globe,
+    /// Loupe de l'inspecteur ouverte.
+    Microscope,
+    /// Descente au sol.
+    Sol,
+}
+
+impl Vue {
+    pub fn from_name(s: &str) -> Self {
+        match s {
+            "globe" | "jeu" => Vue::Globe,
+            "microscope" | "loupe" => Vue::Microscope,
+            "sol" => Vue::Sol,
+            _ => Vue::Menu,
+        }
+    }
+}
+
+/// Bruits de papier et d'encre de l'interface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bruit {
+    /// Ouverture d'une fiche : plume qui gratte.
+    Plume,
+    /// Changement d'écran : page tournée.
+    Page,
+    /// Tampon (point de sauvegarde, ordre confirmé).
+    Tampon,
+    /// Événement notable de la chronique : clochette.
+    Cloche,
+    /// Étape franchie : tampon puis accord.
+    Etape,
+}
+
+impl Bruit {
+    pub fn from_name(s: &str) -> Option<Self> {
+        Some(match s {
+            "plume" => Bruit::Plume,
+            "page" => Bruit::Page,
+            "tampon" => Bruit::Tampon,
+            "cloche" => Bruit::Cloche,
+            "etape" => Bruit::Etape,
+            _ => return None,
+        })
+    }
+}
+
+/// Moment fort de la chronique, que la musique souligne d'un motif.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Moment {
+    Jalon,
+    Froid,
+    Extinction,
+}
+
+impl Moment {
+    /// Motif pour un événement de la chronique (famille du chantier
+    /// Interface, score d'intérêt de 0 à 1), ou `None` s'il passe sans bruit.
+    pub fn of_event(family: &str, interest: f64) -> Option<Self> {
+        if interest < 0.5 {
+            return None;
+        }
+        match family {
+            "jalon" | "innovation" => Some(Moment::Jalon),
+            "catastrophe" => Some(Moment::Froid),
+            "extinction" => Some(Moment::Extinction),
+            _ => None,
+        }
+    }
+}
+
+/// Ordre donné au son depuis le fil principal.
+#[derive(Clone, Debug)]
+pub enum Ordre {
+    Monde(Monde),
+    Vue(Vue),
+    Evenement {
+        family: String,
+        interest: f64,
+    },
+    Bruit(Bruit),
+    /// Volumes de 0 à 1 : général, musique, ambiances, interface,
+    /// narrateur.
+    Volumes([f32; 5]),
+    Muet(bool),
+    /// Phrase du narrateur, déjà synthétisée : mono, au taux du son. Les
+    /// phrases sont dites dans l'ordre, séparées d'un court silence ; la
+    /// musique et les ambiances s'effacent pendant qu'il parle.
+    Parole {
+        id: u64,
+        son: Vec<f32>,
+    },
+    /// Le narrateur se tait et oublie les phrases en attente.
+    Taire,
+    /// Peuple que l'on regarde au sol (sa rumeur, ses chants), ou aucun.
+    Peuple(Option<Peuple>),
+    /// Le peuple célèbre son rite numéro tant (chant rituel).
+    Rite(usize),
+    /// Dit un mot dans la langue du peuple regardé (un nom propre).
+    Prononcer(String),
+    /// Ère de la partie pour le fond musical (indice de `fond::ERES`).
+    Ere(u8),
+    /// Une boucle du fond musical, déjà décodée au taux du son.
+    Boucle(Boucle),
+}
+
+/// Ce que le son signale au fil principal (sous-titres, fin de phrase).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Annonce {
+    Debut(u64),
+    Fin(u64),
+}
+
+/// Silence entre deux phrases du narrateur, en secondes.
+const SOUFFLE: f32 = 0.45;
+
+const MAX_VOICES: usize = 160;
+/// Gain de sortie : environ -24 dB efficaces sur le globe au volume par défaut.
+const GAIN: f32 = 2.5;
+
+pub struct Son {
+    pub rate: f32,
+    dt: f32,
+    rng: Rng,
+    mk: Make,
+    voices: Vec<Voice>,
+    fresh: Vec<Voice>,
+    pub musique: Musique,
+    globe: Globe,
+    micro: Micro,
+    verb: Reverb,
+    music_lp: [Biquad; 2],
+    pub monde: Option<Monde>,
+    pub vue: Vue,
+    /// Part de chaque bus selon la vue (musique, ambiance), lissée.
+    mix_music: Smooth,
+    volumes: [f32; 5],
+    mute: Smooth,
+    ctrl: usize,
+    paroles: VecDeque<(u64, Vec<f32>)>,
+    /// Phrase en cours et position, puis silence avant la suivante.
+    parole: Option<(u64, Vec<f32>, usize)>,
+    souffle: f32,
+    /// Retrait de la musique et des ambiances sous la voix, de 0 à 1.
+    duck: Smooth,
+    annonces: Vec<Annonce>,
+    rumeur: Option<Rumeur>,
+    chant: Option<Chant>,
+    pub fond: Fond,
+}
+
+/// Pas de contrôle, en échantillons.
+const BLOCK: usize = 256;
+
+impl Son {
+    pub fn new(rate: f32, seed: u64) -> Self {
+        let mut rng = Rng::new(seed);
+        let musique = Musique::new(&mut rng);
+        Self {
+            rate,
+            dt: 1.0 / rate,
+            rng,
+            mk: Make { rate },
+            voices: Vec::with_capacity(MAX_VOICES),
+            fresh: Vec::with_capacity(64),
+            musique,
+            globe: Globe::new(rate),
+            micro: Micro::new(rate),
+            verb: Reverb::new(rate),
+            music_lp: [Biquad::new(FilterKind::LowPass, 2000.0, 0.6, rate); 2],
+            monde: None,
+            vue: Vue::Menu,
+            mix_music: Smooth::new(0.6),
+            volumes: [0.8, 0.7, 0.7, 0.6, 0.9],
+            mute: Smooth::new(1.0),
+            ctrl: 0,
+            paroles: VecDeque::new(),
+            parole: None,
+            souffle: 0.0,
+            duck: Smooth::new(0.0),
+            annonces: Vec::new(),
+            rumeur: None,
+            chant: None,
+            fond: Fond::new(rate),
+        }
+    }
+
+    pub fn ordre(&mut self, o: Ordre) {
+        match o {
+            Ordre::Monde(m) => self.monde = Some(m),
+            Ordre::Vue(v) => self.vue = v,
+            Ordre::Evenement { family, interest } => {
+                if let Some(m) = Moment::of_event(&family, interest) {
+                    self.musique.moment(m);
+                }
+            }
+            Ordre::Bruit(b) => self.bruit(b),
+            Ordre::Volumes(v) => self.volumes = v.map(|x| x.clamp(0.0, 1.0)),
+            Ordre::Muet(m) => self.mute.target = if m { 0.0 } else { 1.0 },
+            Ordre::Parole { id, son } => self.paroles.push_back((id, son)),
+            Ordre::Taire => {
+                if let Some((id, _, _)) = self.parole.take() {
+                    self.annonces.push(Annonce::Fin(id));
+                }
+                for (id, _) in self.paroles.drain(..) {
+                    self.annonces.push(Annonce::Fin(id));
+                }
+            }
+            Ordre::Peuple(p) => {
+                if self.rumeur.as_ref().map(|r| &r.peuple) != p.as_ref() {
+                    self.chant = None;
+                    self.rumeur = p.map(|p| Rumeur::new(p, &mut self.rng));
+                }
+            }
+            Ordre::Rite(i) => self.chanter(i),
+            Ordre::Ere(e) => self.fond.changer_ere(e),
+            Ordre::Boucle(b) => self.fond.ajouter(b),
+            Ordre::Prononcer(mot) => {
+                if let Some(r) = &self.rumeur {
+                    let loc = peuples::Locuteur::homme(&mut self.rng);
+                    let g = peuples::prononcer(&mot, &r.peuple.langue, loc, &mut self.rng, self.rate);
+                    self.push(Voice::new(synth::Kind::Gosier(Box::new(g)), Bus::Interface, 0.9).send(0.15));
+                }
+            }
+        }
+    }
+
+    /// Lance le chant d'un rite du peuple regardé (s'il n'en chante pas déjà un).
+    fn chanter(&mut self, rite: usize) {
+        let Some(r) = &self.rumeur else { return };
+        if self.chant.is_some() || r.peuple.rites.is_empty() {
+            return;
+        }
+        let (chant, voix) = Chant::composer(&r.peuple, rite % r.peuple.rites.len(), &mut self.rng, &self.mk);
+        self.chant = Some(chant);
+        for v in voix {
+            self.push(v);
+        }
+    }
+
+    fn push(&mut self, v: Voice) {
+        if self.voices.len() < MAX_VOICES {
+            self.voices.push(v);
+        }
+    }
+
+    /// Joue un bruit d'interface.
+    pub fn bruit(&mut self, b: Bruit) {
+        let mk = Make { rate: self.rate };
+        let r = self.rate;
+        let rng = &mut self.rng;
+        let mut v: Vec<Voice> = Vec::new();
+        match b {
+            Bruit::Plume => {
+                let mut t = 0.0;
+                for _ in 0..(3 + (rng.u() * 3.0) as usize) {
+                    let len = rng.range(0.07, 0.17);
+                    let k =
+                        mk.burst(FilterKind::BandPass, rng.range(2600.0, 4200.0), rng.range(2000.0, 5200.0), 1.6, len * 0.3, len, false);
+                    v.push(Voice::new(k, Bus::Interface, 0.3).at(t, r).send(0.1));
+                    t += len + rng.range(0.03, 0.12);
+                }
+            }
+            Bruit::Page => {
+                v.push(Voice::new(mk.burst(FilterKind::BandPass, 700.0, 3800.0, 0.9, 0.2, 0.45, false), Bus::Interface, 0.4).send(0.1));
+                v.push(Voice::new(mk.thump(180.0, 0.08), Bus::Interface, 0.12).at(0.4, r));
+            }
+            Bruit::Tampon => {
+                v.push(Voice::new(mk.thump(120.0, 0.14), Bus::Interface, 0.7));
+                v.push(Voice::new(mk.burst(FilterKind::LowPass, 900.0, 900.0, 1.0, 0.002, 0.06, true), Bus::Interface, 0.35));
+                v.push(Voice::new(mk.burst(FilterKind::BandPass, 2200.0, 2200.0, 1.0, 0.001, 0.03, false), Bus::Interface, 0.12));
+            }
+            Bruit::Cloche => {
+                v.push(Voice::new(mk.bell(91.0, 3.5, 1.6, 2.6), Bus::Interface, 0.12).send(0.3));
+                v.push(Voice::new(mk.bell(98.0, 3.5, 1.6, 2.2), Bus::Interface, 0.07).at(0.13, r).send(0.3));
+            }
+            Bruit::Etape => {
+                v.push(Voice::new(mk.thump(120.0, 0.14), Bus::Interface, 0.7));
+                for (i, m) in [74.0, 78.0, 81.0, 86.0, 90.0].into_iter().enumerate() {
+                    v.push(Voice::new(mk.bell(m, 2.0, 1.4, 3.2), Bus::Interface, 0.07).at(0.35 + i as f32 * 0.11, r).send(0.4));
+                }
+                v.push(
+                    Voice::new(mk.pad(rng, &[50.0, 57.0, 62.0, 66.0], 4.0, 0.4, false, 1200.0), Bus::Interface, 0.05).at(0.3, r).send(0.4),
+                );
+            }
+        }
+        for x in v {
+            self.push(x);
+        }
+    }
+
+    /// Gains cibles (musique, globe, loupe) de la vue courante.
+    fn targets(&self) -> (f32, f32, f32) {
+        let paused = self.monde.is_some_and(|m| m.paused);
+        let (m, g, u) = match self.vue {
+            Vue::Menu => (0.6, 0.0, 0.0),
+            Vue::Globe => (1.0, 1.0, 0.0),
+            Vue::Microscope => (0.45, 0.15, 1.0),
+            Vue::Sol => (0.7, 0.6, 0.0),
+        };
+        // En pause, l'histoire s'arrête : la musique se retire un peu.
+        if paused {
+            (m * 0.5, g, u)
+        } else {
+            (m, g, u)
+        }
+    }
+
+    fn control(&mut self) {
+        let dt = BLOCK as f32 * self.dt;
+        let l = Lecture::of(self.monde.as_ref());
+        let (m, g, u) = self.targets();
+        // Un chant rituel couvre la musique du jeu.
+        self.mix_music.target = if self.chant.is_some() { m * 0.25 } else { m };
+        self.globe.set(&l, g);
+        self.micro.set(u);
+        let lp = l.cutoff();
+        for f in self.music_lp.iter_mut() {
+            f.set(FilterKind::LowPass, lp, 0.6, self.rate);
+        }
+        self.fond.tick(dt, &mut self.rng);
+        self.musique.cle = self.fond.cle();
+        let mut fresh = std::mem::take(&mut self.fresh);
+        self.musique.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
+        self.globe.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
+        self.micro.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
+        self.peuple(dt, &mut fresh);
+        for v in fresh.drain(..) {
+            self.push(v);
+        }
+        self.fresh = fresh;
+    }
+
+    /// Rumeur et chants du peuple regardé, au sol seulement.
+    fn peuple(&mut self, dt: f32, fresh: &mut Vec<Voice>) {
+        let sol = self.vue == Vue::Sol;
+        if let Some(c) = &mut self.chant {
+            c.tick(dt, &self.mk, &mut self.rng, fresh);
+            if c.fini() {
+                self.chant = None;
+            }
+        }
+        let parleurs = self.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_)) && v.bus == Bus::Ambiance).count();
+        let Some(r) = &mut self.rumeur else { return };
+        let level = if sol && self.chant.is_none() { 1.0 } else { 0.0 };
+        r.tick(dt, level, &self.mk, &mut self.rng, fresh, parleurs);
+        if sol && self.chant.is_none() && !r.peuple.rites.is_empty() {
+            r.prochain_chant -= dt;
+            if r.prochain_chant <= 0.0 {
+                r.prochain_chant = self.rng.range(120.0, 300.0);
+                let i = (self.rng.u() * r.peuple.rites.len() as f32) as usize;
+                self.chanter(i);
+            }
+        }
+    }
+
+    /// Remplit `out` d'échantillons stéréo entrelacés par paires.
+    pub fn rendre(&mut self, out: &mut [[f32; 2]]) {
+        let dt = self.dt;
+        let rate = self.rate;
+        for frame in out.iter_mut() {
+            if self.ctrl == 0 {
+                self.control();
+            }
+            self.ctrl = (self.ctrl + 1) % BLOCK;
+            let mut bus = [[0.0f32; 2]; 3];
+            let mut send = 0.0f32;
+            let rng = &mut self.rng;
+            self.voices.retain_mut(|v| match v.next(rng, dt, rate) {
+                Some(s) => {
+                    let b = v.bus as usize;
+                    let a = (v.pan + 1.0) * 0.25 * std::f32::consts::PI;
+                    bus[b][0] += s * a.cos();
+                    bus[b][1] += s * a.sin();
+                    send += s * v.send;
+                    true
+                }
+                None => false,
+            });
+            let amb = self.globe.run(rng, dt, rate) + self.micro.run(rng, dt, rate);
+            bus[1][0] += amb;
+            bus[1][1] += amb;
+            let fond = self.fond.run(dt, rng);
+            let mm = self.mix_music.step(dt, 2.0);
+            let [vg, vm, va, vi, vn] = self.volumes;
+            let voix = self.parler();
+            self.duck.target = if self.parle() { 1.0 } else { 0.0 };
+            let d = self.duck.step(dt, if self.duck.target > self.duck.value { 0.25 } else { 1.2 });
+            let (vm, va) = (vm * (1.0 - 0.6 * d), va * (1.0 - 0.45 * d));
+            let w = self.verb.run(send + voix * 0.06);
+            let mute = self.mute.step(dt, 0.3);
+            for ch in 0..2 {
+                // Le fond garde son timbre : seules les couches générées
+                // passent par le filtre qui suit l'oxygène.
+                let music = (self.music_lp[ch].run(bus[0][ch]) + fond[ch]) * mm * vm;
+                let x = (music + bus[1][ch] * va + bus[2][ch] * vi + w[ch] * (vm + va) * 0.5) * vg * mute * GAIN + voix * vn * vg * mute;
+                // Limiteur doux : jamais de saturation dure.
+                frame[ch] = x.tanh() * 0.95;
+            }
+        }
+    }
+
+    /// Échantillon suivant de la voix du narrateur (0 entre deux phrases).
+    #[inline]
+    fn parler(&mut self) -> f32 {
+        if let Some((id, son, pos)) = &mut self.parole {
+            if *pos < son.len() {
+                let x = son[*pos];
+                *pos += 1;
+                return x;
+            }
+            self.annonces.push(Annonce::Fin(*id));
+            self.parole = None;
+            self.souffle = SOUFFLE;
+        }
+        if self.souffle > 0.0 {
+            self.souffle -= self.dt;
+            return 0.0;
+        }
+        if let Some((id, son)) = self.paroles.pop_front() {
+            self.annonces.push(Annonce::Debut(id));
+            self.parole = Some((id, son, 0));
+        }
+        0.0
+    }
+
+    /// Le narrateur parle, ou va reprendre après un silence.
+    pub fn parle(&self) -> bool {
+        self.parole.is_some() || !self.paroles.is_empty()
+    }
+
+    /// Débuts et fins de phrases depuis le dernier appel.
+    pub fn annonces(&mut self) -> Vec<Annonce> {
+        std::mem::take(&mut self.annonces)
+    }
+
+    /// Manière de célébrer du chant en cours, s'il y en a un.
+    pub fn chant(&self) -> Option<peuples::Forme> {
+        self.chant.as_ref().map(|c| c.forme)
+    }
+
+    pub fn voices(&self) -> usize {
+        self.voices.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn terre(lineages: u32, o2: f64) -> Monde {
+        Monde { o2, temperature_k: 288.0, ice: 0.05, ocean: 0.7, lineages, paused: false }
+    }
+
+    fn render(son: &mut Son, seconds: f32) -> (f32, f32) {
+        let mut buf = vec![[0.0f32; 2]; (son.rate * seconds) as usize];
+        son.rendre(&mut buf);
+        let mut peak = 0.0f32;
+        let mut sum = 0.0f64;
+        for f in &buf {
+            for &x in f {
+                assert!(x.is_finite());
+                peak = peak.max(x.abs());
+                sum += (x * x) as f64;
+            }
+        }
+        (peak, (sum / (buf.len() * 2) as f64).sqrt() as f32)
+    }
+
+    #[test]
+    fn every_view_sounds_without_clipping() {
+        for vue in [Vue::Menu, Vue::Globe, Vue::Microscope, Vue::Sol] {
+            let mut son = Son::new(44_100.0, 7);
+            son.ordre(Ordre::Monde(terre(40, 1e-3)));
+            son.ordre(Ordre::Vue(vue));
+            let (peak, rms) = render(&mut son, 20.0);
+            assert!(peak < 0.95, "{vue:?} : crête {peak}");
+            assert!(rms > 0.002, "{vue:?} : silence ({rms})");
+            assert!(son.voices() < MAX_VOICES);
+        }
+    }
+
+    #[test]
+    fn interface_sounds_play_and_end() {
+        let mut son = Son::new(44_100.0, 3);
+        son.ordre(Ordre::Volumes([1.0, 0.0, 0.0, 1.0, 0.0]));
+        for b in [Bruit::Plume, Bruit::Page, Bruit::Tampon, Bruit::Cloche, Bruit::Etape] {
+            son.ordre(Ordre::Bruit(b));
+        }
+        let (peak, _) = render(&mut son, 1.0);
+        assert!(peak > 0.01 && peak < 0.95);
+        render(&mut son, 6.0);
+        // La musique tourne encore (volume nul) mais tous les bruits sont finis.
+        assert!(son.voices.iter().all(|v| v.bus != Bus::Interface));
+    }
+
+    #[test]
+    fn life_and_oxygen_change_the_music() {
+        let poor = Lecture::of(Some(&terre(1, 1e-6)));
+        let rich = Lecture::of(Some(&terre(300, 0.2)));
+        assert!(rich.bio > poor.bio + 0.5);
+        assert!(rich.cutoff() > 4.0 * poor.cutoff());
+        let cold = Lecture::of(Some(&Monde { temperature_k: 240.0, ..terre(10, 1e-3) }));
+        let hot = Lecture::of(Some(&Monde { temperature_k: 320.0, ..terre(10, 1e-3) }));
+        let mode = |l: &Lecture| ((l.temp * 5.0) as usize).min(4);
+        assert_eq!(musique::MODES[mode(&cold)].0, "phrygien");
+        assert_eq!(musique::MODES[mode(&hot)].0, "lydien");
+    }
+
+    #[test]
+    fn music_rests_between_phrases() {
+        let mut son = Son::new(22_050.0, 11);
+        son.ordre(Ordre::Monde(terre(100, 1e-2)));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        let mut seen_rest = false;
+        for _ in 0..300 {
+            render(&mut son, 1.0);
+            seen_rest |= !son.musique.playing;
+        }
+        assert!(seen_rest, "cinq minutes sans un seul repos");
+    }
+
+    #[test]
+    fn mute_silences_everything() {
+        let mut son = Son::new(44_100.0, 5);
+        son.ordre(Ordre::Monde(terre(40, 1e-3)));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        son.ordre(Ordre::Muet(true));
+        render(&mut son, 3.0);
+        let (peak, _) = render(&mut son, 2.0);
+        assert!(peak < 1e-3);
+    }
+
+    #[test]
+    fn notable_events_become_motifs() {
+        assert_eq!(Moment::of_event("jalon", 0.9), Some(Moment::Jalon));
+        assert_eq!(Moment::of_event("catastrophe", 0.85), Some(Moment::Froid));
+        assert_eq!(Moment::of_event("extinction", 0.1), None);
+        assert_eq!(Moment::of_event("speciation", 0.9), None);
+    }
+
+    #[test]
+    fn the_narrator_speaks_in_order_over_a_quieter_music() {
+        let mut son = Son::new(48_000.0, 3);
+        son.ordre(Ordre::Monde(Monde { o2: 1e-3, temperature_k: 300.0, ice: 0.0, ocean: 0.7, lineages: 80, paused: false }));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        render(&mut son, 3.0);
+        let phrase = |f: f32| (0..24_000).map(|i| (i as f32 * f * std::f32::consts::TAU / 48_000.0).sin() * 0.3).collect::<Vec<_>>();
+        son.ordre(Ordre::Parole { id: 1, son: phrase(200.0) });
+        son.ordre(Ordre::Parole { id: 2, son: phrase(300.0) });
+        render(&mut son, 0.1);
+        assert!(son.parle());
+        assert_eq!(son.annonces(), vec![Annonce::Debut(1)]);
+        render(&mut son, 1.0);
+        assert_eq!(son.annonces(), vec![Annonce::Fin(1), Annonce::Debut(2)]);
+        assert!(son.duck.value > 0.9);
+        son.ordre(Ordre::Taire);
+        assert_eq!(son.annonces(), vec![Annonce::Fin(2)]);
+        render(&mut son, 3.0);
+        assert!(!son.parle() && son.duck.value < 0.2);
+    }
+
+    #[test]
+    fn a_background_loop_plays_in_its_key_under_the_generated_layers() {
+        let mut son = Son::new(48_000.0, 4);
+        son.ordre(Ordre::Monde(Monde { o2: 1e-6, temperature_k: 290.0, lineages: 40, ..Default::default() }));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        let pcm: Vec<[f32; 2]> = (0..48_000 * 20).map(|k| [(k as f32 * 0.02).sin() * 0.3; 2]).collect();
+        son.ordre(Ordre::Boucle(Boucle { ere: 2, pcm, tonique: 45, mode: 2, gain: 1.0 }));
+        // Pas de boucle pour l'ère 0 : tout reste généré.
+        render(&mut son, 10.0);
+        assert!(!son.fond.joue() && son.musique.cle.is_none());
+        son.ordre(Ordre::Ere(2));
+        render(&mut son, 15.0);
+        assert!(son.fond.joue());
+        assert_eq!(son.musique.cle, Some((45, 2)));
+        render(&mut son, 30.0);
+        assert_eq!((son.musique.base, son.musique.mode), (57, 2), "les couches suivent la tonalité de la boucle");
+    }
+
+    #[test]
+    fn a_people_murmurs_on_the_ground_and_sings_its_rites() {
+        let mut son = Son::new(22_050.0, 8);
+        son.ordre(Ordre::Monde(terre(300, 0.21)));
+        son.ordre(Ordre::Vue(Vue::Sol));
+        let p = peuples::Peuple {
+            nom: "Kalo".into(),
+            langue: peuples::Langue { mots: vec!["kalo".into(), "mira".into()], cle: 3 },
+            rites: vec![peuples::Rite::depuis_nom("rite du Mira, pour les morts")],
+            population: 800.0,
+            taille: 1.0,
+            cle: 3,
+        };
+        son.ordre(Ordre::Peuple(Some(p.clone())));
+        let gens = |s: &Son| s.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_))).count();
+        let mut entendu = 0;
+        for _ in 0..10 {
+            render(&mut son, 1.0);
+            entendu = entendu.max(gens(&son));
+        }
+        assert!(entendu > 0, "personne ne parle");
+        son.ordre(Ordre::Rite(0));
+        let (peak, _) = render(&mut son, 5.0);
+        assert!(son.chant.is_some() && gens(&son) >= 4);
+        assert!(son.mix_music.value < 0.4, "la musique ne s'efface pas devant le chant");
+        assert!(peak < 0.95);
+        // Rien au-dessus du globe : ni rumeur ni chant.
+        son.ordre(Ordre::Peuple(None));
+        son.ordre(Ordre::Vue(Vue::Globe));
+        render(&mut son, 3.0);
+        assert!(son.chant.is_none());
+    }
+}

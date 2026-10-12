@@ -2,7 +2,7 @@
 
 Périmètre (document d'architecture, « Périmètre consolidé de l'étape 4 ») : bilan d'électrons exact sans correction, régulation de l'O₂ par l'enfouissement du carbone limité par le phosphore, tunnel analytique et innovations tirées selon une loi de Poisson, test de saturation de la référence à 100 ka, chronologie calée sur la Terre à un facteur 3 près, cache des phénotypes, pas adaptatif et 1 Ma/s sur monde mûr.
 
-Mesures de la suite (PR #10) : porte au niveau 6 sur les six mondes, graine 2026, avec un tour d'évolution par 300 ka de temps simulé (décision de l'utilisateur du 9 octobre). Le détail par monde est dans [etape-4-porte-n6.md](etape-4-porte-n6.md).
+Mesures de la suite (PR #10 puis PR #14) : porte au niveau 6 sur les six mondes, graine 2026, avec un tour d'évolution par 300 ka de temps simulé (décision de l'utilisateur du 9 octobre). Le détail par monde est dans [etape-4-porte-n6.md](etape-4-porte-n6.md).
 
 ## Suite : ce qui a changé
 
@@ -24,30 +24,35 @@ Mesures de la suite (PR #10) : porte au niveau 6 sur les six mondes, graine 2026
 
 **Points de reprise.** `evonisium porte --reprise DOSSIER` sauve le monde et l'état de la porte tous les 50 pas ; une partie interrompue reprend de là et donne le même rapport qu'une partie d'un seul tenant (vérifié). Les parties au niveau 6 durent 30 à 100 minutes chacune.
 
+**Génomes bornés par leur entretien (PR #14).** Certaines populations accumulaient jusqu'à 1 300 gènes, pour l'essentiel des centaines de régulateurs sans effet (diagnostic `EVO_DEBUG_GENOMES`). L'entretien du génome passe de 200 à 2 000 kJ par gène et par mole de carbone, toujours divisé par le volume de la cellule (les grandes cellules portent plus facilement un grand génome, Lane et Martin, 2010). Au niveau 4 : 16 à 38 gènes en moyenne au lieu de 60 à 130, les plus longs vers 300. Un coût de réplication par gène cinq fois plus fort, essayé à côté, ne changeait presque rien : la croissance de ces populations n'est pas limitée par leur taux maximal.
+
+**Accélérateur de la photosynthèse à 800 Ma (PR #14).** Sa patience passe de 600 à 800 Ma sans progrès : les mondes aidés font leur photosynthèse oxygénique vers 820 à 870 Ma, dans la plage terrestre. Le rapport de la porte compte l'étape oxygénique pour l'accélérateur s'il agissait quand elle est apparue (il multiplie aussi des tirages qui ne portent pas sa marque ; la PR #10 les comptait pour le moteur).
+
 ## La porte au niveau 6
 
-Maintien de l'O₂ au-dessus de 10⁻⁴ pendant 50 Ma, graine 2026, 4 fils.
+Code de la PR #14. Maintien de l'O₂ au-dessus de 10⁻⁴ pendant 50 Ma, graine 2026, 4 fils.
 
 | Monde | Photosynthèse oxygénique | O₂ > 10⁻⁴ | O₂ en fin de maintien | Température | Vitesse de la partie | Verdict |
 |---|---|---|---|---|---|---|
-| Terre (Archéen) | 188 Ma | 1,21 Ga | 65 % PAL | 285 K | 390 ka/s | franchie |
-| Monde océan | 634 Ma | 646 Ma | 11 % PAL | 324 K | 373 ka/s | franchie |
-| Monde désertique | 583 Ma | 1,65 Ga | 110 % PAL | 276 K | 403 ka/s | franchie |
-| Super-Terre | 616 Ma | 635 Ma | 8 % PAL | 288 K | 240 ka/s | franchie |
-| Petite planète | 617 Ma | 1,64 Ga | 83 % PAL | 269 K | 315 ka/s | franchie |
-| Monde sans lune | 616 Ma | 1,63 Ga | 68 % PAL | 283 K | 277 ka/s | franchie |
+| Terre (Archéen) | 866 Ma (accélérateur) | 885 Ma | 55 % PAL | 281 K | 394 ka/s | franchie |
+| Monde océan | 121 Ma (moteur) | 1,24 Ga | 35 % PAL | 324 K | 409 ka/s | franchie |
+| Monde désertique | 862 Ma (accélérateur) | 1,88 Ga | 125 % PAL | 273 K | 422 ka/s | franchie |
+| Super-Terre | 818 Ma (accélérateur) | 851 Ma | 15 % PAL | 283 K | 291 ka/s | franchie |
+| Petite planète | 839 Ma (accélérateur) | 1,88 Ga | 99 % PAL | 269 K | 357 ka/s | franchie |
+| Monde sans lune | 826 Ma (accélérateur) | 847 Ma | 60 % PAL | 280 K | 327 ka/s | franchie |
 
-La photosynthèse oxygénique vient du moteur sur les six mondes (l'accélérateur aide ailleurs, compté au rapport). Carbone, phosphore et électrons conservés à 10⁻¹⁰ près ; rejeu identique sur les six.
+Carbone, phosphore et électrons conservés à 10⁻¹⁰ près ; rejeu identique sur les six. Au niveau 4 (même code), la porte passe aussi sur les six mondes : photosynthèse oxygénique entre 824 et 872 Ma sur cinq mondes (accélérateur), à 168 Ma seule sur le monde sans lune.
 
-Au niveau 4 (même code, graine 2026), la porte passe aussi sur les six mondes : photosynthèse oxygénique entre 327 et 682 Ma, O₂ au seuil entre 347 Ma et 1,76 Ga, de 8 à 144 % PAL en fin de maintien.
+Avec le code de la PR #10 (entretien du génome à 200, accélérateur à 600 Ma), la porte passait aussi sur les six mondes, photosynthèse oxygénique entre 583 et 634 Ma, à 188 Ma sur la Terre.
 
 ## Chronologie
 
-Repères terrestres, comptés depuis l'apparition de la vie (environ 3,8 Ga) : photosynthèse oxygénique vers +800 à +1 100 Ma (fenêtre à un facteur 3 : 300 Ma à 2,7 Ga), grande oxydation vers +1,4 Ga (fenêtre : 470 Ma à 4,2 Ga).
+Repères terrestres, comptés depuis l'apparition de la vie (environ 3,8 Ga) : photosynthèse oxygénique vers +800 à +1 100 Ma (fenêtre à un facteur 3 : 300 Ma à 2,7 Ga), grande oxydation vers +1,4 Ga (fenêtre : 470 Ma à 4,2 Ga), O₂ du Protérozoïque entre 0,1 et 10 % PAL, niveau actuel vers +3,2 Ga seulement.
 
-- Photosynthèse oxygénique : 583 à 634 Ma sur cinq mondes, dans la fenêtre ; la Terre à 188 Ma (graine 2026, niveau 6), un peu tôt. Au niveau 4, la Terre l'a à 672 Ma.
-- Montée de l'O₂ : sur la Terre, le désert, la petite planète et le monde sans lune, 1 Ga environ après la photosynthèse oxygénique, comme sur Terre ; les puits réducteurs tiennent maintenant. Sur le monde océan et la super-Terre, encore 12 à 19 Ma après : **accélération déclarée**, la vraie cause revient au chantier Planète (étape 5).
-- Premières étapes (pigment, phototrophie simple, anoxygénique) : 2 à 16 Ma, bien trop tôt ; ce sont des mutations courantes, que π ne règle pas.
+- Photosynthèse oxygénique : 818 à 866 Ma sur cinq mondes, dans la plage terrestre, toujours au réveil de l'accélérateur, qui est compté (**accélération déclarée**). Quand elle vient seule, elle peut être très précoce : 121 Ma sur le monde océan au niveau 6, 168 Ma sur le monde sans lune au niveau 4, 188 Ma sur la Terre avec le code de la PR #10. C'est structurel : une seule innovation rare, dont l'attente suit une loi exponentielle ; une fois sur six environ, elle tombe sous le tiers de sa moyenne. Il faudrait plusieurs étapes rares (photosystème II, complexe d'oxydation de l'eau) pour resserrer la date ; c'est hors de l'étape 4.
+- Montée de l'O₂ : environ 1 Ga après la photosynthèse oxygénique sur le désert, la petite planète et le monde océan, comme sur Terre ; 20 à 35 Ma après sur la Terre, la super-Terre et le monde sans lune (**accélération déclarée** : les puits réducteurs ne retiennent pas assez longtemps l'O₂).
+- Après la montée, l'O₂ terrestre retombe vers 1 à 4 % PAL et y reste de 1,25 à 3,5 Ga (mesure du fil « cellules complexes ») : c'est le Protérozoïque de la littérature. La seconde oxygénation, vers le niveau actuel, n'existe pas encore (étape 5, chantier Planète).
+- Premières étapes (pigment, phototrophie simple, anoxygénique) : 2 à 22 Ma, bien trop tôt ; ce sont des mutations courantes, que π ne règle pas.
 
 ## PR #8 : ce qui était fait
 
@@ -102,23 +107,26 @@ La référence est saturée : chaque tour fixe presque toujours, et doubler les 
 
 ## Vitesse sur monde mûr
 
-Monde mûr : Terre, niveau 6, 250 pas depuis un ensemencement de tout l'océan (`chrono --prepare 250`), 53 000 populations, pas adaptatif au maximum (300 ka, un tour d'évolution). Code mesuré : cette branche réunie avec celle des cellules complexes (construction incrémentale étendue, commit d9245cd).
+Monde mûr : Terre, niveau 6, 250 pas depuis un ensemencement de tout l'océan (`chrono --prepare 250`), pas adaptatif au maximum (300 ka, un tour d'évolution). Mesure finale de l'étape 4 sur le code de main après les PR #14 et #15 (génomes bornés, cellules complexes) : 63 000 populations.
 
 | Fils | Durée d'un pas | dont évolution | Vitesse |
 |---|---|---|---|
-| 1 | 3,44 s | 2,48 s | 87 ka/s |
-| 2 | 1,85 s | 1,25 s | 162 ka/s |
-| 3 | 1,32 s | 0,88 s | 227 ka/s |
-| 4 | 1,07 s | 0,68 s | 282 ka/s |
+| 1 | 3,52 s | 2,26 s | 85 ka/s |
+| 2 | 1,76 s | 1,04 s | 171 ka/s |
+| 3 | 1,24 s | 0,69 s | 242 ka/s |
+| 4 | 1,06 s | 0,59 s | 282 ka/s |
 
-Estimation sur 6 cœurs : environ 385 ka/s (partie série d'environ 130 ms, planète et registres ; le reste se partage avec une efficacité de 85 à 90 %). **La porte de vitesse (500 ka/s sur 6 cœurs) n'est pas atteinte**, ni la cible de 1 Ma/s. Avec un tour par 100 ka, la même mesure donnait 126 ka/s sur 4 fils : passer à 300 ka a plus que doublé la vitesse. L'évolution prend encore 64 % du pas (520 000 évaluations génétiques). Leviers restants : moins de candidats ponctuels par génotype, génomes plus courts (ci-dessous), registres et migration (17 %).
+Estimation sur 6 cœurs : environ 380 ka/s (partie série d'environ 170 ms, planète et registres ; le reste se partage presque parfaitement). 4 Ga au curseur maximum prennent donc environ 2 h 55. **La porte de vitesse (500 ka/s sur 6 cœurs) n'est pas atteinte**, ni la cible de 1 Ma/s ; l'utilisateur a choisi un tour par 300 ka en connaissance de cause (9 octobre). Les génomes plus courts ont réduit l'évolution de 0,68 à 0,59 s par pas sur 4 fils, malgré 20 % de populations en plus ; l'écologie et la migration (29 %) pèsent maintenant davantage.
 
-Parties entières au niveau 6 (porte ci-dessus, mondes jeunes, 4 fils) : 240 à 403 ka/s.
+Avant les PR #14 et #15 (génomes jusqu'à 1 300 gènes, 53 000 populations) : 282 ka/s aussi sur 4 fils, dont 0,68 s d'évolution. Avec un tour par 100 ka : 126 ka/s.
+
+Parties entières au niveau 6 (porte ci-dessus, mondes jeunes, 4 fils) : 291 à 422 ka/s.
 
 ## Limites connues
 
-- **Gonflement des génomes.** Le biais de délétion purge les pseudogènes, mais certaines populations gardent jusqu'à 1 300 gènes fonctionnels (copies de petite efficacité d'une même voie qui s'additionnent) ; toute l'évolution étant en O(gènes), c'est aussi un coût de vitesse.
-- **Monde océan** à 324 K et 3,9 bar de CO₂ (sans terres, ni altération ni apport de phosphore continental) ; sa montée de l'O₂ et celle de la super-Terre restent trop rapides (accélération déclarée).
-- **Terre au niveau 6** : photosynthèse oxygénique à 188 Ma, sous la fenêtre (une graine).
+- **Génomes.** Les plus longs restent vers 300 gènes, souvent des régulateurs et des gènes d'adhésion sans effet notable ; la moyenne (16 à 38) est raisonnable.
+- **Monde océan** à 324 K et 3,5 bar de CO₂ : sans terres, seul le plancher océanique altère, et il ne fait baisser le CO₂ que d'un quart en 1,4 Ga. Montée de l'O₂ trop rapide sur la Terre, la super-Terre et le monde sans lune (accélération déclarée).
+- **Photosynthèse oxygénique sans aide** parfois très précoce (121 à 188 Ma selon le monde et la graine) : une seule innovation rare (voir la chronologie).
+- **Pas de seconde oxygénation** : l'O₂ reste au niveau du Protérozoïque (1 à 4 % PAL) jusqu'à 3,5 Ga.
 - **Électrons freinés** : 21 à 103 % de la production d'O₂ est déplacée quand une boîte vide freine un prélèvement ; tout est apparié, mais c'est le signe que le prolongement des flux sur le pas surestime les prélèvements.
-- **Saturation des cellules** sur les 100 derniers pas : 5 à 13 % au niveau 6 juste après la montée de l'O₂ (renouvellement des communautés, presque toutes en croissance), au-dessus du seuil de 2 % ; 3,5 % sur le monde mûr.
+- **Saturation des cellules** sur les 100 derniers pas : plusieurs pour cent au niveau 6 juste après la montée de l'O₂ (renouvellement des communautés, presque toutes en croissance), au-dessus du seuil de 2 %.

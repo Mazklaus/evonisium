@@ -3,13 +3,19 @@
 //! kilomètres autour du point visé, son relief généré depuis la cellule, et
 //! des individus animés.
 //!
-//! Le moteur ne publie pas encore d'individus (volet moteur de l'étape 5,
-//! après la porte de l'étape 4). La scène est donc peuplée de **figurants** :
-//! des individus de banc d'essai dont les corps viennent de plans de
-//! construction au format du moteur (`evo_life::BodyPlan`, traduits par
-//! [`crate::anatomy::from_simulated`]) et dont les comportements sont tirés
-//! dans le client. Ils n'appartiennent pas à l'histoire simulée : rien de ce
-//! qu'ils font ne remonte au moteur, et le rejeu ne les voit pas.
+//! Les espèces vraies de la cellule assez grandes pour se voir sont des
+//! **agents** du moteur (crate `evo-agents`, niveaux 4 et 5) : leurs
+//! individus viennent de l'échantillon que le moteur tire de leur population
+//! (génomes, naissances, morts et départs calibrés sur ses taux), et leurs
+//! comportements de leurs traits ; leur action courante est celle que la
+//! scène des agents publie dans le lexique commun. Ailleurs, et tant que le
+//! vivant de la cellule est trop petit pour la scène, la scène est peuplée de
+//! **figurants** : des individus de banc d'essai dont les corps viennent de
+//! plans de construction au format du moteur (`evo_life::BodyPlan`, traduits
+//! par [`crate::anatomy::from_simulated`]) et dont les comportements sont
+//! tirés dans le client. Ni les uns ni les autres n'appartiennent à
+//! l'histoire simulée : rien de ce qu'ils font ne remonte au moteur, et le
+//! rejeu ne les voit pas.
 //!
 //! Les individus proches de la caméra sont animés (squelette et pose par
 //! action du lexique), les autres sont des imposteurs (vues pré-rendues).
@@ -221,6 +227,10 @@ pub enum BenchKind {
     Radial,
     /// Corps à grandes lames, sans eau : il vole.
     Flyer,
+    /// Primate velu à deux paires de membres, sans queue, les membres avant
+    /// plus longs : le figurant des peuples d'essai (étape 6), en attendant
+    /// les vrais corps des espèces intelligentes.
+    Primate,
 }
 
 fn cell_type(pathways: u32, role: &str, nm: Option<f64>) -> sim::CellType {
@@ -289,14 +299,25 @@ pub fn bench_plan(kind: BenchKind, seed: u64, size_m: f64) -> sim::BodyPlan {
     let second_nm = r(&mut rng, 440.0, 500.0);
     let covering = match kind {
         BenchKind::Walker => [C::Cuticle, C::Scales, C::Hair][(rng.next_u64() % 3) as usize],
+        BenchKind::Primate => C::Hair,
         BenchKind::Swimmer => C::Scales,
         BenchKind::Flyer => [C::Feathers, C::Cuticle][(rng.next_u64() % 2) as usize],
         BenchKind::Worm | BenchKind::Radial => C::Mucus,
     };
     let types = vec![cell_type(0, "nourricière", None), cell_type(0, "sensorielle", Some(500.0)), cell_type(0, "réserve", Some(second_nm))];
     let mut m: Vec<sim::Module> = Vec::new();
-    let girth = size_m * r(&mut rng, 0.1, 0.2);
-    let trunk_len = size_m * if kind == BenchKind::Worm { 0.25 } else { 0.5 };
+    let drawn = r(&mut rng, 0.1, 0.2);
+    let primate = kind == BenchKind::Primate;
+    // Le primate : tronc court et trapu, membres épais.
+    let girth = size_m * if primate { 0.16 } else { drawn };
+    let trunk_len = size_m
+        * if kind == BenchKind::Worm {
+            0.25
+        } else if primate {
+            0.36
+        } else {
+            0.5
+        };
     m.push(sim_module(
         0,
         K::Body,
@@ -384,6 +405,7 @@ pub fn bench_plan(kind: BenchKind, seed: u64, size_m: f64) -> sim::BodyPlan {
     let tail_segments = match kind {
         BenchKind::Worm => 5 + (rng.next_u64() % 4) as usize,
         BenchKind::Swimmer => 2,
+        BenchKind::Primate => 0,
         _ => 1,
     };
     let mut prev = 0u16;
@@ -409,12 +431,13 @@ pub fn bench_plan(kind: BenchKind, seed: u64, size_m: f64) -> sim::BodyPlan {
         );
     }
     match kind {
-        BenchKind::Walker => {
+        BenchKind::Walker | BenchKind::Primate => {
             // Paires de pattes le long du tronc, vers le bas et le côté.
-            let pairs = 2 + (rng.next_u64() % 3) as usize;
+            let pairs = if kind == BenchKind::Primate { 2 } else { 2 + (rng.next_u64() % 3) as usize };
             for k in 0..pairs {
                 let t = 0.15 + 0.7 * k as f64 / (pairs - 1).max(1) as f64;
                 let (at, ax) = around(t, 150.0, 100.0);
+                let reach = if kind == BenchKind::Primate { [0.5, 0.42][k] } else { r(&mut rng, 0.3, 0.45) };
                 add(
                     &mut m,
                     sim_module(
@@ -423,7 +446,7 @@ pub fn bench_plan(kind: BenchKind, seed: u64, size_m: f64) -> sim::BodyPlan {
                         Some(0),
                         at,
                         ax,
-                        [size_m * r(&mut rng, 0.3, 0.45), girth * 0.45, girth * 0.45],
+                        [size_m * reach, girth * if primate { 0.8 } else { 0.45 }, girth * if primate { 0.8 } else { 0.45 }],
                         P::Elongated,
                         S::Bilateral,
                         covering,
@@ -547,6 +570,8 @@ pub struct SceneSpecies {
     /// 0 : solitaire, 1 : troupeau serré.
     pub social: f32,
     pub kind: Option<BenchKind>,
+    /// Espèce dont les individus sont des agents du moteur (`evo-agents`).
+    pub engine: bool,
 }
 
 impl SceneSpecies {
@@ -564,7 +589,7 @@ impl SceneSpecies {
             .collect();
         let rig = rig(&plan, &bones, aquatic);
         let foot = (centre[1] - lo[1]) * k;
-        SceneSpecies { name, signature, plan, body, rig, centre, size_m, foot, aquatic, predator: false, social: 0.5, kind }
+        SceneSpecies { name, signature, plan, body, rig, centre, size_m, foot, aquatic, predator: false, social: 0.5, kind, engine: false }
     }
 
     /// Nombre de nombres par os dans la texture des poses.
@@ -619,6 +644,7 @@ pub fn bench_species(site: &Site, seed: u64, count: usize) -> Vec<SceneSpecies> 
             BenchKind::Worm => 10f32.powf(rng.range(-1.5, -0.5)),
             BenchKind::Radial => 10f32.powf(rng.range(-1.3, -0.3)),
             BenchKind::Flyer => 10f32.powf(rng.range(-1.0, -0.2)),
+            BenchKind::Primate => rng.range(1.2, 1.7),
         };
         let plan_seed = rng.next_u64();
         let sim_plan = bench_plan(kind, plan_seed, size as f64);
@@ -630,6 +656,7 @@ pub fn bench_species(site: &Site, seed: u64, count: usize) -> Vec<SceneSpecies> 
             BenchKind::Worm => "ver",
             BenchKind::Radial => "radiaire",
             BenchKind::Flyer => "voilier",
+            BenchKind::Primate => "primate",
         };
         let mut s = SceneSpecies::new(format!("Figurant d'essai n° {} ({label})", k + 1), None, plan, size, site.is_ocean, Some(kind));
         s.social = match kind {
@@ -674,6 +701,8 @@ pub struct Individual {
     pub other: u32,
     /// Action imposée (banc d'essai), sinon tirée.
     pub forced: bool,
+    /// Action qui commencera à l'arrivée au but (gens d'un campement).
+    pub then: Option<Action>,
 }
 
 /// La foule d'une scène.
@@ -687,6 +716,32 @@ pub struct Crowd {
     pub clock: f32,
     is_near: Vec<bool>,
     tick: u32,
+    /// Agents du moteur et leurs places dans la foule.
+    agents: Option<AgentLink>,
+    /// Campement d'un peuple (étape 6) et l'espèce de ses gens.
+    pub camp: Option<crate::camp::Camp>,
+    pub folk: Option<u16>,
+}
+
+/// Lien entre la scène des agents et la foule : chaque espèce d'agents a des
+/// places réservées (individus de taille nulle quand elles sont libres), si
+/// bien que le nombre d'individus de la foule ne change jamais.
+struct AgentLink {
+    scene: evo_agents::Scene,
+    /// Espèce de la foule de chaque espèce de la scène.
+    species: Vec<u16>,
+    /// Places libres de chaque espèce de la scène.
+    free: Vec<Vec<u32>>,
+    slot: std::collections::HashMap<u64, u32>,
+}
+
+/// Événements de vie montrés par minute dans une scène d'agents
+/// (horloge de la vie, affichage seul).
+pub const LIFE_EVENTS_PER_SECOND: f64 = 0.5;
+
+/// Action du lexique de la foule pour une action des agents (même ordre).
+pub fn action_of(a: evo_agents::Act) -> Action {
+    Action::from_index(a.index())
 }
 
 /// Les lointains avancent par tranches : une sur quatre à chaque image.
@@ -727,14 +782,138 @@ impl Crowd {
                     goal: (x, z),
                     other: u32::MAX,
                     forced: false,
+                    then: None,
                 });
             }
         }
-        let mut c = Crowd { patch, species, individuals, near: Vec::new(), rng, clock: 0.0, is_near: Vec::new(), tick: 0 };
+        let mut c = Crowd {
+            patch,
+            species,
+            individuals,
+            near: Vec::new(),
+            rng,
+            clock: 0.0,
+            is_near: Vec::new(),
+            tick: 0,
+            agents: None,
+            camp: None,
+            folk: None,
+        };
         for i in 0..c.individuals.len() {
             c.place_y(i);
         }
         c
+    }
+
+    /// Foule de figurants (`species`, `total` individus) à laquelle
+    /// s'ajoutent des espèces d'agents du moteur : chaque espèce vraie
+    /// arrive avec l'échantillon de sa population.
+    pub fn with_agents(
+        patch: Patch,
+        species: Vec<SceneSpecies>,
+        real: Vec<(SceneSpecies, evo_agents::Sample)>,
+        total: usize,
+        seed: u64,
+    ) -> Crowd {
+        let mut c = Crowd::new(patch, species, total, seed);
+        if real.is_empty() {
+            return c;
+        }
+        let half = PATCH_SIZE_M / 2.0 * 0.96;
+        let mut samples = Vec::new();
+        let mut map = Vec::new();
+        let mut free = Vec::new();
+        for (mut sp, sample) in real {
+            sp.engine = true;
+            sp.predator = sample.genotypes[0].traits.diet == evo_agents::Diet::Predator;
+            sp.social = sample.genotypes[0].traits.sociality as f32;
+            let k = c.species.len() as u16;
+            c.species.push(sp);
+            let cap = 2 * sample.nominal.max(sample.members.len()) + 16;
+            let mut slots = Vec::with_capacity(cap);
+            for _ in 0..cap {
+                slots.push(c.individuals.len() as u32);
+                c.individuals.push(Individual {
+                    species: k,
+                    x: 0.0,
+                    z: 0.0,
+                    y: 0.0,
+                    heading: 0.0,
+                    speed: 0.0,
+                    action: Action::Rest,
+                    timer: 0.0,
+                    time: 0.0,
+                    phase: c.rng.unit(),
+                    scale: 0.0,
+                    goal: (0.0, 0.0),
+                    other: u32::MAX,
+                    forced: false,
+                    then: None,
+                });
+            }
+            slots.reverse();
+            free.push(slots);
+            map.push(k);
+            samples.push(sample);
+        }
+        let scene = evo_agents::Scene::new(samples, half, seed, LIFE_EVENTS_PER_SECOND);
+        c.agents = Some(AgentLink { scene, species: map, free, slot: std::collections::HashMap::new() });
+        c.sync_agents(0.0);
+        c
+    }
+
+    /// Recopie l'état des agents dans leurs places de la foule.
+    fn sync_agents(&mut self, dt: f32) {
+        let Some(link) = self.agents.as_mut() else { return };
+        let mut seen = std::collections::HashSet::new();
+        for a in &link.scene.agents {
+            let k = evo_agents::agents::key(a.species, a.member);
+            seen.insert(k);
+            let slot = match link.slot.get(&k) {
+                Some(&s) => Some(s),
+                None => {
+                    let s = link.free[a.species as usize].pop();
+                    if let Some(s) = s {
+                        link.slot.insert(k, s);
+                    }
+                    s
+                }
+            };
+            let Some(slot) = slot else { continue };
+            let sp = &self.species[link.species[a.species as usize] as usize];
+            let t = link.scene.traits_of(a);
+            let ind = &mut self.individuals[slot as usize];
+            ind.x = a.x;
+            ind.z = a.z;
+            ind.heading = a.heading;
+            ind.speed = a.speed;
+            if !ind.forced {
+                ind.action = action_of(a.act);
+            }
+            ind.time += dt;
+            ind.scale = if matches!(a.fate, evo_agents::agents::Fate::Dead { .. }) {
+                0.0
+            } else {
+                (t.length_m as f32 / sp.size_m.max(1e-9)).clamp(0.3, 3.0)
+            };
+        }
+        let gone: Vec<(u64, u32)> = link.slot.iter().filter(|(k, _)| !seen.contains(k)).map(|(&k, &s)| (k, s)).collect();
+        for (k, s) in gone {
+            link.slot.remove(&k);
+            self.individuals[s as usize].scale = 0.0;
+            link.free[(k >> 32) as usize].push(s);
+        }
+    }
+
+    /// Scène des agents du moteur, s'il y en a.
+    pub fn agents(&self) -> Option<&evo_agents::Scene> {
+        self.agents.as_ref().map(|l| &l.scene)
+    }
+
+    /// Vrai pour une place d'agent libre (individu invisible).
+    pub fn is_vacant(&self, i: usize) -> bool {
+        let ind = &self.individuals[i];
+        self.species[ind.species as usize].engine && ind.scale == 0.0
     }
 
     fn place_y(&mut self, i: usize) {
@@ -779,12 +958,20 @@ impl Crowd {
     pub fn step(&mut self, dt: f32, camera: [f32; 3], animated: usize) {
         let dt = dt.clamp(0.0, 0.1);
         self.clock += dt;
+        if let Some(link) = self.agents.as_mut() {
+            link.scene.step(dt);
+        }
+        self.sync_agents(dt);
         // Les plus proches de la caméra.
         let mut order: Vec<(f32, u32)> = self
             .individuals
             .iter()
             .enumerate()
-            .map(|(i, p)| ((p.x - camera[0]).powi(2) + (p.y - camera[1]).powi(2) + (p.z - camera[2]).powi(2), i as u32))
+            .map(|(i, p)| {
+                let d = (p.x - camera[0]).powi(2) + (p.y - camera[1]).powi(2) + (p.z - camera[2]).powi(2);
+                // Places d'agents libres : jamais animées.
+                (if p.scale == 0.0 { f32::INFINITY } else { d }, i as u32)
+            })
             .collect();
         let k = animated.min(order.len());
         if k > 0 && k < order.len() {
@@ -793,8 +980,15 @@ impl Crowd {
         self.near = order[..k].iter().map(|o| o.1).collect();
         self.near.sort_unstable();
         // Proches : comportements complets ; prédateurs proches à portée.
-        let predators: Vec<u32> =
-            self.near.iter().copied().filter(|&i| self.species[self.individuals[i as usize].species as usize].predator).collect();
+        let predators: Vec<u32> = self
+            .near
+            .iter()
+            .copied()
+            .filter(|&i| {
+                let s = &self.species[self.individuals[i as usize].species as usize];
+                s.predator && !s.engine
+            })
+            .collect();
         let near = self.near.clone();
         for &i in &near {
             self.decide(i as usize, dt, &predators, &near);
@@ -812,6 +1006,13 @@ impl Crowd {
         let slice = (self.tick % FAR_SLICES) as usize;
         for i in 0..self.individuals.len() {
             let close = self.is_near[i];
+            if self.species[self.individuals[i].species as usize].engine {
+                // Agents : déplacés par leur scène, posés au sol ici.
+                if close || i % FAR_SLICES as usize == slice {
+                    self.place_y(i);
+                }
+                continue;
+            }
             if !close && i % FAR_SLICES as usize != slice {
                 continue;
             }
@@ -819,16 +1020,26 @@ impl Crowd {
             let ind = &mut self.individuals[i];
             let s = &self.species[ind.species as usize];
             let size = s.size_m * ind.scale;
+            let folk = Some(ind.species) == self.folk;
             if ind.timer <= 0.0 && !close {
-                // Lointains : errance seule.
+                // Lointains : errance seule ; les gens d'un campement ne
+                // s'en éloignent pas.
                 ind.action = if self.rng.unit() < 0.6 { Action::Feed } else { Action::Migrate };
                 ind.timer = self.rng.range(4.0, 12.0);
                 ind.heading += self.rng.range(-1.0, 1.0);
+                ind.then = None;
+                if let Some(c) = self.camp.as_ref().filter(|_| folk) {
+                    if (ind.x - c.centre.0).hypot(ind.z - c.centre.1) > c.radius {
+                        ind.heading = (c.centre.1 - ind.z).atan2(c.centre.0 - ind.x);
+                    }
+                }
             }
             ind.timer -= dt;
             ind.time += dt;
             let sessile = matches!(s.rig.locomotion, Locomotion::Sessile);
-            let target = if sessile { 0.0 } else { ind.action.pace() * size * if s.aquatic { 1.0 } else { 1.2 } };
+            // Au travail ou en face d'un autre, on ne marche pas.
+            let still = folk && ind.then.is_none() && matches!(ind.action, Action::MakeTool | Action::Teach | Action::Trade);
+            let target = if sessile || still { 0.0 } else { ind.action.pace() * size * if s.aquatic { 1.0 } else { 1.2 } };
             ind.speed += (target - ind.speed) * (dt * 3.0).min(1.0);
             let (sn, cs) = ind.heading.sin_cos();
             ind.x += cs * ind.speed * dt;
@@ -848,7 +1059,11 @@ impl Crowd {
         let me = self.individuals[i];
         let s = &self.species[me.species as usize];
         let size = s.size_m * me.scale;
-        if me.forced {
+        if me.forced || s.engine {
+            return;
+        }
+        if self.camp.is_some() && Some(me.species) == self.folk {
+            self.decide_folk(i, dt, near);
             return;
         }
         let steer = |ind: &mut Individual, gx: f32, gz: f32, rate: f32| {
@@ -912,7 +1127,7 @@ impl Crowd {
             let prey = near.iter().copied().filter(|&j| j as usize != i).find(|&j| {
                 let o = &self.individuals[j as usize];
                 let os = &self.species[o.species as usize];
-                !os.predator && os.size_m < s.size_m && (o.x - me.x).hypot(o.z - me.z) < 60.0 * size
+                !os.predator && !os.engine && os.size_m < s.size_m && (o.x - me.x).hypot(o.z - me.z) < 60.0 * size
             });
             match (prey, r) {
                 (Some(p), r) if r < 0.6 => {
@@ -957,6 +1172,228 @@ impl Crowd {
         }
     }
 
+    /// Pose un campement (étape 6) et ses gens, une espèce de figurants
+    /// ajoutée à la foule, répartis autour du foyer.
+    pub fn add_camp(&mut self, camp: crate::camp::Camp, folk: SceneSpecies) {
+        let k = self.species.len() as u16;
+        let mut rng = DrawRng::new(mix64(camp.seed ^ 0x666F_6C6B));
+        self.species.push(folk);
+        for _ in 0..camp.folk {
+            let a = rng.range(0.0, TAU);
+            let r = rng.range(2.5, camp.radius * 0.8);
+            let (x, z) = (camp.centre.0 + r * a.cos(), camp.centre.1 + r * a.sin());
+            self.individuals.push(Individual {
+                species: k,
+                x,
+                z,
+                y: 0.0,
+                heading: rng.range(0.0, TAU),
+                speed: 0.0,
+                action: Action::Rest,
+                timer: rng.range(0.0, 3.0),
+                time: rng.range(0.0, 100.0),
+                phase: rng.unit(),
+                scale: rng.range(0.9, 1.1),
+                goal: (x, z),
+                other: u32::MAX,
+                forced: false,
+                then: None,
+            });
+            let i = self.individuals.len() - 1;
+            self.place_y(i);
+        }
+        self.folk = Some(k);
+        self.camp = Some(camp);
+    }
+
+    /// Les gens d'un campement : aller à sa place puis fabriquer, enseigner,
+    /// échanger ou danser autour du feu ; sinon les gestes de tous les jours,
+    /// sans quitter le campement.
+    fn decide_folk(&mut self, i: usize, dt: f32, near: &[u32]) {
+        let Some(camp) = self.camp.as_ref() else { return };
+        let (cx, cz, radius) = (camp.centre.0, camp.centre.1, camp.radius);
+        let me = self.individuals[i];
+        let size = self.species[me.species as usize].size_m * me.scale;
+        let steer = |ind: &mut Individual, gx: f32, gz: f32, rate: f32| {
+            let want = (gz - ind.z).atan2(gx - ind.x);
+            let mut d = want - ind.heading;
+            while d > PI {
+                d -= TAU;
+            }
+            while d < -PI {
+                d += TAU;
+            }
+            ind.heading += d.clamp(-rate * dt, rate * dt);
+        };
+        if let Some(next) = me.then {
+            // Face au feu, ou à l'autre.
+            let (fx, fz) = if me.other != u32::MAX {
+                let o = self.individuals[me.other as usize];
+                (o.x, o.z)
+            } else {
+                (cx, cz)
+            };
+            let ind = &mut self.individuals[i];
+            if (ind.x - ind.goal.0).hypot(ind.z - ind.goal.1) < (0.5 * size).max(0.4) || ind.timer <= 0.0 {
+                ind.action = next;
+                ind.then = None;
+                ind.timer = if next == Action::Rite { 16.0 } else { 9.0 + 6.0 * ind.phase };
+                ind.speed = 0.0;
+                ind.heading = (fz - ind.z).atan2(fx - ind.x);
+            } else {
+                let (gx, gz) = ind.goal;
+                steer(ind, gx, gz, 4.0);
+            }
+            return;
+        }
+        if me.action == Action::Rite && me.timer > 0.0 {
+            // La ronde : on tourne autour du foyer.
+            let ind = &mut self.individuals[i];
+            let a = (ind.z - cz).atan2(ind.x - cx);
+            ind.heading = a + PI / 2.0;
+            return;
+        }
+        if me.timer > 0.0 {
+            return;
+        }
+        let r = self.rng.unit();
+        let pick = camp.draw_action_at(r);
+        let ind_far = (me.x - cx).hypot(me.z - cz) > radius;
+        let go = |c: &mut Crowd, j: usize, gx: f32, gz: f32, next: Action, other: u32| {
+            let ind = &mut c.individuals[j];
+            ind.goal = (gx, gz);
+            ind.then = Some(next);
+            ind.action = Action::Migrate;
+            ind.timer = 25.0;
+            ind.other = other;
+            ind.heading = (gz - ind.z).atan2(gx - ind.x);
+        };
+        match pick {
+            Some(Action::MakeTool) | Some(Action::Rite) => {
+                let a = self.rng.range(0.0, TAU);
+                let rr = if pick == Some(Action::Rite) { self.rng.range(2.8, 3.4) } else { self.rng.range(1.6, 2.8) };
+                go(self, i, cx + rr * a.cos(), cz + rr * a.sin(), pick.unwrap_or(Action::Rest), u32::MAX);
+            }
+            Some(act) => {
+                // Enseigner, échanger : à deux, face à face.
+                let folk = me.species;
+                let partner = near.iter().copied().filter(|&j| j as usize != i).find(|&j| {
+                    let o = &self.individuals[j as usize];
+                    o.species == folk
+                        && o.then.is_none()
+                        && !matches!(o.action, Action::MakeTool | Action::Teach | Action::Trade | Action::Rite)
+                });
+                if let Some(j) = partner {
+                    let a = self.rng.range(0.0, TAU);
+                    let rr = self.rng.range(4.0, 6.5);
+                    let (mx, mz) = (cx + rr * a.cos(), cz + rr * a.sin());
+                    let gap = (0.45 * size).max(0.5);
+                    let (ux, uz) = (a + PI / 2.0).sin_cos();
+                    go(self, i, mx + gap * uz, mz + gap * ux, act, j);
+                    go(self, j as usize, mx - gap * uz, mz - gap * ux, act, i as u32);
+                } else {
+                    let ind = &mut self.individuals[i];
+                    ind.action = Action::Communicate;
+                    ind.timer = 4.0;
+                }
+            }
+            None => {
+                let ind = &mut self.individuals[i];
+                let (action, timer) = match self.rng.unit() {
+                    x if x < 0.3 => (Action::Rest, 8.0),
+                    x if x < 0.5 => (Action::Communicate, 4.0),
+                    x if x < 0.65 => (Action::Care, 6.0),
+                    x if x < 0.85 => (Action::Feed, 6.0),
+                    _ => (Action::Migrate, 5.0),
+                };
+                ind.action = action;
+                ind.timer = timer;
+                ind.other = u32::MAX;
+                if ind_far {
+                    ind.action = Action::Migrate;
+                    ind.heading = (cz - ind.z).atan2(cx - ind.x);
+                } else if matches!(action, Action::Migrate | Action::Feed) {
+                    ind.heading += self.rng.range(-1.2, 1.2);
+                }
+            }
+        }
+    }
+
+    /// Objets du campement tenus, posés pendant un geste ou portés, pour les
+    /// gens proches de la caméra : un outil devant la tête au sol pendant la
+    /// fabrication, entre les deux pour enseigner ou échanger, l'épieu porté
+    /// en marchant, le collier au cou.
+    pub fn props(&self) -> Vec<crate::camp::Placed> {
+        use crate::camp::Placed;
+        use evo_morph::artefact::Artefact;
+        let mut out = Vec::new();
+        let (Some(camp), Some(folk)) = (self.camp.as_ref(), self.folk) else { return out };
+        let s = &self.species[folk as usize];
+        let head = s.rig.bones.iter().find(|b| b.role == body::rig::Role::Head).map(|b| (b.head, b.tail));
+        for &i in &self.near {
+            let ind = &self.individuals[i as usize];
+            if ind.species != folk || ind.scale == 0.0 {
+                continue;
+            }
+            let k = s.size_m * ind.scale;
+            let (sn, cs) = ind.heading.sin_cos();
+            // Point du repère du corps (x avant, y haut) vers le monde.
+            let world = |p: body::shape::V3| (ind.x + (p.0 * cs - p.2 * sn) * k, ind.y + p.1 * k, ind.z + (p.0 * sn + p.2 * cs) * k);
+            let (neck, snout) = head.map(|(h, t)| (world(h), world(t))).unwrap_or(((ind.x, ind.y, ind.z), (ind.x, ind.y, ind.z)));
+            let ground = |x: f32, z: f32| self.patch.height_at(x, z);
+            let tool = camp.tools.get((ind.phase * camp.tools.len() as f32) as usize % camp.tools.len().max(1)).copied();
+            let ahead = |d: f32| (snout.0 + cs * d * k, snout.2 + sn * d * k);
+            match ind.action {
+                Action::MakeTool => {
+                    let (x, z) = ahead(0.15);
+                    out.push(Placed {
+                        artefact: Artefact::Hammerstone,
+                        x,
+                        y: ground(x, z),
+                        z,
+                        heading: ind.heading,
+                        roll: 0.0,
+                        scale: 1.0,
+                    });
+                    if let Some(t) = tool.filter(|&t| t != Artefact::Hammerstone) {
+                        let (x, z) = (x - sn * 0.15, z + cs * 0.15);
+                        out.push(Placed { artefact: t, x, y: ground(x, z), z, heading: ind.heading + 0.6, roll: 0.0, scale: 1.0 });
+                    }
+                }
+                Action::Teach | Action::Trade if ind.other != u32::MAX && i < ind.other => {
+                    let o = &self.individuals[ind.other as usize];
+                    let (x, z) = ((ind.x + o.x) / 2.0, (ind.z + o.z) / 2.0);
+                    let a = if ind.action == Action::Trade {
+                        [Artefact::Bowl, Artefact::Cord, Artefact::Necklace][(ind.phase * 3.0) as usize % 3]
+                    } else {
+                        tool.unwrap_or(Artefact::Hammerstone)
+                    };
+                    out.push(Placed { artefact: a, x, y: ground(x, z), z, heading: ind.heading, roll: 0.0, scale: 1.0 });
+                }
+                Action::Migrate | Action::Hunt if ind.then.is_none() => {
+                    if let Some(sp) = camp.spear {
+                        // Porté le long du flanc, pointe en avant et levée.
+                        let (x, z) = (neck.0 - sn * 0.12 * k, neck.2 + cs * 0.12 * k);
+                        out.push(Placed { artefact: sp, x, y: neck.1, z, heading: ind.heading, roll: 0.0, scale: 1.0 });
+                    }
+                }
+                _ => {}
+            }
+            if camp.ornament {
+                out.push(Placed {
+                    artefact: Artefact::Necklace,
+                    x: neck.0,
+                    y: neck.1,
+                    z: neck.2,
+                    heading: ind.heading,
+                    roll: 0.0,
+                    scale: 0.9 * k / 1.5,
+                });
+            }
+        }
+        out
+    }
+
     /// Pose d'un individu, transformations par os.
     pub fn pose_of(&self, i: usize) -> Vec<Affine> {
         let ind = &self.individuals[i];
@@ -986,7 +1423,7 @@ impl Crowd {
                 let s = &self.species[p.species as usize];
                 let v = [p.x - origin[0], p.y - origin[1], p.z - origin[2]];
                 let t = v[0] * d[0] + v[1] * d[1] + v[2] * d[2];
-                if t <= 0.0 {
+                if t <= 0.0 || p.scale == 0.0 {
                     return None;
                 }
                 let q = [v[0] - t * d[0], v[1] - t * d[1], v[2] - t * d[2]];
@@ -1042,6 +1479,61 @@ mod tests {
             }
         }
         assert!(walkers >= 4, "{walkers}");
+    }
+
+    #[test]
+    fn engine_agents_drive_their_species_in_the_crowd() {
+        use evo_agents::bench::{sample, with_body};
+        use evo_agents::{Diet, PopRates};
+        let s = site(false);
+        let patch = Patch::new(s.clone(), 9);
+        let figurants = bench_species(&s, 9, 2);
+        let org = Organisation { body_cells: 1e6, cell_types: 3, eukaryote: true, multicellular: true, sexual: true, ..Default::default() };
+        let body = |kind, size: f32, seed| {
+            let plan = from_simulated(&bench_plan(kind, seed, size as f64), &org, seed);
+            SceneSpecies::new(format!("essai {seed}"), Some(seed as u32), plan, size, false, None)
+        };
+        let prey = with_body(
+            sample(PopRates { birth: 1.0, death: 1.0, predation: 0.7, emigration: 0.2 }, 80, 3, true),
+            0.2,
+            1.2,
+            4.0,
+            Diet::Grazer,
+        );
+        let pred = with_body(
+            sample(PopRates { birth: 0.3, death: 0.3, predation: 0.0, emigration: 0.05 }, 6, 4, true),
+            1.0,
+            3.0,
+            12.0,
+            Diet::Predator,
+        );
+        let real = vec![(body(BenchKind::Walker, 0.2, 11), prey), (body(BenchKind::Walker, 1.0, 12), pred)];
+        let mut crowd = Crowd::with_agents(patch, figurants, real, 500, 9);
+        let n = crowd.individuals.len();
+        let mut actions = std::collections::HashSet::new();
+        for _ in 0..1200 {
+            crowd.step(0.05, [0.0, 20.0, 0.0], 400);
+            assert_eq!(crowd.individuals.len(), n, "la foule ne change jamais de taille");
+            for (i, ind) in crowd.individuals.iter().enumerate() {
+                if crowd.species[ind.species as usize].engine && !crowd.is_vacant(i) {
+                    actions.insert(ind.action);
+                    assert!(ind.x.is_finite() && ind.y.is_finite());
+                }
+            }
+        }
+        let scene = crowd.agents().expect("agents");
+        let living = crowd
+            .individuals
+            .iter()
+            .enumerate()
+            .filter(|(i, ind)| crowd.species[ind.species as usize].engine && !crowd.is_vacant(*i))
+            .count();
+        let agents = scene.agents.iter().filter(|a| !matches!(a.fate, evo_agents::agents::Fate::Dead { .. })).count();
+        assert_eq!(living, agents, "chaque agent a une place visible");
+        assert!(scene.kills > 0, "aucune prise montrée");
+        for a in [Action::Feed, Action::Hunt, Action::Migrate] {
+            assert!(actions.contains(&a), "action {a:?} jamais montrée : {actions:?}");
+        }
     }
 
     #[test]

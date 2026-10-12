@@ -25,6 +25,13 @@ pub enum Stream {
     Transfer = 8,
     Climate = 9,
     Orders = 10,
+    /// Individus échantillonnés et agents (hors histoire : ils ne lisent que
+    /// l'état publié et ne remontent jamais au monde).
+    Individuals = 11,
+    /// Culture : inventions, diffusion, langues, mythes et notables de
+    /// l'état simulé (étape 6). Les agents tirés pour l'écran gardent le flux
+    /// `Individuals`.
+    Culture = 12,
 }
 
 /// Mélangeur SplitMix64 : diffuse chaque bit d'entrée sur toute la sortie.

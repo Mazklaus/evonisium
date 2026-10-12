@@ -102,6 +102,12 @@ func update_info(info: Dictionary, seeking: bool) -> void:
 	paused = bool(info["paused"])
 	date_label.text = info["date"]
 	var state: String = App.t("seeking") if seeking else (App.t("paused") if paused else App.t("climate") + " : " + str(info["climate"]))
+	# Étape 6 : le mode historique des peuples (d'essai tant que le moteur ne
+	# les fait pas naître) s'ajoute à l'état du temps.
+	if App.globe.peoples_ready:
+		var mode: Dictionary = App.session.culture_mode()
+		if not mode.is_empty():
+			state += " · " + str(mode["text"])
 	state_label.text = state
 	play_button.text = "▶ " + App.t("play") if paused else "❚❚ " + App.t("pause")
 	var real: float = float(info["real_speed"])

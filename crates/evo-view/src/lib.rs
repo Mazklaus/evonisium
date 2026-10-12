@@ -13,20 +13,25 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod anatomy;
+pub mod camp;
 pub mod chronicle;
 pub mod compare;
+pub mod culture;
 pub mod decor;
 pub mod foodweb;
 pub mod format;
 pub mod frame;
 pub mod ground;
+pub mod guide;
 pub mod layers;
 pub mod mesh;
 pub mod naming;
+pub mod pace;
 pub mod palette;
 pub mod pick;
 pub mod save;
 pub mod species;
+pub mod story;
 pub mod terrain;
 pub mod tree;
 

@@ -155,6 +155,20 @@ func rebuild_theme(text_scale: float, readable: bool, high_contrast: bool) -> vo
 	vsep.thickness = 1
 	vsep.vertical = true
 	t.set_stylebox("separator", "VSeparator", vsep)
+	# Onglets : papier sous un filet d'encre, l'onglet ouvert en ocre.
+	var tab_panel := _button_box(Color(0, 0, 0, 0), Color(ink, 0.6), 1)
+	tab_panel.content_margin_left = 10
+	tab_panel.content_margin_right = 10
+	tab_panel.content_margin_top = 8
+	tab_panel.content_margin_bottom = 8
+	t.set_stylebox("panel", "TabContainer", tab_panel)
+	t.set_stylebox("tab_selected", "TabContainer", _button_box(Color(OCHRE, 0.35), VERMILION, w + 1))
+	t.set_stylebox("tab_unselected", "TabContainer", _button_box(Color(0, 0, 0, 0), Color(ink, 0.6), w))
+	t.set_stylebox("tab_hovered", "TabContainer", _button_box(Color(WATER, 0.45), ink, w))
+	t.set_stylebox("tab_focus", "TabContainer", focus)
+	t.set_color("font_selected_color", "TabContainer", ink)
+	t.set_color("font_unselected_color", "TabContainer", Color(ink, 0.75))
+	t.set_color("font_hovered_color", "TabContainer", ink)
 	t.set_stylebox("panel", "ItemList", _button_box(Color(PAPER_DARK, 0.35), Color(ink, 0.6), 1))
 	t.set_stylebox("selected", "ItemList", _button_box(Color(OCHRE, 0.35), VERMILION, 1))
 	t.set_stylebox("selected_focus", "ItemList", _button_box(Color(OCHRE, 0.45), VERMILION, 1))

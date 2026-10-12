@@ -6,6 +6,8 @@ extends PanelContainer
 signal species_requested(species: int)
 ## Réseau trophique ou colonne stratigraphique de la cellule (étape 4).
 signal tool_requested(tool: String, cell: int)
+## Fiche du peuple qui habite la cellule (étape 6).
+signal people_requested(id: int)
 
 var cell := -1
 var body: VBoxContainer
@@ -94,6 +96,16 @@ func _fill(with_loupe: bool = true) -> void:
 		vl.custom_minimum_size.x = 320
 		vl.add_theme_color_override("font_color", Atlas.VERMILION)
 		body.add_child(vl)
+	if App.globe.peoples_ready:
+		var pc: Dictionary = App.session.culture_at(cell)
+		if not pc.is_empty():
+			var ph := HBoxContainer.new()
+			var pl := Atlas.text(pc["text"], 16)
+			pl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			pl.custom_minimum_size.x = 200
+			ph.add_child(pl)
+			ph.add_child(Atlas.button(App.t("people_sheet"), people_requested.emit.bind(int(pc["people"]))))
+			body.add_child(ph)
 	body.add_child(Atlas.hsep())
 	body.add_child(Atlas.title(App.t("populations"), 20))
 	var pops: Array = d["populations"]

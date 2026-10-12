@@ -110,8 +110,16 @@ impl EvoSession {
         let (Some(g), Some(f)) = (&self.game, self.frame()) else { return None };
         let site = evo_view::ground::Site::from_frame(&f, cell.max(0) as usize)?;
         let rx = g.engine.query(Query::Cell { cell: cell as u32 });
+        let rx_individuals =
+            g.engine.query(Query::Individuals { cell: cell as u32, species: 4, size: evo_agents::SAMPLE_SIZE, microbes: false });
         let seed = f.planet.seed ^ (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let total = total.clamp(1, 1_000_000) as usize;
+        // Étape 6 : un peuple (d'essai) dans la cellule pose son campement.
+        let camp = self.culture().and_then(|st| {
+            let v = evo_view::culture::camp(&st, cell as u32)?;
+            let name = st.peoples.iter().find(|p| p.id == v.people).map(|p| p.name.clone()).unwrap_or_default();
+            Some((v, name))
+        });
         let mut ground = Gd::<crate::ground::EvoGround>::default();
         let fr = self.lang == Lang::Fr;
         ground.bind_mut().start(fr, move || {
@@ -130,7 +138,11 @@ impl EvoSession {
                 }
             }
             let real = crate::ground::real_for(list, f.planet.seed, site.is_ocean);
-            crate::ground::build(site, real, total, seed)
+            let samples = match rx_individuals.recv() {
+                Ok(Answer::Individuals(i)) => i.samples,
+                _ => Vec::new(),
+            };
+            crate::ground::build(site, real, samples, total, seed, camp)
         });
         Some(ground)
     }

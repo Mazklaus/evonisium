@@ -26,8 +26,15 @@ var settings := {
 	"graticule": true,
 	"terminator": false,
 	"narrator": true,
+	## Phrases du narrateur déjà dites (gardées d'une partie à l'autre).
+	"guide_vu": [],
 }
 var current_screen := ""
+## Mesures de performance (F3, scripts/ui/mesures.gd) : microsecondes passées
+## dans chaque poste depuis la dernière ligne écrite.
+const PERF_KEYS := ["textures", "infos", "evenements", "globe", "peuples", "frise", "son", "sol"]
+var perf := {}
+var perf_on := false
 ## Partie demandée par l'écran de création, en attente d'ensemencement.
 var pending := {}
 
@@ -58,9 +65,14 @@ const TEXT := {
 	"start_life": ["Déposer la vie et commencer", "Seed life and begin"],
 	"vents_shown": ["Les sources chaudes sont cerclées de vermillon.", "Hot springs are circled in vermilion."],
 	"pause": ["Pause", "Pause"],
+	"guided_game": ["Première partie guidée", "Guided first game"],
+	"guided_tip": ["La Terre, ensemencée près des sources chaudes, avec un narrateur discret qui présente chaque outil quand il devient utile.", "Earth, seeded near the hot springs, with a discreet narrator who introduces each tool when it becomes useful."],
+	"while_away": ["Pendant votre absence", "While you were away"],
+	"story": ["Récit", "Story"],
+	"story_empty": ["Le récit commence quand la vie est déposée.", "The story begins once life is seeded."],
 	"ground_down": ["Descendre au sol", "Go down to the ground"],
 	"ground_title": ["Au sol", "On the ground"],
-	"ground_extras": ["Figurants d'essai : le moteur ne publie pas encore d'individus. Ces corps viennent de plans de construction de banc d'essai et leurs gestes ne changent pas l'histoire.", "Test extras: the engine does not publish individuals yet. These bodies come from bench body plans and what they do never changes history."],
+	"ground_extras": ["Les espèces de la cellule assez grandes pour se voir sont des individus tirés de leur population par le moteur ; les autres corps sont des figurants d'essai. Rien de ce qu'ils font ne change l'histoire.", "Species of this cell large enough to be seen are individuals the engine draws from their population; the other bodies are test extras. Nothing they do ever changes history."],
 	"ground_wait": ["Préparation de la scène…", "Preparing the scene…"],
 	"ground_up": ["Remonter", "Back up"],
 	"ground_free": ["Survol libre", "Free flight"],
@@ -138,6 +150,23 @@ const TEXT := {
 	"graticule": ["Graticule", "Graticule"],
 	"terminator": ["Jour et nuit (sinon lumière d'atelier)", "Day and night (otherwise studio light)"],
 	"narrator": ["Conseils du narrateur", "Narrator hints"],
+	"sound": ["Son", "Sound"],
+	"vol_general": ["Volume général", "Master volume"],
+	"vol_musique": ["Musique", "Music"],
+	"vol_ambiances": ["Ambiances", "Ambiences"],
+	"vol_interface": ["Interface", "Interface"],
+	"mute": ["Couper le son (Ctrl+M)", "Mute (Ctrl+M)"],
+	"vol_narrateur": ["Narrateur", "Narrator"],
+	"voice_narrator": ["Narrateur vocal", "Spoken narrator"],
+	"voice": ["Voix", "Voice"],
+	"voice_install": ["Installer la voix", "Install the voice"],
+	"voice_ready": ["Voix installée.", "Voice installed."],
+	"voice_missing": ["Voix non installée : le narrateur se tait.", "Voice not installed: the narrator stays silent."],
+	"voice_unavailable": ["Le son est coupé dans ce mode.", "Sound is off in this mode."],
+	"narr_moments": ["Raconter les grands moments de l'histoire", "Tell the great moments of history"],
+	"narr_scene": ["Raconter ce que montre la loupe", "Describe what the magnifier shows"],
+	"narr_fiche": ["Lire les fiches d'espèces", "Read species sheets aloud"],
+	"narr_sous_titres": ["Sous-titres du narrateur", "Narrator subtitles"],
 	"accept": ["Appliquer", "Apply"],
 	"no_save": ["Aucune partie sauvegardée.", "No saved game."],
 	"cell": ["Cellule", "Cell"],
@@ -261,7 +290,42 @@ const TEXT := {
 	"clear_focus": ["Effacer l'aire", "Clear range"],
 	"layer_none": ["Aucun calque : vue naturelle", "No layer: natural view"],
 	"go_menu": ["Revenir au menu (la partie est sauvegardée)", "Back to menu (the game is saved)"],
+	"perf_open": ["Ouvrir le dossier des mesures", "Open the measurements folder"],
+	"perf_fps": ["images/s", "fps"],
+	"perf_worst": ["pire image", "worst frame"],
+	"perf_script": ["scripts", "scripts"],
 	"real_speed_long": ["vitesse tenue", "speed held"],
+	# Étape 6 : peuples, fiches, arbre des cultures, mythes.
+	"peoples": ["Peuples", "Peoples"],
+	"peoples_layer": ["Peuples (essai)", "Peoples (test)"],
+	"peoples_bench": ["Peuples d'essai : le moteur ne fait pas encore naître de peuples. En attendant, ces groupes sont posés sur les terres de votre planète et vivent quelques milliers d'années pour montrer l'affichage. Ils ne changent rien à l'histoire.", "Test peoples: the engine does not raise peoples yet. Meanwhile these groups are placed on your planet's land and live a few thousand years to show the display. They change nothing in the history."],
+	"peoples_bench_short": ["Peuples d'essai, sans effet sur l'histoire", "Test peoples, no effect on the history"],
+	"peoples_none": ["Aucun peuple pour l'instant.", "No peoples yet."],
+	"peoples_waiting": ["Les peuples d'essai se posent…", "Test peoples are being placed…"],
+	"people_sheet": ["Fiche du peuple", "People sheet"],
+	"people_species": ["Espèce", "Species"],
+	"people_born": ["Apparu", "Arose"],
+	"camp_notice": ["Campement des %s, un peuple d'essai : ses gens sont des figurants primates en attendant les vrais corps des espèces intelligentes.", "Camp of the %s, a test people: its folk are primate stand-ins until intelligent species get their real bodies."],
+	"notable_born": ["Né", "Born"],
+	"people_ended": ["disparu", "ended"],
+	"population": ["Effectif", "Population"],
+	"people_groups": ["groupes", "groups"],
+	"people_parent": ["Issu de", "Descended from"],
+	"people_children": ["Peuples issus de lui", "Peoples descended from it"],
+	"language": ["Langue", "Language"],
+	"techniques": ["Techniques", "Techniques"],
+	"customs": ["Croyances, rites et coutumes", "Beliefs, rites and customs"],
+	"myths": ["Mythes", "Myths"],
+	"myths_none": ["Aucun mythe pour l'instant : un peuple en raconte un quand il voit ce qu'il ne s'explique pas.", "No myths yet: a people tells one when it sees what it cannot explain."],
+	"myth_from_you": ["né de votre intervention", "born of your intervention"],
+	"notables": ["Personnages", "Notable figures"],
+	"mastery": ["maîtrise", "mastery"],
+	"trait": ["Ce qu'il a apporté", "What they brought"],
+	"death": ["Mort", "Died"],
+	"people": ["Peuple", "People"],
+	"people_tree": ["Arbre des peuples", "Tree of peoples"],
+	"language_tree": ["Arbre des langues", "Tree of languages"],
+	"today": ["aujourd'hui", "today"],
 }
 
 const VISION_MODES := [["Standard", "Standard"], ["Protanopie", "Protanopia"], ["Deutéranopie", "Deuteranopia"], ["Tritanopie", "Tritanopia"], ["Contraste élevé", "High contrast"]]
@@ -325,3 +389,8 @@ func list_saves() -> Array:
 func save_path(name: String) -> String:
 	var clean := name.to_lower().replace(" ", "-").validate_filename()
 	return ProjectSettings.globalize_path("%s/%s.evo" % [SAVE_DIR, clean])
+
+## Ajoute `usec` microsecondes au poste `key` des mesures (F3).
+func perf_add(key: String, since_usec: int) -> void:
+	if perf_on:
+		perf[key] = int(perf.get(key, 0)) + Time.get_ticks_usec() - since_usec

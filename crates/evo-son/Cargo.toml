@@ -1,0 +1,15 @@
+[package]
+name = "evo-son"
+description = "Son du client, sans Godot : synthèse, musique générative des ères, ambiances des vues et bruits de l'interface, lus depuis l'état publié."
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Décodage des boucles du fond musical (Ogg Vorbis, pur Rust).
+lewton.workspace = true
+
+[dev-dependencies]
+# Peuples d'essai du banc de la culture, pour l'exemple `peuples`.
+evo-culture.workspace = true

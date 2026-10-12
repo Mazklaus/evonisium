@@ -3,10 +3,10 @@ extends Control
 ## autour du point visé, ses habitants animés près de la caméra et en
 ## imposteurs au loin, une caméra qui suit un individu ou survole librement.
 ##
-## Les individus sont des figurants : le moteur ne publie pas encore
-## d'individus, leurs corps viennent de plans de construction de banc
-## d'essai (et des espèces vraies de la cellule quand elles sont assez
-## grandes), et rien de ce qu'ils font ne change l'histoire.
+## Les espèces vraies de la cellule assez grandes pour se voir sont des
+## agents du moteur (individus tirés de leur population, comportements tirés
+## de leurs traits) ; les autres sont des figurants de banc d'essai. Rien de
+## ce qu'ils font ne change l'histoire.
 
 signal closed
 
@@ -32,6 +32,13 @@ var water: MeshInstance3D
 var species_nodes: Array = []  # [{mm: MultiMesh, mat: ShaderMaterial, tex: ImageTexture, rows: int}]
 var impostor_mm: MultiMesh
 var impostor_frame := 0
+## Campement d'un peuple (étape 6) : objets posés, objets tenus et portés
+## (un MultiMesh par objet).
+var camp := {}
+var prop_mms: Array = []
+## Le peuple du campement pour le son (langue et rites) ; dernier chant.
+var people := {}
+var rite_clock := 0.0
 
 var followed := -1
 var free_target := Vector3.ZERO
@@ -132,8 +139,22 @@ func _build_ui() -> void:
 	waiting_label.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(waiting_label)
 
-func open(g: EvoGround) -> void:
+func open(g: EvoGround, people_info: Dictionary = {}) -> void:
 	ground = g
+	people = people_info
+
+## Le son du peuple : sa rumeur dans sa langue, ses chants quand ses gens
+## célèbrent un rite (fil Design sonore, `EvoSon.peuple`).
+func _people_sound(on: bool) -> void:
+	if people.is_empty() or not is_instance_valid(Son) or Son.son == null:
+		return
+	if on:
+		Son.son.peuple(people["name"], people.get("words", PackedStringArray()), people.get("rites", PackedStringArray()), float(people["population"]), 1.0, int(people["people"]))
+	else:
+		Son.son.sans_peuple()
+
+func _exit_tree() -> void:
+	_people_sound(false)
 
 func _setup_scene() -> void:
 	ready_done = true
@@ -217,13 +238,91 @@ func _setup_scene() -> void:
 	imi.material_override = im
 	imi.custom_aabb = AABB(Vector3(-3000, -3000, -3000), Vector3(6000, 6000, 6000))
 	world.add_child(imi)
+	_build_camp()
+	if not camp.is_empty():
+		_people_sound(true)
 	# Actions du lexique.
 	keys = [""]
 	actions_box.add_item(App.t("ground_free_behaviour"))
 	for a in ground.actions():
 		keys.append(a["key"])
 		actions_box.add_item(a["label"])
-	follow_species(0)
+	if camp.is_empty():
+		follow_species(0)
+	else:
+		# Au campement : la caméra survole le foyer.
+		followed = -1
+		free_target = camp["centre"]
+		target_distance = 22.0
+		distance = target_distance
+		pitch = 0.5
+		follow_button.text = App.t("ground_follow")
+
+## Le campement : objets posés une fois, et un MultiMesh par objet pour ce
+## que les gens tiennent ou portent, rempli à chaque image.
+func _build_camp() -> void:
+	camp = ground.camp_info()
+	if camp.is_empty():
+		return
+	var fixed: Array = ground.camp_instances(true)
+	for k in ground.artefact_count():
+		var md: Dictionary = ground.artefact_mesh(k)
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		a[Mesh.ARRAY_VERTEX] = md["vertices"]
+		a[Mesh.ARRAY_NORMAL] = md["normals"]
+		a[Mesh.ARRAY_COLOR] = md["colors"]
+		a[Mesh.ARRAY_INDEX] = md["indices"]
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+		var mat := ShaderMaterial.new()
+		mat.shader = TerrainShader
+		mat.set_shader_parameter("sun_dir", sun_dir())
+		mat.set_shader_parameter("hatch_spacing", 4.0)
+		for which in 2:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = am
+			mm.instance_count = 0
+			var mi := MultiMeshInstance3D.new()
+			mi.multimesh = mm
+			mi.material_override = mat
+			mi.custom_aabb = AABB(Vector3(-3000, -3000, -3000), Vector3(6000, 6000, 6000))
+			world.add_child(mi)
+			if which == 0:
+				var buf: PackedFloat32Array = fixed[k]
+				mm.instance_count = buf.size() / 12
+				if buf.size() > 0:
+					mm.buffer = buf
+			else:
+				prop_mms.append(mm)
+	notice_label.text = App.t("ground_extras") + "\n" + App.t("camp_notice") % camp["people"]
+
+## Quand plusieurs gens dansent autour du feu, le chœur chante (au plus
+## une fois par minute).
+func _watch_rites(delta: float) -> void:
+	rite_clock -= delta
+	if camp.is_empty() or people.get("rites", PackedStringArray()).is_empty() or rite_clock > 0.0:
+		return
+	if ground.camp_rite_count() >= 3 and is_instance_valid(Son) and Son.son != null:
+		Son.son.rite(0)
+		rite_clock = 60.0
+
+func _update_props() -> void:
+	if camp.is_empty():
+		return
+	var props: Array = ground.camp_instances(false)
+	for k in prop_mms.size():
+		var buf: PackedFloat32Array = props[k]
+		var mm: MultiMesh = prop_mms[k]
+		var n := buf.size() / 12
+		if n > mm.instance_count:
+			mm.instance_count = max(8, nearest_po2(n))
+		mm.visible_instance_count = n
+		if n > 0:
+			var full := buf
+			full.resize(mm.instance_count * 12)
+			mm.buffer = full
 
 ## Direction vers le soleil, repère du monde.
 func sun_dir() -> Vector3:
@@ -269,6 +368,11 @@ func force(key: String) -> void:
 		ground.force_action(int(ground.individual(followed)["species"]), key)
 
 func _process(delta: float) -> void:
+	var t := Time.get_ticks_usec()
+	_tick(delta)
+	App.perf_add("sol", t)
+
+func _tick(delta: float) -> void:
 	if ground == null:
 		return
 	if not ready_done:
@@ -305,6 +409,8 @@ func _process(delta: float) -> void:
 		env.fog_density = 0.0009
 		env.background_color = sky
 	_update_animated()
+	_update_props()
+	_watch_rites(delta)
 	impostor_frame += 1
 	if impostor_frame % impostor_every == 0:
 		impostor_mm.buffer = ground.impostors()

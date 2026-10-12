@@ -20,6 +20,7 @@ bincode = "1.3"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 libm = "0.2"
+lewton = "0.10"
 evo-core = { path = "crates/evo-core" }
 evo-planet = { path = "crates/evo-planet" }
 evo-genetics = { path = "crates/evo-genetics" }
@@ -28,6 +29,9 @@ evo-sim = { path = "crates/evo-sim" }
 evo-engine = { path = "crates/evo-engine" }
 evo-morph = { path = "crates/evo-morph" }
 evo-view = { path = "crates/evo-view" }
+evo-agents = { path = "crates/evo-agents" }
+evo-son = { path = "crates/evo-son" }
+evo-culture = { path = "crates/evo-culture" }
 
 [profile.release]
 debug = 1
