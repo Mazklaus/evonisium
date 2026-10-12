@@ -156,10 +156,13 @@ impl EvoSession {
         self.game.as_ref().map(|g| g.lineages.clone()).unwrap_or_default()
     }
 
+    /// Lignée `id`. Le registre est trié par identifiant mais peut être
+    /// creux (le moteur élague les vieilles lignées éteintes sans
+    /// descendance) : la place `id` d'abord, sinon une recherche dichotomique.
     fn lineage(lineages: &[LineageFrame], id: u32) -> Option<&LineageFrame> {
         match lineages.get(id as usize).filter(|l| l.id == id) {
             Some(l) => Some(l),
-            None => lineages.iter().find(|l| l.id == id),
+            None => lineages.binary_search_by_key(&id, |l| l.id).ok().map(|i| &lineages[i]),
         }
     }
 
