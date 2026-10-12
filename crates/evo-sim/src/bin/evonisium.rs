@@ -210,14 +210,33 @@ fn complexity(args: &[String]) {
     let max_years: f64 = arg(args, "--max-years", 3e9);
     let every: f64 = arg(args, "--every-years", 50e6);
     let start = Instant::now();
-    let mut world = World::new(cfg);
-    world.orders.submit(0.0, OrderKind::SeedLife);
-    let mut next = every;
+    // `--reprendre CHEMIN` : repart d'une sauvegarde ; `--sauver-a Y CHEMIN` :
+    // sauvegarde une fois la date Y passée (pour étudier un moment précis).
+    let mut world = match opt(args, "--reprendre") {
+        Some(path) => World::load_file(std::path::Path::new(&path)).expect("lecture de la sauvegarde"),
+        None => {
+            let mut w = World::new(cfg);
+            w.orders.submit(0.0, OrderKind::SeedLife);
+            w
+        }
+    };
+    let mut save_at = args.iter().position(|a| a == "--sauver-a").map(|i| {
+        let y: f64 = args.get(i + 1).and_then(|v| v.parse().ok()).expect("date invalide");
+        (y, args.get(i + 2).cloned().expect("chemin manquant"))
+    });
+    let mut next = (world.years() / every).floor() * every + every;
+    let (mut previous_budget, mut previous_years) = (evo_planet::geochem::OxygenBudget::default(), 0.0);
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
+    let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
     let mut accelerated = false;
     let mut seen_oxygenic = false;
     while world.years() < max_years {
         world.step();
+        if let Some((y, path)) = save_at.as_ref().filter(|(y, _)| world.years() >= *y) {
+            world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
+            eprintln!("sauvegarde à {} (demandée à {})", format_years(world.years()), format_years(*y));
+            save_at = None;
+        }
         if world.progress.complex_accelerator_on != accelerated {
             accelerated = world.progress.complex_accelerator_on;
             println!(
@@ -229,6 +248,12 @@ fn complexity(args: &[String]) {
         if let Some(y) = world.progress.stage_years[4].filter(|_| !seen_oxygenic) {
             seen_oxygenic = true;
             println!("  ☀ photosynthèse oxygénique : {}", format_years(y));
+        }
+        for (k, done) in seen_animal.iter_mut().enumerate() {
+            if let Some(y) = world.progress.animal_years[k].filter(|_| !*done) {
+                *done = true;
+                println!("  ▲ {} : {}", evo_sim::world::ANIMAL_STAGES[k], format_years(y));
+            }
         }
         for (k, done) in seen.iter_mut().enumerate() {
             if !*done {
@@ -277,11 +302,12 @@ fn complexity(args: &[String]) {
             }
             let total = total.max(1e-300);
             println!(
-                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
+                "{:>9} O₂ {:.1e} {:.0} K glace {:.0} % CO₂ {:.0} Pa | phagotrophes {:.1} % eucaryotes {:.1} % multicellulaires {:.1} % | taille max {:.1} cellules max {:.0} types max {} | gènes {:.0} (max {}, {:.0} % inactifs) | vivant niveau {} | {:.0} s",
                 format_years(world.years()),
                 s.globals.o2_mixing,
                 s.globals.mean_temperature_k,
                 100.0 * s.globals.ice_fraction,
+                world.planet.partial_pressure(evo_planet::geochem::Gas::Co2),
                 100.0 * phago / total,
                 100.0 * euk / total,
                 100.0 * multi / total,
@@ -297,6 +323,9 @@ fn complexity(args: &[String]) {
             if args.iter().any(|a| a == "--suivre") {
                 trace_complex(&world);
             }
+            if args.iter().any(|a| a == "--bilan") {
+                trace_oxygen(&world, &mut previous_budget, &mut previous_years);
+            }
         }
         if world.progress.complexity_years[6].is_some() && args.iter().any(|a| a == "--stop") {
             break;
@@ -304,6 +333,8 @@ fn complexity(args: &[String]) {
     }
     let elapsed = start.elapsed().as_secs_f64();
     println!("{} simulés en {:.0} s ({} par seconde)", format_years(world.years()), elapsed, format_years(world.years() / elapsed));
+    let s = world.summary();
+    println!("Bilans : carbone {:.1e}, phosphore {:.1e}, électrons {:.1e}", s.carbon_error, s.phosphorus_error, s.electron_error);
     if let Some(path) = opt(args, "--save") {
         world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
     }
@@ -312,9 +343,53 @@ fn complexity(args: &[String]) {
 /// Détail des phagotrophes et des eucaryotes : effectifs, cellules
 /// occupées, taux médians (naissance, mortalité, prédation subie, part du
 /// carbone tirée des proies, r).
+/// Bilan de l'oxygène et du phosphore depuis la ligne précédente, en
+/// mol par an : sources et puits d'O₂, export et enfouissement du carbone
+/// organique, phosphore dissous de l'océan profond, oxygénation du fond.
+fn trace_oxygen(world: &World, previous: &mut evo_planet::geochem::OxygenBudget, previous_years: &mut f64) {
+    let r = &world.planet.reservoirs;
+    let b = &r.oxygen;
+    let dt = (world.years() - *previous_years).max(1.0);
+    let d = |now: f64, before: f64| (now - before) / dt;
+    let l = &r.last;
+    println!(
+        "    terre ferme : {:.2} % de la biomasse, altération ×{:.2} | O₂ (mol/an) : libéré {:.2e} | respiration profonde {:.2e} gaz réduits {:.2e} méthane {:.2e} fer-Mn {:.2e} plancher {:.2e} roches {:.2e} sulfure {:.2e} | litière enfouie {:.2e} | export {:.2e} enfoui {:.2e} ({:.1} %) | CH₄ des couches {:.2e} | PO₄ profond {:.2e} mol | SO₄ profond {:.2e} mol, pyrite {:.2e} | H₂ échappé {:.2e}",
+        100.0 * world.communities.iter().flatten().filter(|p| p.phenotype.is_terrestrial()).map(|p| p.biomass).sum::<f64>()
+            / world.communities.iter().flatten().map(|p| p.biomass).sum::<f64>().max(1e-300),
+        world.biotic_weathering(),
+        d(b.surface_release, previous.surface_release),
+        d(b.deep_respiration, previous.deep_respiration),
+        d(b.reduced_gases, previous.reduced_gases),
+        d(b.methane, previous.methane),
+        d(b.iron_manganese, previous.iron_manganese),
+        d(b.seafloor_oxidation, previous.seafloor_oxidation),
+        d(b.oxidative_weathering, previous.oxidative_weathering),
+        d(b.sulfide, previous.sulfide),
+        d(b.land_burial, previous.land_burial),
+        l.organic_export,
+        l.organic_burial,
+        100.0 * l.organic_burial / l.organic_export.max(1e-300),
+        l.methane_release,
+        r.deep_po4,
+        r.deep_so4,
+        r.pyrite_s,
+        l.hydrogen_escape,
+    );
+    *previous = *b;
+    *previous_years = world.years();
+}
+
 fn trace_complex(world: &World) {
     type Pick = fn(&evo_life::Population) -> bool;
-    let groups: [(&str, Pick); 2] = [("phagotrophes", |p| p.phenotype.is_phagotroph()), ("eucaryotes", |p| p.phenotype.is_eukaryote())];
+    let groups: [(&str, Pick); 5] = [
+        ("phagotrophes", |p| p.phenotype.is_phagotroph()),
+        ("eucaryotes", |p| p.phenotype.is_eukaryote()),
+        ("oxygéniques aquatiques", |p| {
+            !p.phenotype.is_terrestrial() && p.phenotype.signature & (1 << evo_life::metabolism::OXYGENIC_PHOTOSYNTHESIS) != 0
+        }),
+        ("terrestres", |p| p.phenotype.is_terrestrial()),
+        ("mobiles", |p| p.phenotype.animal.motility > 0.0),
+    ];
     for (name, pick) in groups {
         let mut cells = 0usize;
         let mut rows: Vec<&evo_life::Population> = Vec::new();
@@ -324,6 +399,13 @@ fn trace_complex(world: &World) {
             if rows.len() > before {
                 cells += 1;
             }
+        }
+        if name == "terrestres" {
+            let possible = world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0).count();
+            let wet: Vec<f64> =
+                world.bio.env.iter().filter(|e| e.water_volume_m3 > 0.0 && e.dry_area_m2 > 0.0).map(|e| e.moisture).collect();
+            let mean = wet.iter().sum::<f64>() / wet.len().max(1) as f64;
+            println!("      terre ferme habitable : {possible} cellules, humidité moyenne {mean:.2}");
         }
         if rows.is_empty() {
             println!("      {name} : aucun");
@@ -336,7 +418,7 @@ fn trace_complex(world: &World) {
         };
         let biomass: f64 = rows.iter().map(|p| p.biomass).sum();
         println!(
-            "      {name} : {} populations dans {cells} cellules, {:.2e} mol C | naissance {:.3} mortalité {:.3} prédation {:.3} proies {:.2} r {:.4} taille {:.1} cellules {:.0}",
+            "      {name} : {} populations dans {cells} cellules, {:.2e} mol C | naissance {:.3} mortalité {:.3} prédation {:.3} proies {:.2} r {:.4} taille {:.1} cellules {:.0} résistance {:.2} phototrophes {}",
             rows.len(),
             biomass,
             median(&|p| p.rates.birth),
@@ -346,8 +428,65 @@ fn trace_complex(world: &World) {
             median(&|p| p.rates.r),
             median(&|p| p.phenotype.cell_size),
             median(&|p| p.phenotype.cells()),
+            median(&|p| p.phenotype.desiccation_tolerance),
+            rows.iter().filter(|p| p.phenotype.phototroph).count(),
         );
+        if name == "terrestres" {
+            trace_land_cells(world, pick);
+        }
+        if name == "mobiles" {
+            let max = |f: &dyn Fn(&evo_life::Population) -> f64| rows.iter().map(|p| f(p)).fold(0.0, f64::max);
+            let animals = rows.iter().filter(|p| p.phenotype.is_multicellular() && p.phenotype.engulfment > 0.0).count();
+            println!(
+                "        animaux {animals} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                median(&|p| p.phenotype.animal.motor),
+                max(&|p| p.phenotype.animal.motor),
+                median(&|p| p.phenotype.animal.sensor),
+                max(&|p| p.phenotype.animal.neural),
+                max(&|p| p.phenotype.animal.support),
+                max(&|p| p.phenotype.animal.length_m),
+                max(&|p| p.phenotype.animal.speed_m_s),
+                median(&|p| p.phenotype.animal.defense),
+                max(&|p| p.phenotype.animal.limb_pairs as f64),
+                rows.iter().filter(|p| p.phenotype.animal.sound.is_some()).count(),
+            );
+        }
     }
+}
+
+/// Facteurs limitants dans les cellules où vit la terre ferme : phosphate du
+/// sol, lumière du sol par mole de carbone, humidité.
+fn trace_land_cells(world: &World, pick: fn(&evo_life::Population) -> bool) {
+    let physio = &world.config.physiology;
+    let (mut po4, mut light, mut moist, mut dic, mut dry) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for (c, pops) in world.communities.iter().enumerate() {
+        if !pops.iter().any(pick) {
+            continue;
+        }
+        let env = &world.bio.env[c];
+        let ctx = evo_life::CellContext { env, light_biomass_per_m2: world.config.light_biomass_per_m2 };
+        let (_, land) = evo_life::CellContext::photo_biomass(pops);
+        let chem = &world.chemistry[c];
+        po4.push(env.soil_phosphate);
+        dic.push(chem[evo_planet::WaterPool::Dic as usize]);
+        light.push(ctx.land_light_per_biomass(land));
+        moist.push(env.moisture);
+        dry.push(land / env.dry_area_m2.max(1.0));
+    }
+    let med = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let p = med(&mut po4);
+    println!(
+        "        cellules terrestres : PO₄ du sol {:.2e} mol/m³ (facteur {:.2}) | CID {:.2e} | lumière {:.2e} kJ/molC/an | humidité {:.2} | biomasse {:.2e} molC/m² de sol",
+        p,
+        p / (p + physio.phosphate_half),
+        med(&mut dic),
+        med(&mut light),
+        med(&mut moist),
+        med(&mut dry),
+    );
 }
 
 /// Empreintes de l'état d'une partie scénarisée (ordres, interventions,

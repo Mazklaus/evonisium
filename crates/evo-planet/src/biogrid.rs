@@ -93,6 +93,12 @@ impl BioGrid {
                     vent_fe_supply: sum(|e| e.vent_fe_supply),
                     vent_mn_supply: sum(|e| e.vent_mn_supply),
                     ice_cover: mean(|e| e.ice_cover),
+                    dry_area_m2: all.iter().map(|e| e.dry_area_m2).sum(),
+                    land_light_par_w_m2: weighted(&all, |e| e.dry_area_m2, |e| e.land_light_par_w_m2),
+                    moisture: weighted(&all, |e| e.dry_area_m2, |e| e.moisture),
+                    phosphorus_supply: all.iter().map(|e| e.phosphorus_supply).sum(),
+                    soil_phosphate: weighted(&all, |e| e.dry_area_m2, |e| e.soil_phosphate),
+                    co2_pa: mean(|e| e.co2_pa),
                     flushing_per_year: mean(|e| e.flushing_per_year),
                     rain_mm_yr: mean(|e| e.rain_mm_yr),
                 }
@@ -117,6 +123,15 @@ impl BioGrid {
             + self.children.iter().map(|v| v.capacity() * 4 + 24).sum::<usize>()
             + self.env.capacity() * std::mem::size_of::<CellEnvironment>()
     }
+}
+
+/// Moyenne de `f` pondérée par `w` (zéro sans poids).
+fn weighted(set: &[&CellEnvironment], w: fn(&CellEnvironment) -> f64, f: fn(&CellEnvironment) -> f64) -> f64 {
+    let total: f64 = set.iter().map(|e| w(e)).sum();
+    if total <= 0.0 {
+        return 0.0;
+    }
+    set.iter().map(|e| w(e) * f(e)).sum::<f64>() / total
 }
 
 #[cfg(test)]

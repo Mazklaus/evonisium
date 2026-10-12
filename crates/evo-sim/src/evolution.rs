@@ -594,6 +594,20 @@ pub fn evolve_genotype(
         if phenotype.signature & PATHWAY_MASK == 0 {
             return None;
         }
+        // Constructeur de phénotypes : un plan non viable (appendice sans
+        // attache, masse que le corps ne porte pas, corps trop épais pour
+        // l'O₂ sans circulation) ne naît pas.
+        if phenotype.animal.non_viable.is_some() {
+            return None;
+        }
+        // Sélection sexuelle : chez un sexué qui la perçoit, la parade
+        // (l'appel) donne aux porteurs plus de partenaires.
+        let sexual_bonus = if resident.phenotype.sexual && resident.phenotype.animal.sensing > 0.0 {
+            physio.sexual_selection * (phenotype.animal.display() - resident.phenotype.animal.display())
+        } else {
+            0.0
+        };
+        let judged_s = |r: Option<(f64, Phenotype, GrowthRates)>| r.map(|(s, p, g)| (s + sexual_bonus, p, g));
         // Mutation sans effet sur le phénotype (marqueur, gène inactif) :
         // neutre, sans réévaluer la croissance.
         if phenotype == *resident.phenotype {
@@ -619,7 +633,7 @@ pub fn evolve_genotype(
         };
         if phenotype.signature != resident.signature() || judged.len() <= 1 {
             // Une guilde nouvelle naît dans la cellule représentative.
-            return Some((against(pops, resident, &rates), phenotype, rates));
+            return judged_s(Some((against(pops, resident, &rates), phenotype, rates)));
         }
         // Même guilde : le mutant remplacera le génotype dans tout le dème ;
         // son coefficient de sélection est la moyenne, pondérée par la
@@ -629,7 +643,7 @@ pub fn evolve_genotype(
             let r = if (c, j) == (rc, i) { rates } else { rates_in(cnd, raw, &chemistry[c]) };
             s += b * against(&communities[c], &communities[c][j], &r);
         }
-        Some((s / weight, phenotype, rates))
+        judged_s(Some((s / weight, phenotype, rates)))
     };
     // Construction incrémentale : la base du résident sert à tous ses
     // mutants ponctuels.

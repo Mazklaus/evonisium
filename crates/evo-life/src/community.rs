@@ -14,7 +14,7 @@
 //! système se rapprochant pas après pas de son équilibre ; la planète en tire
 //! des flux annuels qu'elle applique sur tout le pas.
 
-use crate::growth::{edibility, growth_rates_with, Conditions, GrowthRates, Physiology};
+use crate::growth::{capture, growth_rates_with, Conditions, GrowthRates, Physiology};
 use crate::metabolism::{EnergySource, REACTIONS};
 use crate::phenotype::{Capacities, Phenotype};
 use evo_core::math::Det;
@@ -57,41 +57,55 @@ impl CellContext<'_> {
     /// Lumière absorbée par mole de carbone phototrophe, kJ·molC⁻¹·an⁻¹,
     /// quand la biomasse phototrophe vaut `photo_biomass`.
     pub fn light_per_biomass(&self, photo_biomass: f64) -> f64 {
-        let b_ref = self.light_biomass_per_m2 * self.env.water_area_m2.max(1.0);
-        let incoming = watts_to_kj_per_year(self.env.light_par_w_m2 * self.env.water_area_m2);
-        let x = photo_biomass / b_ref;
-        if x < 1e-9 {
-            // Limite à faible biomasse : toute la lumière est disponible.
-            incoming / b_ref
-        } else {
-            incoming * (-(-x).dexp_m1()) / photo_biomass
+        shared_light(self.env.light_par_w_m2, self.env.water_area_m2, self.light_biomass_per_m2, photo_biomass)
+    }
+
+    /// Même partage pour la terre ferme : lumière du sol, sur sa surface.
+    pub fn land_light_per_biomass(&self, photo_biomass: f64) -> f64 {
+        shared_light(self.env.land_light_par_w_m2, self.env.dry_area_m2, self.light_biomass_per_m2, photo_biomass)
+    }
+
+    /// Biomasse phototrophe de chaque habitat : (eau, terre ferme).
+    pub fn photo_biomass(pops: &[Population]) -> (f64, f64) {
+        let mut b = (0.0, 0.0);
+        for p in pops.iter().filter(|p| p.phenotype.phototroph) {
+            if p.phenotype.is_terrestrial() {
+                b.1 += p.biomass;
+            } else {
+                b.0 += p.biomass;
+            }
         }
+        b
     }
 
-    pub fn photo_biomass(pops: &[Population]) -> f64 {
-        pops.iter().filter(|p| p.phenotype.phototroph).map(|p| p.biomass).sum()
-    }
-
-    /// Conditions physiques vues par les organismes quand la biomasse
-    /// phototrophe de la cellule vaut `photo_biomass`, sans proie ni
-    /// prédateur.
-    pub fn conditions(&self, photo_biomass: f64) -> Conditions {
-        Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(photo_biomass))
+    /// Conditions physiques vues par les organismes de la communauté `pops`,
+    /// lumière partagée dans chaque habitat, sans proie ni prédateur.
+    pub fn conditions(&self, pops: &[Population]) -> Conditions {
+        let (water, land) = Self::photo_biomass(pops);
+        let mut cond = Conditions::new(self.env.temperature_k, self.env.uv_w_m2, self.light_per_biomass(water));
+        cond.land_light_kj = self.land_light_per_biomass(land);
+        cond.moisture = self.env.moisture;
+        cond.has_land = self.env.dry_area_m2 > 0.0;
+        cond.soil_po4 = self.env.soil_phosphate;
+        cond.co2_pa = self.env.co2_pa;
+        cond
     }
 
     /// Conditions vues par les organismes de la communauté `pops` : lumière
     /// partagée, proies et pression des prédateurs (d'après leur dernière
-    /// évaluation).
+    /// évaluation), chaque habitat pour soi.
     pub fn conditions_of(&self, pops: &[Population], physio: &Physiology) -> Conditions {
-        let mut cond = self.conditions(Self::photo_biomass(pops));
+        let mut cond = self.conditions(pops);
         let v = self.env.water_volume_m3;
         if v <= 0.0 {
             return cond;
         }
         // Les proies sont toujours listées : un mutant phagotrophe jugé dans
-        // une cellule qui n'en a pas encore doit les voir.
+        // une cellule qui n'en a pas encore doit les voir. Sur la terre
+        // ferme, elles sont rapportées au même volume (simple échelle).
         for p in pops {
-            cond.prey.push(p.phenotype.body_size, p.biomass / v);
+            let list = if p.phenotype.is_terrestrial() { &mut cond.land_prey } else { &mut cond.prey };
+            list.push(p.phenotype.as_prey(p.biomass / v, physio));
         }
         for (j, p) in pops.iter().enumerate() {
             let demand = p.rates.prey_demand() * p.biomass;
@@ -100,18 +114,41 @@ impl CellContext<'_> {
             }
             let edible = edible_biomass(pops, j, physio);
             if edible > 0.0 {
-                cond.predators.push(p.phenotype.cell_size, demand / edible);
+                let list = if p.phenotype.is_terrestrial() { &mut cond.land_predators } else { &mut cond.predators };
+                list.push(p.phenotype.as_predator(demand / edible));
             }
         }
         cond
     }
 }
 
+/// Lumière absorbée par mole de carbone phototrophe, kJ·molC⁻¹·an⁻¹, quand
+/// `photo_biomass` se partage `light_w_m2` sur `area_m2`.
+fn shared_light(light_w_m2: f64, area_m2: f64, light_biomass_per_m2: f64, photo_biomass: f64) -> f64 {
+    if area_m2 <= 0.0 || light_w_m2 <= 0.0 {
+        return 0.0;
+    }
+    let b_ref = light_biomass_per_m2 * area_m2.max(1.0);
+    let incoming = watts_to_kj_per_year(light_w_m2 * area_m2);
+    let x = photo_biomass / b_ref;
+    if x < 1e-9 {
+        // Limite à faible biomasse : toute la lumière est disponible.
+        incoming / b_ref
+    } else {
+        incoming * (-(-x).dexp_m1()) / photo_biomass
+    }
+}
+
 /// Biomasse que le prédateur `j` peut englober dans la communauté (lui
 /// excepté), pondérée par la facilité à englober chaque proie.
 fn edible_biomass(pops: &[Population], j: usize, physio: &Physiology) -> f64 {
-    let size = pops[j].phenotype.cell_size;
-    pops.iter().enumerate().filter(|&(q, _)| q != j).map(|(_, q)| q.biomass * edibility(size, q.phenotype.body_size, physio)).sum()
+    let hunter = pops[j].phenotype.as_predator(1.0);
+    let land = pops[j].phenotype.is_terrestrial();
+    pops.iter()
+        .enumerate()
+        .filter(|&(q, p)| q != j && p.phenotype.is_terrestrial() == land)
+        .map(|(_, q)| q.biomass * capture(&hunter, &q.phenotype.as_prey(1.0, physio), physio))
+        .sum()
 }
 
 /// Évalue toutes les populations d'une cellule dans l'état courant.
@@ -168,6 +205,13 @@ pub fn substep_with(
     for p in pops.iter() {
         let b = p.biomass * dt;
         let growth = p.rates.birth * b;
+        // La terre ferme prend son CO₂ et son O₂ à l'air, pas à l'eau.
+        let land = p.phenotype.is_terrestrial();
+        let mut demand_of = |pool: WaterPool, x: f64| {
+            if !(land && matches!(pool, WaterPool::Dic | WaterPool::O2)) {
+                demand[pool as usize] += x;
+            }
+        };
         for r in REACTIONS.iter() {
             let q = p.rates.reaction[r.id as usize];
             if q <= 0.0 {
@@ -175,19 +219,21 @@ pub fn substep_with(
             }
             let units = if r.is_light() { growth * p.rates.fixation_share(r.id as usize) } else { q * b };
             for &(pool, k) in r.inputs {
-                demand[pool as usize] += units * k;
+                demand_of(pool, units * k);
             }
             for &(pool, k) in r.fixation {
                 if k < 0.0 {
-                    demand[pool as usize] -= growth * p.rates.fixation_share(r.id as usize) * k;
+                    demand_of(pool, -growth * p.rates.fixation_share(r.id as usize) * k);
                 }
             }
         }
-        demand[WaterPool::Doc as usize] += growth * p.rates.doc_share;
-        demand[WaterPool::Dic as usize] += growth * (1.0 - p.rates.heterotroph_share);
-        demand[WaterPool::Po4 as usize] += growth / cp;
+        demand_of(WaterPool::Doc, growth * p.rates.doc_share);
+        demand_of(WaterPool::Dic, growth * (1.0 - p.rates.heterotroph_share));
+        if !land {
+            demand_of(WaterPool::Po4, growth / cp);
+        }
         // Digestion aérobie des proies.
-        demand[WaterPool::O2 as usize] += p.rates.prey_uptake * p.rates.prey_aerobic_share * b;
+        demand_of(WaterPool::O2, p.rates.prey_uptake * p.rates.prey_aerobic_share * b);
     }
     // Prédation : chaque phagotrophe prend ce qu'il demande (digestion et
     // croissance) aux proies qu'il peut englober, au prorata de leur
@@ -213,9 +259,10 @@ pub fn substep_with(
             if edible <= 0.0 {
                 continue;
             }
-            let size = pops[j].phenotype.cell_size;
+            let hunter = pops[j].phenotype.as_predator(1.0);
             for q in 0..n {
-                let e = if q == j { 0.0 } else { edibility(size, pops[q].phenotype.body_size, physio) };
+                let same = pops[q].phenotype.is_terrestrial() == pops[j].phenotype.is_terrestrial();
+                let e = if q == j || !same { 0.0 } else { capture(&hunter, &pops[q].phenotype.as_prey(1.0, physio), physio) };
                 if e > 0.0 {
                     let a = want * e * pops[q].biomass / edible;
                     alloc.push((j, q, a));
@@ -230,7 +277,11 @@ pub fn substep_with(
         for q in 0..n {
             let l = loss[q] * phi[q];
             pops[q].biomass -= l;
-            chem[WaterPool::Po4 as usize] += l / cp / volume;
+            if pops[q].phenotype.is_terrestrial() {
+                out.soil_phosphorus -= l / cp;
+            } else {
+                chem[WaterPool::Po4 as usize] += l / cp / volume;
+            }
         }
         for j in 0..n {
             let want = wants[j];
@@ -246,9 +297,22 @@ pub fn substep_with(
             factor[i] = if demand[i] > 0.0 { available / demand[i] } else { 1.0 };
         }
     }
-    let phi_of = |r: &crate::metabolism::Reaction| r.inputs.iter().map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min);
+    let o2_conc = chem[WaterPool::O2 as usize].max(0.0);
+    let oxic_soil = o2_conc / (o2_conc + physio.oxygen_stress_half);
 
     for (j, p) in pops.iter_mut().enumerate() {
+        let land = p.phenotype.is_terrestrial();
+        // Facteur de partage d'un pool pour cette population : l'air ne
+        // manque ni de CO₂ ni d'O₂ à l'échelle d'un sous-pas.
+        let factor = {
+            let mut f = factor;
+            if land {
+                f[WaterPool::Dic as usize] = 1.0;
+                f[WaterPool::O2 as usize] = 1.0;
+            }
+            f
+        };
+        let phi_of = |r: &crate::metabolism::Reaction| r.inputs.iter().map(|&(pool, _)| factor[pool as usize]).fold(1.0, f64::min);
         let b = p.biomass * dt;
         let potential = p.rates.birth * b;
         let prey_got = got.get(j).copied().unwrap_or(0.0);
@@ -269,10 +333,10 @@ pub fn substep_with(
                 continue;
             }
             for &(pool, k) in r.inputs {
-                chem[pool as usize] -= q * k * b * phi / volume;
+                put(land, chem, &mut out.land_air, volume, pool, -q * k * b * phi);
             }
             for &(pool, k) in r.outputs {
-                chem[pool as usize] += q * k * b * phi / volume;
+                put(land, chem, &mut out.land_air, volume, pool, q * k * b * phi);
             }
             let e = match r.energy {
                 EnergySource::Chemical { dg_kj, .. } => q * dg_kj * (1.0 + physio.electron_transport_gain * p.phenotype.electron_transport),
@@ -284,7 +348,8 @@ pub fn substep_with(
         let energy_ratio = if p.rates.energy_kj > 0.0 { energy_scale / p.rates.energy_kj } else { 0.0 };
         let het = p.rates.heterotroph_share;
         let doc_share = p.rates.doc_share;
-        let mut carbon_phi: f64 = factor[WaterPool::Po4 as usize];
+        let land = p.phenotype.is_terrestrial();
+        let mut carbon_phi: f64 = if land { 1.0 } else { factor[WaterPool::Po4 as usize] };
         if doc_share > 0.0 {
             carbon_phi = carbon_phi.min(factor[WaterPool::Doc as usize]);
         }
@@ -318,16 +383,16 @@ pub fn substep_with(
                 continue;
             }
             births += fixed;
-            chem[WaterPool::Dic as usize] -= fixed / volume;
+            put(land, chem, &mut out.land_air, volume, WaterPool::Dic, -fixed);
             // Voie lumineuse : son donneur et ses produits ; voie chimique : le
             // réducteur de la fixation (coefficients négatifs : consommés).
             type Flows = &'static [(WaterPool, f64)];
             let (inputs, outputs): (Flows, Flows) = if r.is_light() { (r.inputs, r.outputs) } else { (&[], r.fixation) };
             for &(pool, k) in inputs {
-                chem[pool as usize] -= fixed * k / volume;
+                put(land, chem, &mut out.land_air, volume, pool, -fixed * k);
             }
             for &(pool, k) in outputs {
-                chem[pool as usize] += fixed * k / volume;
+                put(land, chem, &mut out.land_air, volume, pool, fixed * k);
                 if r.is_light() && pool == WaterPool::O2 {
                     out.oxygen += fixed * k;
                 }
@@ -335,6 +400,7 @@ pub fn substep_with(
         }
         // La prédation est retirée plus haut, explicitement.
         let deaths = p.biomass * (-(-(p.rates.mortality - p.rates.predation) * dt).dexp_m1());
+        let mut litter = deaths;
         if let Some(&carbon) = taken.get(j).filter(|&&c| c > 0.0) {
             // Carbone pris aux proies : digéré (respiration ou fermentation),
             // incorporé, et le reste rendu à l'eau en matière organique.
@@ -343,15 +409,36 @@ pub fn substep_with(
             let anaerobic = digested - aerobic;
             let incorporated = potential * p.rates.prey_share * scale;
             let rest = (carbon - digested - incorporated).max(0.0);
-            chem[WaterPool::O2 as usize] -= aerobic / volume;
-            chem[WaterPool::Dic as usize] += (aerobic + 0.5 * anaerobic) / volume;
-            chem[WaterPool::Ch4 as usize] += 0.5 * anaerobic / volume;
-            chem[WaterPool::Doc as usize] += rest / volume;
+            put(land, chem, &mut out.land_air, volume, WaterPool::O2, -aerobic);
+            put(land, chem, &mut out.land_air, volume, WaterPool::Dic, aerobic + 0.5 * anaerobic);
+            put(land, chem, &mut out.land_air, volume, WaterPool::Ch4, 0.5 * anaerobic);
+            if land {
+                litter += rest;
+            } else {
+                chem[WaterPool::Doc as usize] += rest / volume;
+            }
             debug_assert!(digested + incorporated <= carbon * (1.0 + 1e-9) + 1e-12, "proies : {digested} + {incorporated} > {carbon}");
         }
         chem[WaterPool::Doc as usize] -= potential * doc_share * scale / volume;
+        if land {
+            // La terre ferme puise son phosphore dans le sol et l'y rend. Sa
+            // litière se décompose dans le sol, à l'air (méthanogenèse quand
+            // il manque d'O₂) ; une petite part est enfouie.
+            out.soil_phosphorus += (births - deaths) / cp;
+            let buried = litter * physio.land_burial_share;
+            let respired = litter - buried;
+            out.land_burial += buried;
+            // En régime établi, les morts valent les naissances : l'excès
+            // d'une hécatombe passagère n'est pas une litière durable.
+            out.land_burial_steady += physio.land_burial_share * (litter - deaths + deaths.min(births));
+            put(land, chem, &mut out.land_air, volume, WaterPool::O2, -respired * oxic_soil);
+            put(land, chem, &mut out.land_air, volume, WaterPool::Dic, respired * (oxic_soil + 0.5 * (1.0 - oxic_soil)));
+            put(land, chem, &mut out.land_air, volume, WaterPool::Ch4, 0.5 * respired * (1.0 - oxic_soil));
+            p.biomass += births - deaths;
+            continue;
+        }
         chem[WaterPool::Po4 as usize] -= births / cp / volume;
-        let sinking = deaths * physio.sinking_share;
+        let sinking = deaths * physio.sinking_share_of(p.phenotype.body_size);
         out.sinking_carbon += sinking;
         chem[WaterPool::Doc as usize] += (deaths - sinking) / volume;
         chem[WaterPool::Po4 as usize] += (deaths - sinking) / cp / volume;
@@ -367,6 +454,17 @@ pub fn substep_with(
     out
 }
 
+/// Échange d'une population avec son milieu : les gaz de l'air pour la terre
+/// ferme (en moles, cumulées dans `air`), la couche d'eau pour le reste (les
+/// sols humides de la cellule) et pour la vie aquatique.
+fn put(land: bool, chem: &mut WaterChemistry, air: &mut [f64; WATER_POOL_COUNT], volume: f64, pool: WaterPool, moles: f64) {
+    if land && matches!(pool, WaterPool::Dic | WaterPool::O2 | WaterPool::Ch4 | WaterPool::H2) {
+        air[pool as usize] += moles;
+    } else {
+        chem[pool as usize] += moles / volume;
+    }
+}
+
 /// Ce qui sort d'une cellule pendant un sous-pas, en moles.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SubstepOutput {
@@ -375,6 +473,16 @@ pub struct SubstepOutput {
     /// Carbone des particules qui coulent ; elles emportent leur phosphore
     /// au rapport de la biomasse.
     pub sinking_carbon: f64,
+    /// Phosphore pris au sol par la terre ferme (net de ce qu'elle lui rend) :
+    /// le sol n'est pas suivi, c'est un apport de l'extérieur de la couche.
+    pub soil_phosphorus: f64,
+    /// Échanges de la terre ferme avec l'air, mol par pool de même nature
+    /// (positif : rendu à l'air), et carbone de sa litière enfoui.
+    pub land_air: [f64; WATER_POOL_COUNT],
+    pub land_burial: f64,
+    /// Même litière enfouie, réduite au régime établi (prolongée sur le
+    /// reste du pas).
+    pub land_burial_steady: f64,
 }
 
 #[cfg(test)]
@@ -405,6 +513,12 @@ mod tests {
             vent_fe_supply: 0.0,
             vent_mn_supply: 0.0,
             ice_cover: 0.0,
+            dry_area_m2: 0.0,
+            land_light_par_w_m2: 0.0,
+            moisture: 0.0,
+            phosphorus_supply: 0.0,
+            soil_phosphate: 0.0,
+            co2_pa: 40.0,
         }
     }
 

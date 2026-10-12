@@ -102,8 +102,48 @@ pub struct PlanetParams {
     /// tampon des carbonates).
     pub dic_equilibrium: f64,
     pub dic_co2_exponent: f64,
-    /// Sulfate de la couche de surface, mol·m⁻³.
+    /// Sulfate de départ de l'océan, mol·m⁻³ (archéen : moins de 0,2 mM).
     pub sulfate_equilibrium: f64,
+    /// Sulfate de l'océan profond qui fait passer la moitié de la
+    /// reminéralisation anaérobie par la sulfato-réduction plutôt que par la
+    /// méthanogenèse, mol·m⁻³ (les méthanogènes ne dominent que sous
+    /// quelques dixièmes de millimolaire). [Simplification]
+    pub sulfate_reduction_half: f64,
+    /// Même seuil pour l'oxydation anaérobie du méthane par le sulfate,
+    /// mol·m⁻³ (Olson et coll., 2016). [Simplification]
+    pub methane_sulfate_half: f64,
+    /// Part du sulfure produit sous la surface enfouie en pyrite ; le reste
+    /// est réoxydé (environ 10 à 20 % dans les sédiments actuels, Canfield,
+    /// 1989 ; Berner, 2006).
+    pub pyrite_burial_share: f64,
+    /// Part de l'oxydation des roches exposées due à la pyrite (le reste au
+    /// kérogène), qui rend du sulfate à l'océan (Berner, 2006).
+    pub pyrite_weathering_share: f64,
+    /// Temps de séjour du sulfate face à l'enfouissement en évaporites
+    /// (gypse), ans.
+    pub gypsum_burial_years: f64,
+    /// Évaporation potentielle des sols à 15 °C, mm·an⁻¹ (environ 1 000 mm
+    /// sous un climat tempéré terrestre).
+    pub potential_evaporation_mm: f64,
+    /// Accélération de l'altération des roches par une terre ferme entièrement
+    /// couverte de vie (racines, acides organiques, sols) : un facteur 4 à 7
+    /// selon GEOCARB et COPSE (Berner, 2006 ; Lenton et coll., 2016).
+    pub biotic_weathering_max: f64,
+    /// Part de cette accélération qu'apportent les croûtes microbiennes, sans
+    /// racines (les corps à plusieurs types de cellules l'apportent entière).
+    pub biotic_weathering_microbial: f64,
+    /// Sensibilité de la végétation aux incendies (k_fire de COPSE, 3).
+    pub fire_feedback: f64,
+    /// Part du phosphore de l'altération des terres libérée dans les sols de
+    /// la terre ferme (apatite des roches altérées sur place), avant que les
+    /// eaux ne l'emportent vers l'océan ; le reste y arrive directement par
+    /// les fleuves (étape 5).
+    pub land_phosphorus_local_share: f64,
+    /// Eau de la solution du sol par m² de terre ferme, m, et part de son
+    /// phosphate lessivée par an : ensemble, ils fixent la concentration du
+    /// phosphate du sol pour un apport donné (quelques µmol/L dans les sols).
+    pub soil_water_m: f64,
+    pub soil_leaching_per_year: f64,
     /// Échange entre la couche de surface et l'océan profond, an⁻¹.
     pub upwelling_rate: f64,
 
@@ -261,6 +301,8 @@ pub struct PlanetParams {
     /// Part d'un sol bien arrosé (un mètre de pluie par an) couverte de
     /// croûtes et tapis microbiens humides.
     pub wet_soil_fraction: f64,
+    /// Part d'une cellule de terre gelée en eau de fonte (refuges, étape 5).
+    pub ice_refuge_fraction: f64,
     /// Débit qui remplit à moitié la plaine d'un fleuve de lacs, m³·s⁻¹.
     pub lake_flow_scale_m3s: f64,
     /// Épaisseur de la couche d'eau des lacs et des sols humides, m.
@@ -316,6 +358,18 @@ impl PlanetParams {
             dic_equilibrium: 8.0,
             dic_co2_exponent: 0.3,
             sulfate_equilibrium: 0.2,
+            sulfate_reduction_half: 0.5,
+            methane_sulfate_half: 0.5,
+            pyrite_burial_share: 0.15,
+            pyrite_weathering_share: 0.2,
+            gypsum_burial_years: 30e6,
+            potential_evaporation_mm: 1000.0,
+            biotic_weathering_max: 4.0,
+            biotic_weathering_microbial: 0.15,
+            fire_feedback: 3.0,
+            land_phosphorus_local_share: 0.5,
+            soil_water_m: 0.05,
+            soil_leaching_per_year: 5.0,
             upwelling_rate: 0.01,
             plate_count: 14,
             plate_speed_cm_per_yr: 6.0,
@@ -375,6 +429,7 @@ impl PlanetParams {
             ocean_evaporation_m_yr: 1.2,
             runoff_coefficient: 0.4,
             wet_soil_fraction: 0.03,
+            ice_refuge_fraction: 1e-3,
             lake_flow_scale_m3s: 5000.0,
             lake_layer_m: 2.0,
             lake_phosphate_share: 0.3,

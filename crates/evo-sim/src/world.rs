@@ -325,6 +325,10 @@ pub struct Progress {
     /// tours se comptent sur le temps, pas sur les pas, pour que l'histoire
     /// ne dépende pas du pas choisi par le joueur.
     pub evolution_clock: f64,
+    /// Première apparition de chaque étape des animaux et des plantes
+    /// ([`ANIMAL_STAGES`], étape 5) : date et événement.
+    pub animal_years: [Option<f64>; ANIMAL_STAGE_COUNT],
+    pub animal_events: [Option<u64>; ANIMAL_STAGE_COUNT],
 }
 
 /// Étapes de la complexité suivies et signalées (chemin des « cellules
@@ -355,7 +359,32 @@ pub fn complexity_bits(p: &Phenotype, on_land: bool) -> u8 {
     bits |= u8::from(p.is_multicellular()) << 4;
     bits |= u8::from(types) << 5;
     bits |= u8::from(types && p.is_eukaryote()) << 6;
-    bits |= u8::from(types && p.is_eukaryote() && on_land) << 7;
+    bits |= u8::from(types && p.is_eukaryote() && on_land && p.is_terrestrial()) << 7;
+    bits
+}
+
+/// Étapes des animaux et des plantes (étape 5), datées à leur première
+/// apparition : rien ne les code, elles naissent des familles de domaines
+/// (moteurs, récepteurs, nerfs, matrice) et de la sélection.
+pub const ANIMAL_PATHWAY: &str = "animaux et plantes";
+pub const ANIMAL_STAGE_COUNT: usize = 6;
+pub const ANIMAL_STAGES: [&str; ANIMAL_STAGE_COUNT] =
+    ["animal mobile", "système nerveux", "squelette", "plante à tissus de soutien hors de l'eau", "animal hors de l'eau", "organe sonore"];
+
+/// Étapes des animaux et des plantes atteintes par un phénotype (bits, dans
+/// l'ordre de [`ANIMAL_STAGES`]).
+pub fn animal_bits(p: &Phenotype) -> u8 {
+    let a = &p.animal;
+    // Un corps organisé : eucaryote, aux cellules différenciées.
+    let multi = p.is_multicellular() && p.is_eukaryote() && p.cell_types() >= 2;
+    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0;
+    let mut bits = 0u8;
+    bits |= u8::from(animal);
+    bits |= u8::from(multi && a.neural >= 0.5) << 1;
+    bits |= u8::from(animal && a.support >= 0.5) << 2;
+    bits |= u8::from(multi && p.phototroph && p.is_terrestrial() && a.support > 0.0) << 3;
+    bits |= u8::from(animal && p.is_terrestrial()) << 4;
+    bits |= u8::from(a.sound.is_some()) << 5;
     bits
 }
 
@@ -418,6 +447,84 @@ pub struct World {
 }
 
 impl World {
+    /// Accélération de l'altération par la vie de la terre ferme : 1 sans
+    /// elle, `biotic_weathering_max` quand toute la terre ferme est couverte
+    /// (couverture d'une cellule : 1 − e^(−B/B₀), B₀ la biomasse qui absorbe
+    /// 63 % de la lumière).
+    /// Nombre de populations de la terre ferme (diagnostic).
+    pub fn land_populations(&self) -> (usize, f64) {
+        let land = self.communities.iter().flatten().filter(|p| p.phenotype.is_terrestrial());
+        land.fold((0, 0.0), |(n, b), p| (n + 1, b + p.biomass))
+    }
+
+    /// Part de la végétation des terres que les incendies laissent debout
+    /// (COPSE, Lenton et Watson, 2000) : 1 à 21 % d'O₂, moins au-delà (les
+    /// feux prennent dès 16 % et ravagent tout vers 30 %).
+    pub fn fire_factor(&self) -> f64 {
+        let f = self.planet.reservoirs.mixing_ratio(Gas::O2);
+        let ignition = (48.0 * f - 9.08).clamp(0.0, 5.0);
+        let k = self.planet.params.fire_feedback;
+        (k / (k - 1.0 + ignition)).min(1.0)
+    }
+
+    pub fn biotic_weathering(&self) -> f64 {
+        let b0 = self.config.light_biomass_per_m2;
+        let (mut covered, mut total) = (0.0, 0.0);
+        for (env, pops) in self.bio.env.iter().zip(&self.communities) {
+            if env.dry_area_m2 <= 0.0 {
+                continue;
+            }
+            let plants = pops.iter().filter(|p| p.phenotype.is_terrestrial() && p.phenotype.phototroph);
+            let (mut land, mut effect) = (0.0, 0.0);
+            for p in plants {
+                // Les racines des corps à plusieurs types de cellules ; les
+                // croûtes microbiennes n'altèrent qu'un peu.
+                let w = if p.phenotype.cell_types() >= 2 { 1.0 } else { self.planet.params.biotic_weathering_microbial };
+                land += p.biomass;
+                effect += w * p.biomass;
+            }
+            if land <= 0.0 {
+                total += env.dry_area_m2;
+                continue;
+            }
+            covered += env.dry_area_m2 * -(-land / (b0 * env.dry_area_m2)).dexp_m1() * effect / land;
+            total += env.dry_area_m2;
+        }
+        let cover = if total > 0.0 { covered / total } else { 0.0 };
+        // Les plantes affamées de CO₂ poussent et altèrent moins (COPSE) :
+        // l'effet est entier à 100 Pa et au-delà.
+        let physio = &self.config.physiology;
+        let co2 = (physio.land_co2_factor(self.planet.partial_pressure(Gas::Co2)) / physio.land_co2_factor(100.0)).min(1.0);
+        1.0 + (self.planet.params.biotic_weathering_max - 1.0).max(0.0) * cover * self.fire_factor() * co2
+    }
+
+    /// Livre aux sols de la terre ferme leur part du phosphore de
+    /// l'altération (`land_phosphorus_local_share`), répartie selon l'aire
+    /// sèche, l'humidité et la température de chaque cellule. Renvoie
+    /// l'accélération de l'altération par la vie, qui en fixe le débit.
+    fn route_land_phosphorus(&mut self, years: f64) -> f64 {
+        let biotic = self.biotic_weathering();
+        let p = &self.planet.params;
+        let mut ctx = self.planet.box_context(years);
+        ctx.biotic_weathering = biotic;
+        let rate = self.planet.reservoirs.land_phosphorus(p, &ctx) * p.land_phosphorus_local_share.clamp(0.0, 1.0);
+        let weight = |e: &evo_planet::CellEnvironment| {
+            if e.water_volume_m3 <= 0.0 || e.dry_area_m2 <= 0.0 {
+                return 0.0;
+            }
+            e.dry_area_m2 * e.moisture * ((e.temperature_k - p.weathering_reference_k) / p.weathering_activation_k).dexp()
+        };
+        let total: f64 = self.bio.env.iter().map(weight).sum();
+        let weights: Vec<f64> = self.bio.env.iter().map(weight).collect();
+        for (e, w) in self.bio.env.iter_mut().zip(weights) {
+            e.phosphorus_supply = if total > 0.0 { rate * w / total } else { 0.0 };
+            // Phosphate du sol à l'équilibre entre apport et lessivage.
+            let soil = e.dry_area_m2 * p.soil_water_m * p.soil_leaching_per_year;
+            e.soil_phosphate = if soil > 0.0 { e.phosphorus_supply / soil } else { 0.0 };
+        }
+        biotic
+    }
+
     pub fn new(mut config: WorldConfig) -> Self {
         let planet = generate(config.planet.clone(), config.level, config.seed);
         // Les pigments sont jugés sous l'étoile de cette partie, dans l'eau.
@@ -826,13 +933,16 @@ impl World {
         };
         check(self, "début");
         // 1. Planète lente.
+        let mut land_trace = vec![("début", self.land_populations())];
         self.planet_phase(years, dt, step_index);
+        land_trace.push(("planète", self.land_populations()));
         check(self, "planète");
         timings.planet = t0.elapsed();
 
         // 2. Écologie et cycles globaux.
         let t1 = Instant::now();
         self.ecology_phase(years, dt);
+        land_trace.push(("écologie", self.land_populations()));
         check(self, "écologie");
         timings.ecology = t1.elapsed();
 
@@ -862,8 +972,15 @@ impl World {
 
         // 4. Migration.
         let t3 = Instant::now();
+        land_trace.push(("évolution", self.land_populations()));
         self.migrate(dt, step_index);
+        land_trace.push(("migration", self.land_populations()));
         self.trim_communities();
+        land_trace.push(("plafond", self.land_populations()));
+        if std::env::var_os("EVO_DEBUG_LAND").is_some() && land_trace[0].1 .0 > 0 {
+            let t: Vec<String> = land_trace.iter().map(|(n, (c, b))| format!("{n} {c} {b:.3e}")).collect();
+            eprintln!("TERRE {:.1} Ma : {}", years / 1e6, t.join(", "));
+        }
         check(self, "migration");
         timings.migration = t3.elapsed();
 
@@ -874,6 +991,28 @@ impl World {
         self.disturbances.expire(self.years);
         self.bookkeeping(modified);
         self.adapt_step(first_event, oxygen_before);
+        if std::env::var_os("EVO_DEBUG_CO2").is_some() && (self.years / 2e6).floor() > (years / 2e6).floor() {
+            let pl = &self.planet;
+            let r = &pl.reservoirs;
+            let ctx = pl.box_context(self.years);
+            let (bare, land) = r.land_weathering(&pl.params, &ctx);
+            eprintln!(
+                "CARBONE {:.1} Ma CO2 {:.0} Pa T {:.1} K glace {:.2} terres libres {:.2e} m² | altération {:.2e} ({:.2e} nue) | carbonates {:.4e} organique {:.4e} | export {:.2e} enfoui {:.2e} litière {:.2e} | P sédiments {:.2e}",
+                self.years / 1e6,
+                pl.partial_pressure(Gas::Co2),
+                self.summary().globals.mean_temperature_k,
+                self.summary().globals.ice_fraction,
+                ctx.land_area_m2,
+                land,
+                bare,
+                r.carbonate_c,
+                r.organic_c,
+                r.last.organic_export,
+                r.last.organic_burial,
+                r.oxygen.land_burial,
+                r.sediment_p,
+            );
+        }
         if std::env::var_os("EVO_DEBUG_O2").is_some() && (self.years / 2e7).floor() > (years / 2e7).floor() {
             let r = &self.planet.reservoirs;
             let b = r.oxygen;
@@ -987,6 +1126,17 @@ impl World {
         }
         let cp = self.config.physiology.carbon_to_phosphorus;
         let targets = self.planet.exchange_targets(cp);
+        if std::env::var_os("EVO_DEBUG_LAND").is_some() {
+            let dried = before.iter().zip(&self.bio.env).filter(|(&v, e)| v > 0.0 && e.water_volume_m3 <= 0.0).count();
+            let iced = self.bio.env.iter().filter(|e| !e.is_ocean && e.ice_cover > 0.5).count();
+            let rainless = self.bio.env.iter().filter(|e| !e.is_ocean && e.rain_mm_yr <= 0.0).count();
+            eprintln!(
+                "PLANÈTE {:.1} Ma : {} changements, {dried} couches asséchées, terres gelées {iced}, sans pluie {rainless}, T {:.1} K",
+                years / 1e6,
+                changes.len(),
+                self.planet.climate.mean_temperature_k
+            );
+        }
         for (c, &old_volume) in before.iter().enumerate() {
             let new_volume = self.bio.env[c].water_volume_m3;
             if old_volume == new_volume {
@@ -1023,6 +1173,7 @@ impl World {
     }
 
     fn ecology_phase(&mut self, years: f64, dt: f64) {
+        let biotic = self.route_land_phosphorus(years);
         let cfg = &self.config;
         let planet = &self.planet;
         let envs = &self.bio.env;
@@ -1035,6 +1186,9 @@ impl World {
             oxygen: f64,
             extinctions: u64,
             redox_correction: f64,
+            soil_phosphorus: f64,
+            land_burial: f64,
+            land_burial_steady: f64,
         }
         let zero = || CellEco {
             exact: [0.0; WATER_POOL_COUNT],
@@ -1042,6 +1196,9 @@ impl World {
             oxygen: 0.0,
             extinctions: 0,
             redox_correction: 0.0,
+            soil_phosphorus: 0.0,
+            land_burial: 0.0,
+            land_burial_steady: 0.0,
         };
         let total = self
             .communities
@@ -1057,6 +1214,7 @@ impl World {
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
                 let start = *chem;
                 let biomass_start: f64 = pops.iter().map(|p| p.biomass).sum();
+                let land_start: f64 = pops.iter().filter(|p| p.phenotype.is_terrestrial()).map(|p| p.biomass).sum();
                 // La température ne change pas pendant l'écologie du pas : les
                 // capacités des enzymes se calculent une fois.
                 let caps = capacities(pops, &ctx, &cfg.physiology);
@@ -1064,18 +1222,42 @@ impl World {
                     if !pops.is_empty() {
                         let o = substep_with(pops, &caps, &ctx, chem, cfg.eco_dt_years, &cfg.physiology);
                         r.oxygen += o.oxygen;
+                        r.soil_phosphorus += o.soil_phosphorus;
+                        r.land_burial += o.land_burial;
+                        r.land_burial_steady += o.land_burial_steady;
+                        // Échanges de la terre ferme avec l'air : ils sortent de
+                        // la couche vers les réservoirs comme ceux de l'eau.
+                        for i in 0..WATER_POOL_COUNT {
+                            r.exact[i] += o.land_air[i];
+                        }
                         r.exact[WaterPool::Doc as usize] += o.sinking_carbon;
                         r.exact[WaterPool::Po4 as usize] += o.sinking_carbon / cp;
                     }
                     planet.exchange(env, chem, cfg.eco_dt_years, &targets, &mut r.exact);
                 }
                 let v = env.water_volume_m3;
-                let biomass_change = pops.iter().map(|p| p.biomass).sum::<f64>() - biomass_start;
-                r.rates = steady_rates(&r.exact, &start, chem, v, biomass_change, cp, t_eco, cfg.physiology.oxygen_stress_half);
+                let land_change = pops.iter().filter(|p| p.phenotype.is_terrestrial()).map(|p| p.biomass).sum::<f64>() - land_start;
+                let biomass_change = pops.iter().map(|p| p.biomass).sum::<f64>() - biomass_start - land_change;
+                r.rates =
+                    steady_rates(&r.exact, &start, chem, v, biomass_change, land_change, cp, t_eco, cfg.physiology.oxygen_stress_half);
+                // À l'équilibre, la couche rend le phosphore que les sols lui
+                // apportent (`steady_rates` annule son export net).
+                r.rates[WaterPool::Po4 as usize] += planet.vent_supply(env, WaterPool::Po4);
+                if debug_rates() && r.rates[WaterPool::O2 as usize].abs() > 1e15 {
+                    let o2 = WaterPool::O2 as usize;
+                    eprintln!(
+                        "  cellule {c} : O2 {:.2e}/an, exact O2 {:.2e} DIC {:.2e}, O2 eau {:.2e} → {:.2e} mol/m³, volume {:.2e}, biomasse Δ {:.2e} terre Δ {:.2e} (de {:.2e}), {} populations, terre ferme {:.2e} m²",
+                        r.rates[o2], r.exact[o2], r.exact[WaterPool::Dic as usize], start[o2], chem[o2], v, biomass_change, land_change, land_start, pops.len(), env.dry_area_m2
+                    );
+                }
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
+                // Une cellule sans terre ferme du tout (océan) ne garde pas
+                // d'organismes terrestres : leurs formes dormantes n'y
+                // attendent rien.
+                let landless = env.dry_area_m2 <= 0.0;
                 pops.retain(|p| {
-                    if p.biomass < cfg.extinction_biomass {
+                    if p.biomass < cfg.extinction_biomass || (landless && p.phenotype.is_terrestrial()) {
                         chem[WaterPool::Doc as usize] += p.biomass / v;
                         chem[WaterPool::Po4 as usize] += p.biomass / cp / v;
                         r.extinctions += 1;
@@ -1106,6 +1288,9 @@ impl World {
                 a.oxygen += b.oxygen;
                 a.extinctions += b.extinctions;
                 a.redox_correction += b.redox_correction;
+                a.soil_phosphorus += b.soil_phosphorus;
+                a.land_burial += b.land_burial;
+                a.land_burial_steady += b.land_burial_steady;
                 a
             });
         self.stats.local_extinctions += total.extinctions;
@@ -1124,8 +1309,33 @@ impl World {
         // Pendant l'écologie rapide, elles sont mesurées ; le reste du pas,
         // les boîtes inscrivent ce qu'elles reçoivent des couches prolongées.
         self.flux.exchange(Element::Electrons, vents * t_eco.min(dt));
-        let ctx = self.planet.box_context(years);
+        // Le phosphore livré aux sols entre par les couches sur tout le pas ;
+        // les boîtes en retranchent autant de leur apport direct.
+        let routed = vent_pools[WaterPool::Po4 as usize];
+        self.flux.exchange(Element::Phosphorus, routed * dt.max(t_eco) + total.soil_phosphorus);
+        let mut ctx = self.planet.box_context(years);
+        ctx.biotic_weathering = biotic;
+        ctx.land_phosphorus_routed = routed;
+        // Litière enfouie : celle de l'écologie rapide, puis la même chaque
+        // année pour le reste du pas.
+        // Les incendies brûlent une part de la litière avant son
+        // enfouissement (CH₂O + O₂ → CO₂).
+        let fire = self.fire_factor();
+        let burnt = total.land_burial * (1.0 - fire);
+        let r = &mut self.planet.reservoirs;
+        r.organic_c += total.land_burial - burnt;
+        r.atmosphere[Gas::Co2 as usize] += burnt;
+        r.atmosphere[Gas::O2 as usize] -= burnt;
+        ctx.land_burial = total.land_burial_steady * fire / t_eco;
+        let debug_co2 = std::env::var_os("EVO_DEBUG_CO2").is_some();
+        let co2_report = |stage: &str, r: &evo_planet::geochem::GlobalReservoirs| {
+            if debug_co2 && r.atmosphere[Gas::Co2 as usize] < 0.0 {
+                eprintln!("CO2 NÉGATIF {:.1} Ma après {stage} : {:.3e} mol", years / 1e6, r.atmosphere[Gas::Co2 as usize]);
+            }
+        };
+        co2_report("litière", &self.planet.reservoirs);
         self.planet.reservoirs.apply_exact(&self.planet.params, &ctx, &total.exact, t_eco, &mut self.flux);
+        co2_report("écologie", &self.planet.reservoirs);
         let rest = (dt - t_eco).max(0.0);
         // Les flux d'équilibre de la surface sont tenus constants sur tout le
         // pas, alors que l'atmosphère qu'ils modifient change la vie qui les
@@ -1147,6 +1357,7 @@ impl World {
         // alimentait est freiné avec lui, à bilan d'électrons exact. Le
         // pouvoir oxydant ainsi déplacé est compté.
         let (moved, unpaired) = self.planet.reservoirs.integrate(&self.planet.params, &ctx, &rates, rest, &mut self.flux);
+        co2_report("couches", &self.planet.reservoirs);
         self.stats.redox_throttled += moved;
         self.stats.redox_unpaired += unpaired;
         if debug_rates() {
@@ -1273,7 +1484,7 @@ impl World {
                 }
                 let residents = &communities[target];
                 let ctx = CellContext { env, light_biomass_per_m2: cfg.light_biomass_per_m2 };
-                let cond = ctx.conditions(CellContext::photo_biomass(residents));
+                let cond = ctx.conditions(residents);
                 for src in bio.grid.neighbours_of(target) {
                     if disturbances.blocked(bio.grid.centers[src], bio.grid.centers[target]) {
                         continue;
@@ -1504,6 +1715,7 @@ impl World {
             }
         }
         self.complexity_bookkeeping(&modified);
+        self.animal_bookkeeping(&modified);
         // Détecteur de stagnation : l'accélérateur n'agit qu'en dernier recours.
         let acc = &self.config.evolution.accelerator;
         if acc.enabled && !self.progress.accelerator_on && self.progress.best_stage < 4 {
@@ -1630,6 +1842,35 @@ impl World {
     /// accélérateur des transitions quand la complexité stagne (seulement
     /// une fois la photosynthèse oxygénique apparue : avant, c'est elle que
     /// l'accélérateur de la photosynthèse surveille).
+    /// Étapes des animaux et des plantes : première apparition sur la
+    /// planète, sans accélérateur.
+    fn animal_bookkeeping(&mut self, modified: &[(usize, usize, GenomeChangeCause)]) {
+        let years = self.years;
+        for &(c, i, cause) in modified {
+            let Some(p) = self.communities[c].get(i) else { continue };
+            let bits = animal_bits(&p.phenotype);
+            if bits == 0 {
+                continue;
+            }
+            let lineage = p.lineage;
+            for (k, label) in ANIMAL_STAGES.iter().enumerate() {
+                if bits & (1 << k) == 0 || self.progress.animal_years[k].is_some() {
+                    continue;
+                }
+                let previous = self.progress.animal_events.iter().rev().find_map(|e| *e);
+                let id = self.events.push_with(
+                    years,
+                    Some(c as u32),
+                    EventKind::Innovation { lineage, pathway: ANIMAL_PATHWAY.into(), stage: k as u8 + 1, label: (*label).into() },
+                    origin_of(cause),
+                    previous,
+                );
+                self.progress.animal_years[k] = Some(years);
+                self.progress.animal_events[k] = Some(id);
+            }
+        }
+    }
+
     fn complexity_bookkeeping(&mut self, modified: &[(usize, usize, GenomeChangeCause)]) {
         let years = self.years;
         let mut reached = [None::<(usize, usize, GenomeChangeCause)>; COMPLEXITY_STAGE_COUNT];
@@ -2127,6 +2368,10 @@ pub type SurfaceRates = ([f64; WATER_POOL_COUNT], [f64; WATER_POOL_COUNT]);
 /// (CH₂O + O₂ → CO₂) dans la part oxique de la couche, fermentation
 /// méthanogène (2 CH₂O → CH₄ + CO₂) dans la part anoxique. Ces deux
 /// réactions gardent aussi les trois bilans.
+///
+/// La biomasse de la terre ferme (`land_change`) n'est pas exportée : sa
+/// production nette, à l'équilibre, se décompose dans le sol (respiration ou
+/// méthanogenèse, comme ci-dessus), et son phosphore vient du sol.
 #[allow(clippy::too_many_arguments)]
 pub fn steady_rates(
     exact: &[f64; WATER_POOL_COUNT],
@@ -2134,6 +2379,7 @@ pub fn steady_rates(
     end: &WaterChemistry,
     volume: f64,
     biomass_change: f64,
+    land_change: f64,
     carbon_to_phosphorus: f64,
     t_eco: f64,
     oxygen_half: f64,
@@ -2141,10 +2387,13 @@ pub fn steady_rates(
     let mut m: [f64; WATER_POOL_COUNT] = std::array::from_fn(|i| exact[i] + (end[i] - start[i]) * volume);
     m[WaterPool::Doc as usize] += biomass_change;
     m[WaterPool::Po4 as usize] += biomass_change / carbon_to_phosphorus;
+    let o2 = end[WaterPool::O2 as usize].max(0.0);
+    let oxic = o2 / (o2 + oxygen_half);
+    m[WaterPool::Dic as usize] += land_change * (oxic + 0.5 * (1.0 - oxic));
+    m[WaterPool::O2 as usize] -= land_change * oxic;
+    m[WaterPool::Ch4 as usize] += 0.5 * land_change * (1.0 - oxic);
     let deficit = -m[WaterPool::Doc as usize];
     if deficit > 0.0 {
-        let o2 = end[WaterPool::O2 as usize].max(0.0);
-        let oxic = o2 / (o2 + oxygen_half);
         let (a, b) = (deficit * oxic, deficit * (1.0 - oxic));
         m[WaterPool::Doc as usize] = 0.0;
         m[WaterPool::Dic as usize] -= a + 0.5 * b;
@@ -2584,7 +2833,7 @@ mod tests {
             exact[WaterPool::Dic as usize] = -(biomass_change + doc_out);
             exact[WaterPool::Po4 as usize] -= biomass_change / cp + doc_out / cp;
             exact[WaterPool::H2 as usize] = 3.0 - 0.5 - 2.0 * (biomass_change + doc_out);
-            let r = steady_rates(&exact, &start, &end, 1.0, biomass_change, cp, 2.0, 1e-3);
+            let r = steady_rates(&exact, &start, &end, 1.0, biomass_change, 0.0, cp, 2.0, 1e-3);
             assert!(ox(&r, WaterPool::carbon_atoms).abs() < 1e-12, "carbone {r:?}");
             assert!(ox(&r, WaterPool::phosphorus_atoms).abs() < 1e-12, "phosphore {r:?}");
             assert!((ox(&r, WaterPool::oxidant_equivalents) - 3.0 * -0.5 / 2.0).abs() < 1e-12, "électrons {r:?}");

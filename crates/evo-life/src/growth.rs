@@ -70,10 +70,32 @@ pub struct Physiology {
     /// saturation de la croissance par le phosphate, mol·m⁻³.
     pub carbon_to_phosphorus: f64,
     pub phosphate_half: f64,
-    /// Part de la nécromasse qui forme des particules et coule hors de la
-    /// couche de surface (pompe biologique : 10 à 20 % de la production dans
-    /// les océans actuels).
+    /// Part de la nécromasse d'une bactérie isolée qui forme des particules
+    /// et coule hors de la couche de surface (pompe biologique : 10 à 20 % de
+    /// la production dans les océans actuels).
     pub sinking_share: f64,
+    /// Part qui coule au plus, pour les grands corps (rapport d'export de 0,1
+    /// à 0,5 selon la taille du plancton, Laws et coll., 2000). Voir
+    /// [`Physiology::sinking_share_of`].
+    pub max_sinking_share: f64,
+    /// Résistance à la dessiccation à partir de laquelle un organisme vit
+    /// hors de l'eau (étape 5). [Simplification] Deux habitats tranchés,
+    /// l'eau et la terre ferme, sans amphibies.
+    pub terrestrial_tolerance: f64,
+    /// Mortalité par dessiccation hors de l'eau d'un organisme sans
+    /// protection, sur un sol sec, an⁻¹ ; elle baisse avec la résistance et
+    /// avec l'humidité du sol.
+    pub desiccation_mortality: f64,
+    /// Baisse de la croissance dans l'eau due à l'enveloppe protectrice, à
+    /// résistance 1 (elle freine les échanges avec l'eau).
+    pub cuticle_water_penalty: f64,
+    /// Part de la litière de la terre ferme enfouie (sédiments des deltas,
+    /// tourbes), le reste étant décomposé dans le sol.
+    pub land_burial_share: f64,
+    /// Photosynthèse des terres selon le CO₂ de l'air (Michaelis-Menten) :
+    /// point de compensation et demi-saturation au-delà, Pa.
+    pub land_co2_compensation_pa: f64,
+    pub land_co2_half_pa: f64,
     /// Taux de croissance maximal, an⁻¹ (doublement en une heure environ).
     pub max_growth: f64,
     /// Baisse relative du taux de croissance maximal par gène : répliquer un
@@ -132,6 +154,80 @@ pub struct Physiology {
     pub contact_filament: f64,
     pub contact_sheet: f64,
     pub contact_sphere: f64,
+    /// Animaux et plantes (étape 5). Entretien, kJ·molC⁻¹·an⁻¹ par unité,
+    /// des moteurs (cils, muscles), des récepteurs sensoriels, du tissu
+    /// nerveux (le plus cher, comme le cerveau) et de la matrice de soutien.
+    pub motor_cost_kj: f64,
+    /// Entretien de l'enveloppe protectrice par unité, sans plafond : une
+    /// enveloppe plus épaisse que le besoin se perd.
+    pub cuticle_cost_kj: f64,
+    pub sensor_cost_kj: f64,
+    pub neural_cost_kj: f64,
+    pub matrix_cost_kj: f64,
+    /// Cellules d'un corps doté d'une matrice de soutien au plus (au-delà de
+    /// `max_colony_cells`, la taille n'est plus bornée que par la viabilité).
+    pub max_body_cells: f64,
+    /// Longueur que porte un corps mou, dans l'eau (portée) et sur la terre
+    /// ferme, m, et facteur gagné par unité de matrice de soutien.
+    pub soft_length_water_m: f64,
+    pub soft_length_land_m: f64,
+    pub support_reach: f64,
+    /// Demi-épaisseur qu'un organisme aérobie oxygène par diffusion seule, m,
+    /// et facteur gagné par une circulation complète.
+    pub oxygen_diffusion_m: f64,
+    pub circulation_reach: f64,
+    /// Moteur à partir duquel un corps porte des appendices, et matrice
+    /// qu'il faut pour les attacher (levier rigide).
+    pub limb_motor: f64,
+    pub limb_matrix: f64,
+    /// Tissu nerveux qui coordonne à moitié un corps de 2¹² cellules (le
+    /// besoin croît avec le nombre de doublements).
+    pub neural_half: f64,
+    /// Vitesse d'un nageur de 1 mm à motricité 1, m·s⁻¹, et exposant de la
+    /// longueur (Bejan et Marden, 2006 : environ L^0,5 à L^0,85 selon le
+    /// milieu).
+    pub speed_m_s: f64,
+    pub speed_exponent: f64,
+    /// Portée de détection par unité de récepteur, en longueurs de corps.
+    pub detection_lengths: f64,
+    /// Ouverture de la bouche relative à la taille d'un corps mobile, et part
+    /// d'un organisme fixé plus grand qu'elle qu'un brouteur peut prendre.
+    pub mouth_share: f64,
+    pub grazing_share: f64,
+    /// Poids de la défense (carapace, épines, bois) dans la fuite d'une proie.
+    pub defense_weight: f64,
+    /// Sélection sexuelle : avantage relatif de la parade (organe sonore)
+    /// chez un sexué qui la perçoit.
+    pub sexual_selection: f64,
+}
+
+impl Physiology {
+    /// Facteur de la photosynthèse des terres pour `co2_pa` Pa de CO₂ : nul
+    /// sous le point de compensation, saturé bien au-delà (sans les
+    /// stomates ni la voie en C₄).
+    pub fn land_co2_factor(&self, co2_pa: f64) -> f64 {
+        let x = (co2_pa - self.land_co2_compensation_pa).max(0.0);
+        x / (x + self.land_co2_half_pa)
+    }
+
+    /// Part de la nécromasse qui coule hors de la couche de surface pour un
+    /// corps de taille linéaire `body_size` (relative à une bactérie). La
+    /// vitesse de chute suit la loi de Stokes (carré de la taille) ; une
+    /// particule coule si elle quitte la couche avant d'être reminéralisée,
+    /// soit v / (v + v₀), plafonné à `max_sinking_share`. v₀ est tel qu'une
+    /// bactérie isolée donne `sinking_share`. Les grandes algues et les
+    /// colonies exportent donc davantage (Logan et coll., 1995 ; Lenton et
+    /// coll., 2014). [Simplification] Ni agrégats ni pelotes fécales, ni
+    /// lest minéral.
+    pub fn sinking_share_of(&self, body_size: f64) -> f64 {
+        let (base, max) = (self.sinking_share, self.max_sinking_share.max(self.sinking_share));
+        if base <= 0.0 || base >= max {
+            return base;
+        }
+        let v0 = max / base - 1.0;
+        let v = body_size.max(1.0).powi(2);
+        max * v / (v + v0)
+    }
 }
 
 impl Default for Physiology {
@@ -158,6 +254,13 @@ impl Default for Physiology {
             carbon_to_phosphorus: 106.0,
             phosphate_half: 1e-4,
             sinking_share: 0.15,
+            max_sinking_share: 0.5,
+            terrestrial_tolerance: 0.5,
+            desiccation_mortality: 200.0,
+            cuticle_water_penalty: 0.2,
+            land_burial_share: 0.003,
+            land_co2_compensation_pa: 10.0,
+            land_co2_half_pa: 30.0,
             max_growth: 6000.0,
             replication_cost_per_gene: 2e-3,
             carbon_per_cell: 1e-14,
@@ -183,6 +286,27 @@ impl Default for Physiology {
             contact_filament: 0.3,
             contact_sheet: 0.5,
             contact_sphere: 0.5,
+            motor_cost_kj: 6000.0,
+            cuticle_cost_kj: 600.0,
+            sensor_cost_kj: 2000.0,
+            neural_cost_kj: 12000.0,
+            matrix_cost_kj: 1500.0,
+            max_body_cells: 1.7e13,
+            soft_length_water_m: 2e-3,
+            soft_length_land_m: 5e-4,
+            support_reach: 10.0,
+            oxygen_diffusion_m: 1e-3,
+            circulation_reach: 300.0,
+            limb_motor: 0.5,
+            limb_matrix: 0.2,
+            neural_half: 0.3,
+            speed_m_s: 0.03,
+            speed_exponent: 0.85,
+            detection_lengths: 20.0,
+            mouth_share: 0.5,
+            grazing_share: 0.2,
+            defense_weight: 3.0,
+            sexual_selection: 0.05,
         }
     }
 }
@@ -191,24 +315,34 @@ impl Default for Physiology {
 /// plafond de populations par cellule).
 pub const MAX_TROPHIC: usize = 8;
 
-/// Liste courte de couples (taille vue par un prédateur, valeur) : les
-/// proies d'une cellule (valeur : carbone, mol·m⁻³) ou ses prédateurs
-/// (valeur : mortalité, an⁻¹, d'une proie qu'ils avalent sans difficulté).
+/// Une proie ou un prédateur d'une cellule. Proie : taille vue par un
+/// prédateur, carbone (mol·m⁻³), fuite, et vrai si elle est fixée et peut
+/// être broutée. Prédateur : ouverture de la bouche, mortalité (an⁻¹) d'une
+/// proie qu'il prend sans difficulté, attaque, et vrai s'il broute.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TrophicItem {
+    pub size: f64,
+    pub value: f64,
+    pub guard: f64,
+    pub flag: bool,
+}
+
+/// Liste courte des proies ou des prédateurs d'une cellule.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Trophic {
     pub len: u8,
-    pub items: [(f64, f64); MAX_TROPHIC],
+    pub items: [TrophicItem; MAX_TROPHIC],
 }
 
 impl Trophic {
-    pub fn push(&mut self, size: f64, value: f64) {
-        if (self.len as usize) < MAX_TROPHIC && value > 0.0 {
-            self.items[self.len as usize] = (size, value);
+    pub fn push(&mut self, item: TrophicItem) {
+        if (self.len as usize) < MAX_TROPHIC && item.value > 0.0 {
+            self.items[self.len as usize] = item;
             self.len += 1;
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &(f64, f64)> {
+    pub fn iter(&self) -> impl Iterator<Item = &TrophicItem> {
         self.items[..self.len as usize].iter()
     }
 }
@@ -220,6 +354,37 @@ impl Trophic {
 pub fn edibility(predator: f64, prey: f64, physio: &Physiology) -> f64 {
     let ratio = predator / prey.max(1e-9);
     ((ratio - physio.engulf_min_ratio) / (physio.engulf_full_ratio - physio.engulf_min_ratio)).clamp(0.0, 1.0)
+}
+
+/// Part d'une proie qu'un prédateur prend (étape 5) : il faut qu'elle
+/// tienne dans sa bouche (ou qu'elle soit fixée et qu'il la broute), puis
+/// la trouver et l'attraper. La capture vaut (1 + A) / (1 + A + E), où A est
+/// l'attaque du prédateur (motricité, sens) et E la fuite de la proie
+/// (motricité, sens, défense) : 1 entre microbes sans moteur ni sens.
+#[inline]
+pub fn capture(predator: &TrophicItem, prey: &TrophicItem, physio: &Physiology) -> f64 {
+    let mut e = edibility(predator.size, prey.size, physio);
+    if predator.flag && prey.flag {
+        e = e.max(physio.grazing_share);
+    }
+    if e <= 0.0 {
+        return 0.0;
+    }
+    e * (1.0 + predator.guard) / (1.0 + predator.guard + prey.guard)
+}
+
+impl Phenotype {
+    /// Ce phénotype vu comme proie (carbone `carbon`).
+    pub fn as_prey(&self, carbon: f64, physio: &Physiology) -> TrophicItem {
+        let fixed = self.is_multicellular() && self.animal.motility <= 0.0;
+        TrophicItem { size: self.body_size, value: carbon, guard: self.animal.escape(physio), flag: fixed }
+    }
+
+    /// Ce phénotype vu comme prédateur (pression `pressure`).
+    pub fn as_predator(&self, pressure: f64) -> TrophicItem {
+        let grazer = self.animal.gape > self.cell_size;
+        TrophicItem { size: self.animal.gape.max(self.cell_size), value: pressure, guard: self.animal.attack(), flag: grazer }
+    }
 }
 
 /// Conditions physiques d'une cellule vues par un organisme.
@@ -234,25 +399,65 @@ pub struct Conditions {
     /// Proies (taille, carbone dans l'eau) et prédateurs (taille, pression).
     pub prey: Trophic,
     pub predators: Trophic,
+    /// Terre ferme de la cellule (étape 5) : lumière disponible par mole de
+    /// carbone phototrophe terrestre, proies et prédateurs terrestres,
+    /// humidité du sol (de 0 à 1), et existence d'une terre ferme.
+    pub land_light_kj: f64,
+    pub land_prey: Trophic,
+    pub land_predators: Trophic,
+    pub moisture: f64,
+    pub has_land: bool,
+    /// Phosphate de la solution du sol, mol·m⁻³ : celui que puisent les
+    /// organismes de la terre ferme à la place de celui de l'eau.
+    pub soil_po4: f64,
+    /// Pression partielle du CO₂ de l'air, Pa.
+    pub co2_pa: f64,
+    /// Vrai une fois les conditions tournées vers la terre ferme
+    /// ([`Conditions::for_habitat`]).
+    pub on_land: bool,
 }
 
 impl Conditions {
     /// Conditions sans proie ni prédateur.
     pub fn new(temperature_k: f64, uv_w_m2: f64, light_kj: f64) -> Self {
-        Self { temperature_k, uv_w_m2, light_kj, prey: Trophic::default(), predators: Trophic::default() }
+        Self {
+            temperature_k,
+            uv_w_m2,
+            light_kj,
+            prey: Trophic::default(),
+            predators: Trophic::default(),
+            land_light_kj: 0.0,
+            land_prey: Trophic::default(),
+            land_predators: Trophic::default(),
+            moisture: 0.0,
+            has_land: false,
+            soil_po4: 0.0,
+            co2_pa: 40.0,
+            on_land: false,
+        }
     }
 
-    /// Carbone des proies qu'un prédateur de taille `size` peut englober,
-    /// mol·m⁻³.
-    pub fn edible_prey(&self, size: f64, physio: &Physiology) -> f64 {
-        self.prey.iter().map(|&(s, c)| c * edibility(size, s, physio)).sum()
+    /// Conditions vues par un organisme terrestre (`terrestrial`) ou
+    /// aquatique : la lumière, les proies et les prédateurs de son habitat.
+    pub fn for_habitat(&self, terrestrial: bool) -> Self {
+        if !terrestrial {
+            return *self;
+        }
+        Self { light_kj: self.land_light_kj, prey: self.land_prey, predators: self.land_predators, on_land: true, ..*self }
     }
 
-    /// Mortalité par prédation d'une proie de taille `size`, an⁻¹, bornée
-    /// (la pression vient de la dernière évaluation des prédateurs : quand
-    /// leurs proies s'effondrent, elle peut devenir démesurée).
-    pub fn predation(&self, size: f64, physio: &Physiology) -> f64 {
-        let m: f64 = self.predators.iter().map(|&(s, pressure)| pressure * edibility(s, size, physio)).sum();
+    /// Carbone des proies que le prédateur `p` peut prendre, mol·m⁻³.
+    pub fn edible_prey(&self, p: &Phenotype, physio: &Physiology) -> f64 {
+        let me = p.as_predator(1.0);
+        self.prey.iter().map(|q| q.value * capture(&me, q, physio)).sum()
+    }
+
+    /// Mortalité par prédation de la proie `p`, an⁻¹, bornée (la pression
+    /// vient de la dernière évaluation des prédateurs : quand leurs proies
+    /// s'effondrent, elle peut devenir démesurée).
+    pub fn predation(&self, p: &Phenotype, physio: &Physiology) -> f64 {
+        let me = p.as_prey(1.0, physio);
+        let m: f64 = self.predators.iter().map(|q| q.value * capture(q, &me, physio)).sum();
         m.min(physio.max_predation)
     }
 }
@@ -376,7 +581,8 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
     if p.body.is_some() {
         return body_rates(p, cond, chem, physio);
     }
-    let prey = cond.edible_prey(p.cell_size, physio);
+    let cond = &cond.for_habitat(p.is_terrestrial());
+    let prey = cond.edible_prey(p, physio);
     let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, chem, physio);
     finish(p, &b, cond, chem, physio)
 }
@@ -384,12 +590,13 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
 /// Corps d'un multicellulaire : chaque zone a son type cellulaire et ses
 /// conditions (les substances dissoutes et la lumière baissent avec la
 /// profondeur, les ultraviolets n'atteignent que la surface, les proies ne
-/// sont prises que par la surface) ; les bilans des zones s'ajoutent,
+/// sont prises que par la surface, sauf circulation) ; les bilans des zones s'ajoutent,
 /// pondérés par leur part des cellules.
 fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
     let body = p.body.as_ref().expect("corps");
+    let cond = &cond.for_habitat(p.is_terrestrial());
     let mut total = Budget::default();
-    let prey = cond.edible_prey(p.cell_size, physio);
+    let prey = cond.edible_prey(p, physio);
     let caps: Vec<Capacities> = body.types.iter().map(|t| t.capacities(cond.temperature_k, physio)).collect();
     for (k, z) in body.zones.iter().enumerate() {
         let t = &body.types[z.cell_type as usize];
@@ -400,7 +607,9 @@ fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &
             &caps[z.cell_type as usize],
             cond.light_kj * z.light,
             if surface { cond.uv_w_m2 } else { 0.0 },
-            if surface { prey } else { 0.0 },
+            // Un tube digestif et une circulation portent la nourriture à
+            // tout le corps.
+            if surface { prey } else { prey * p.animal.circulation },
             &zone_chem,
             physio,
         );
@@ -501,6 +710,11 @@ fn budget(p: &Phenotype, caps: &Capacities, light_kj: f64, uv: f64, prey: f64, c
 
 /// Naissances, morts et r à partir du bilan d'énergie de l'organisme.
 fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    // Une forme dormante (organisme terrestre sans terre ferme) ne prélève
+    // rien, ne produit rien et ne mange pas.
+    if cond.on_land && !cond.has_land {
+        return GrowthRates { r: -physio.desiccation_mortality, ..Default::default() };
+    }
     let mut out = GrowthRates { reaction: b.reaction, reaction_energy: b.reaction_energy, ..Default::default() };
     let het = b.het_doc + b.het_prey;
     let carbon_energy = het + b.auto;
@@ -520,14 +734,34 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
         if mass > 1.0 {
             max_growth /= mass.sqrt().sqrt();
         }
-        (surplus / cost).clamp(0.0, max_growth) * monod(chem[WaterPool::Po4 as usize], physio.phosphate_half)
+        let po4 = if cond.on_land { cond.soil_po4 } else { chem[WaterPool::Po4 as usize] };
+        (surplus / cost).clamp(0.0, max_growth) * monod(po4, physio.phosphate_half)
     } else {
         0.0
     };
     // Un déficit d'énergie consomme la biomasse : mortalité de famine.
     let starvation = (-surplus).max(0.0) / cost;
-    let predation = cond.predation(p.body_size, physio);
-    let mortality = physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation;
+    let predation = cond.predation(p, physio);
+    // Hors de l'eau : dessiccation, qui baisse avec la résistance et avec
+    // l'humidité du sol ; pas de terre ferme, pas de vie terrestre. Dans
+    // l'eau, l'enveloppe protectrice freine les échanges.
+    let dormant = cond.on_land && !cond.has_land;
+    let (birth, desiccation) = if cond.on_land {
+        if cond.has_land {
+            // La vie terrestre ne croît que mouillée : une part du temps qui
+            // suit l'humidité du sol.
+            let wet = cond.moisture.clamp(0.0, 1.0);
+            let co2 = if p.phototroph { physio.land_co2_factor(cond.co2_pa) } else { 1.0 };
+            (birth * wet * co2, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
+        } else {
+            // Plus de terre ferme libre (glace) : spores et formes de
+            // dormance attendent son retour, sans croître ni mourir.
+            (0.0, 0.0)
+        }
+    } else {
+        (birth * (1.0 - physio.cuticle_water_penalty * p.desiccation_tolerance), 0.0)
+    };
+    let mortality = if dormant { 0.0 } else { physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
 
     out.energy_kj = carbon_energy + b.supplement;
     out.autotroph_energy_kj = b.auto;
@@ -545,7 +779,9 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     out.mortality = mortality;
     out.uv_mortality = b.uv;
     out.predation = predation;
-    out.r = birth - mortality;
+    // Une forme dormante tient, mais ne peut ni envahir ni l'emporter : sa
+    // valeur sélective est celle d'un organisme terrestre sans terre.
+    out.r = if dormant { -physio.desiccation_mortality } else { birth - mortality };
     out
 }
 
@@ -570,6 +806,21 @@ mod tests {
 
     fn genome(genes: &[(DomainFamily, f64)]) -> Genome {
         Genome::new(genes.iter().map(|&(f, e)| gene(f, e)).collect(), [0; 32])
+    }
+
+    #[test]
+    fn capture_weighs_attack_against_escape_and_grazers_take_fixed_prey() {
+        let physio = Physiology::default();
+        let item = |size, guard, flag| TrophicItem { size, value: 1.0, guard, flag };
+        // Microbes sans moteur ni sens : la seule taille compte.
+        assert_eq!(capture(&item(3.0, 0.0, false), &item(1.0, 0.0, false), &physio), 1.0);
+        // Une proie qui fuit est moins prise ; un chasseur rapide la rattrape.
+        let slow = capture(&item(3.0, 0.0, false), &item(1.0, 2.0, false), &physio);
+        let fast = capture(&item(3.0, 2.0, false), &item(1.0, 2.0, false), &physio);
+        assert!(slow < 0.5 && fast > slow);
+        // Un brouteur prend une part d'un organisme fixé plus grand que lui.
+        assert_eq!(capture(&item(3.0, 0.0, true), &item(100.0, 0.0, true), &physio), physio.grazing_share);
+        assert_eq!(capture(&item(3.0, 0.0, false), &item(100.0, 0.0, true), &physio), 0.0);
     }
 
     fn chem(h2: f64, o2: f64) -> WaterChemistry {

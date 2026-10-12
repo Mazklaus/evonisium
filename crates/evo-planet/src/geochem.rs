@@ -18,7 +18,16 @@
 //! [Simplification] Le carbone inorganique de l'océan profond est confondu
 //! avec celui de l'atmosphère ; la chimie atmosphérique est résumée en taux
 //! (oxydation du méthane, titrage H₂-O₂, échappement de l'hydrogène limité
-//! par la diffusion) ; le soufre n'est pas un cycle fermé.
+//! par la diffusion).
+//!
+//! Cycle du soufre (étape 5, type GEOCARBSULF, Berner, 2006) : le sulfate de
+//! l'océan profond vient de l'oxydation de la pyrite des roches exposées ;
+//! dans un océan profond sans oxygène, il oxyde la matière organique
+//! (sulfato-réduction) et le méthane (oxydation anaérobie) avant les
+//! méthanogènes ; une part du sulfure produit est enfouie en pyrite, source
+//! nette d'oxygène, le reste est réoxydé. [Simplification] Pas de soufre
+//! volcanique ; le fer de la pyrite n'est pas suivi (la pyrite compte comme
+//! du sulfure) ; le gypse est enfoui à proportion du stock.
 
 use crate::params::PlanetParams;
 use crate::pools::{WaterPool, WATER_POOL_COUNT};
@@ -78,6 +87,9 @@ pub struct OxygenBudget {
     pub sulfide: f64,
     /// Oxydation de la croûte océanique jeune par l'eau de mer (étape 3).
     pub seafloor_oxidation: f64,
+    /// O₂ laissé par la litière de la terre ferme enfouie (source, étape 5).
+    #[serde(default)]
+    pub land_burial: f64,
 }
 
 impl OxygenBudget {
@@ -111,6 +123,12 @@ pub struct GlobalReservoirs {
     pub manganese_reduced: f64,
     pub manganese_oxides: f64,
     pub sediment_p: f64,
+    /// Sulfate de l'océan profond, mol.
+    pub deep_so4: f64,
+    /// Soufre réduit enfoui dans les sédiments (pyrite), mol de S.
+    pub pyrite_s: f64,
+    /// Sulfate enfoui en évaporites (gypse), mol de S.
+    pub gypsum_s: f64,
     pub oxygen: OxygenBudget,
     /// Flux du dernier pas, mol·an⁻¹, pour les rapports.
     pub last: GlobalFluxes,
@@ -151,6 +169,16 @@ pub struct BoxContext {
     /// Gravité et aire de la planète, pour la pression.
     pub gravity: f64,
     pub area_m2: f64,
+    /// Accélération de l'altération des silicates et du phosphore par la vie
+    /// de la terre ferme, 1 sans elle (étape 5).
+    pub biotic_weathering: f64,
+    /// Phosphore de l'altération des terres livré directement aux sols des
+    /// cellules de la terre ferme, mol·an⁻¹ : il rejoint l'océan profond par
+    /// les eaux de ces cellules au lieu d'y entrer d'un coup.
+    pub land_phosphorus_routed: f64,
+    /// Carbone de la litière de la terre ferme enfoui, mol·an⁻¹ : pris au CO₂
+    /// de l'air par la photosynthèse, il laisse son O₂ (étape 5).
+    pub land_burial: f64,
 }
 
 impl GlobalReservoirs {
@@ -189,6 +217,9 @@ impl GlobalReservoirs {
             manganese_reduced: 0.0,
             manganese_oxides: 0.0,
             sediment_p: 0.0,
+            deep_so4: params.sulfate_equilibrium * deep_volume_m3,
+            pyrite_s: 0.0,
+            gypsum_s: 0.0,
             oxygen: OxygenBudget::default(),
             last: GlobalFluxes::default(),
         }
@@ -229,6 +260,7 @@ impl GlobalReservoirs {
             - self.organic_c
             - 0.25 * self.iron_reduced
             - 0.5 * self.manganese_reduced
+            - 2.0 * self.pyrite_s
     }
 
     /// Phosphore des réservoirs globaux, mol.
@@ -250,8 +282,9 @@ impl GlobalReservoirs {
             WaterPool::Po4 => Some(&mut self.deep_po4),
             WaterPool::FeOx => Some(&mut self.iron_oxides),
             WaterPool::MnOx => Some(&mut self.manganese_oxides),
+            WaterPool::Sulfate => Some(&mut self.deep_so4),
             // Le carbone organique exporté est traité par `remineralise`.
-            WaterPool::Doc | WaterPool::Sulfate | WaterPool::H2s => None,
+            WaterPool::Doc | WaterPool::H2s => None,
         }
     }
 
@@ -266,14 +299,21 @@ impl GlobalReservoirs {
             WaterPool::Po4 => Some(&self.deep_po4),
             WaterPool::FeOx => Some(&self.iron_oxides),
             WaterPool::MnOx => Some(&self.manganese_oxides),
-            WaterPool::Doc | WaterPool::Sulfate | WaterPool::H2s => None,
+            WaterPool::Sulfate => Some(&self.deep_so4),
+            WaterPool::Doc | WaterPool::H2s => None,
         }
     }
 
     /// Applique des échanges de surface `moles` (sortie des cellules
     /// positive), sur une durée `years`, et renvoie les moles de carbone
     /// organique exporté, enfoui, et d'H₂S dégazé.
-    fn apply_surface(&mut self, params: &PlanetParams, moles: &[f64; WATER_POOL_COUNT], deep_oxic: f64) -> (f64, f64, f64) {
+    fn apply_surface(
+        &mut self,
+        params: &PlanetParams,
+        moles: &[f64; WATER_POOL_COUNT],
+        deep_oxic: f64,
+        deep_volume_m3: f64,
+    ) -> (f64, f64, f64) {
         for (i, &m) in moles.iter().enumerate() {
             let pool = crate::pools::WATER_POOLS[i];
             if let Some(r) = self.counterpart(pool) {
@@ -289,7 +329,7 @@ impl GlobalReservoirs {
         // Les oxydes qui sédimentent piègent du phosphate de l'océan profond.
         self.scavenge_phosphorus(params, moles[WaterPool::FeOx as usize].max(0.0));
         let export = moles[WaterPool::Doc as usize];
-        let buried = self.remineralise(params, export, deep_oxic);
+        let buried = self.remineralise(params, export, deep_oxic, deep_volume_m3);
         (export, buried, moles[WaterPool::H2s as usize])
     }
 
@@ -305,7 +345,7 @@ impl GlobalReservoirs {
     /// phosphore au rapport C/P des sédiments : quand l'océan profond n'en a
     /// plus, la matière organique est reminéralisée au lieu d'être enfouie.
     /// Renvoie le carbone enfoui.
-    fn remineralise(&mut self, params: &PlanetParams, export: f64, deep_oxic: f64) -> f64 {
+    fn remineralise(&mut self, params: &PlanetParams, export: f64, deep_oxic: f64, deep_volume_m3: f64) -> f64 {
         if export <= 0.0 {
             // Import net de carbone organique : impossible à cette échelle.
             return 0.0;
@@ -322,8 +362,30 @@ impl GlobalReservoirs {
         *o2 -= aerobic;
         self.oxygen.deep_respiration += aerobic;
         let anaerobic = rest - aerobic;
-        self.atmosphere[Gas::Co2 as usize] += aerobic + 0.5 * anaerobic;
-        self.atmosphere[Gas::Ch4 as usize] += 0.5 * anaerobic;
+        // Sulfato-réduction avant la méthanogenèse quand il y a du sulfate
+        // (2 C oxydés par sulfate réduit), puis oxydation anaérobie du
+        // méthane par le sulfate (CH₄ + SO₄ → H₂S + CO₂).
+        let so4 = self.deep_so4.max(0.0);
+        let c = so4 / deep_volume_m3.max(1.0);
+        let reduced_c = (anaerobic * c / (c + params.sulfate_reduction_half)).min(2.0 * so4);
+        let methanogenic = anaerobic - reduced_c;
+        let mut h2s = 0.5 * reduced_c;
+        let methane = 0.5 * methanogenic;
+        let aom = (methane * c / (c + params.methane_sulfate_half)).min(so4 - h2s).max(0.0);
+        h2s += aom;
+        self.deep_so4 -= h2s;
+        self.atmosphere[Gas::Co2 as usize] += aerobic + reduced_c + 0.5 * methanogenic + aom;
+        self.atmosphere[Gas::Ch4 as usize] += methane - aom;
+        // Le sulfure : une part enfouie en pyrite, le reste réoxydé en
+        // sulfate par l'oxygène qui reste (ou enfoui lui aussi, faute d'O₂).
+        if h2s > 0.0 {
+            let o2 = &mut self.atmosphere[Gas::O2 as usize];
+            let reoxidised = (h2s * (1.0 - params.pyrite_burial_share)).min(0.5 * o2.max(0.0));
+            *o2 -= 2.0 * reoxidised;
+            self.oxygen.sulfide += 2.0 * reoxidised;
+            self.deep_so4 += reoxidised;
+            self.pyrite_s += h2s - reoxidised;
+        }
         buried
     }
 
@@ -376,13 +438,14 @@ impl GlobalReservoirs {
         flux: &mut FluxRegistry,
     ) {
         let deep_oxic = self.deep_oxic(params, ctx, moles[WaterPool::Doc as usize] / years.max(1e-12));
-        let (_, _, h2s) = self.apply_surface(params, moles, deep_oxic);
+        let (_, _, h2s) = self.apply_surface(params, moles, deep_oxic, ctx.deep_volume_m3);
         // Le sulfure dégazé quitte le système suivi ; il y reprend de l'O₂
         // en s'oxydant (puits « sulfure »).
         flux.exchange(Element::Electrons, 2.0 * h2s);
         let s = (2.0 * h2s.max(0.0)).min(self.atmosphere[Gas::O2 as usize]);
         self.atmosphere[Gas::O2 as usize] -= s;
         self.oxygen.sulfide += s;
+        self.deep_so4 += 0.5 * s;
         flux.exchange(Element::Electrons, -s);
     }
 
@@ -415,6 +478,28 @@ impl GlobalReservoirs {
     /// le pouvoir oxydant déplacé quand une boîte vide freine un prélèvement,
     /// et celui qui n'a pu être repris (voir [`pair_throttled`]), mol
     /// d'équivalent O₂.
+    fn co2_factor(&self, params: &PlanetParams, ctx: &BoxContext) -> f64 {
+        let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
+        (p_co2 / params.co2_pa).max(0.0)
+    }
+
+    /// Altération des silicates des terres, mol de CO₂ par an : sans la vie,
+    /// puis avec elle. Les racines, les acides organiques et les sols de la
+    /// vie terrestre accélèrent l'altération des silicates et la libération
+    /// du phosphore ; l'oxydation des roches suit l'érosion, pas la vie.
+    pub fn land_weathering(&self, params: &PlanetParams, ctx: &BoxContext) -> (f64, f64) {
+        let bare = params.weathering_per_m2
+            * ctx.land_area_m2
+            * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
+            * self.co2_factor(params, ctx).dpowf(params.weathering_co2_exponent);
+        (bare, bare * ctx.biotic_weathering.max(1.0))
+    }
+
+    /// Phosphore libéré par l'altération des terres, mol·an⁻¹.
+    pub fn land_phosphorus(&self, params: &PlanetParams, ctx: &BoxContext) -> f64 {
+        self.land_weathering(params, ctx).1 * params.weathering_phosphorus_ratio
+    }
+
     pub fn integrate(
         &mut self,
         params: &PlanetParams,
@@ -448,7 +533,6 @@ impl GlobalReservoirs {
         let _ = ctx.deep_volume_m3;
         let sinks_before = self.oxygen.total_sinks();
         let release_before = self.oxygen.surface_release;
-        let p_ref = params.co2_pa;
         let h2_ratio = params.reduced_outgassing_ratio();
         let esc_per_mixing = params.hydrogen_escape * ctx.area_m2 * evo_core::units::SECONDS_PER_YEAR / 6.022_140_76e23;
         for _ in 0..n {
@@ -489,7 +573,7 @@ impl GlobalReservoirs {
             let surface_ox: f64 = moles.iter().enumerate().map(|(i, m)| m * crate::pools::WATER_POOLS[i].oxidant_equivalents()).sum();
             flux.exchange(Element::Electrons, surface_ox);
             acc.surface_redox += surface_ox;
-            let (export, buried, h2s) = self.apply_surface(params, &moles, deep_oxic);
+            let (export, buried, h2s) = self.apply_surface(params, &moles, deep_oxic, ctx.deep_volume_m3);
             flux.exchange(Element::Electrons, 2.0 * h2s);
             acc.organic_export += export;
             acc.organic_burial += buried;
@@ -537,22 +621,27 @@ impl GlobalReservoirs {
             flux.exchange(Element::Electrons, -(0.25 * params.vent_fe_flux + 0.5 * params.vent_mn_flux) * deep_share);
 
             // 4. Altération des silicates (thermostat) et des fonds.
-            let p_co2 = self.mixing_ratio(Gas::Co2) * self.pressure_pa(ctx.gravity, ctx.area_m2);
-            let co2_factor = (p_co2 / p_ref).max(0.0);
-            let land = params.weathering_per_m2
-                * ctx.land_area_m2
-                * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.weathering_activation_k).dexp()
-                * co2_factor.dpowf(params.weathering_co2_exponent);
+            let co2_factor = self.co2_factor(params, ctx);
+            let (bare, land) = self.land_weathering(params, ctx);
             let seafloor = params.seafloor_weathering_share
                 * params.outgassing_co2
                 * ctx.activity
                 * co2_factor.dpowf(0.23)
                 * ((ctx.mean_temperature_k - params.weathering_reference_k) / params.seafloor_weathering_activation_k).dexp();
-            let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize]);
+            let w = ((land + seafloor) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize].max(0.0));
             self.atmosphere[Gas::Co2 as usize] -= w;
             self.carbonate_c += w;
             acc.weathering_co2 += w;
             let p_in = (land + params.seafloor_phosphorus_share * seafloor) * h * params.weathering_phosphorus_ratio;
+            // Litière enfouie (tourbes, deltas) : sans phosphore, il reste au
+            // sol.
+            let lb = (ctx.land_burial.max(0.0) * h).min(0.9 * self.atmosphere[Gas::Co2 as usize].max(0.0));
+            self.atmosphere[Gas::Co2 as usize] -= lb;
+            self.atmosphere[Gas::O2 as usize] += lb;
+            self.organic_c += lb;
+            self.oxygen.land_burial += lb;
+            // La part livrée aux sols arrive par les couches des cellules.
+            let p_in = p_in - ctx.land_phosphorus_routed * h;
             self.deep_po4 += p_in;
             flux.exchange(Element::Phosphorus, p_in);
             // Phosphore authigène (apatite, fluorapatite carbonatée) : puits
@@ -565,7 +654,7 @@ impl GlobalReservoirs {
             let f_o2 = self.mixing_ratio(Gas::O2);
             let o2 = self.atmosphere[Gas::O2 as usize];
             let ow = (params.oxidative_weathering_per_weathered_c
-                * land
+                * bare
                 * (f_o2.max(0.0) / params.oxidative_weathering_reference).dpowf(params.oxidative_weathering_exponent)
                 * h)
                 .min(o2);
@@ -576,7 +665,15 @@ impl GlobalReservoirs {
             let s = (2.0 * h2s.max(0.0)).min(self.atmosphere[Gas::O2 as usize]);
             self.atmosphere[Gas::O2 as usize] -= s;
             self.oxygen.sulfide += s;
+            self.deep_so4 += 0.5 * s;
             flux.exchange(Element::Electrons, -s);
+            // Sulfate des roches : la pyrite exposée s'oxyde avec le reste
+            // des roches (une part `pyrite_weathering_share` de l'O₂ qu'elles
+            // prennent, 2 O₂ par soufre) ; enfouissement en gypse.
+            self.deep_so4 += 0.5 * params.pyrite_weathering_share * ow;
+            let gypsum = self.deep_so4.max(0.0) * (1.0 - (-h / params.gypsum_burial_years).dexp());
+            self.deep_so4 -= gypsum;
+            self.gypsum_s += gypsum;
             // Oxydation de la croûte océanique jeune (fer et soufre du
             // basalte) par une eau de mer oxygénée : proportionnelle à la
             // production de croûte et à l'oxygénation de l'océan profond.
@@ -612,7 +709,9 @@ impl GlobalReservoirs {
             // 6. Subduction des sédiments.
             let sub = (ctx.subduction_per_year * h).min(1.0);
             let c_out = sub * (self.carbonate_c + self.organic_c);
-            flux.exchange(Element::Electrons, sub * self.organic_c);
+            flux.exchange(Element::Electrons, sub * (self.organic_c + 2.0 * self.pyrite_s));
+            self.pyrite_s *= 1.0 - sub;
+            self.gypsum_s *= 1.0 - sub;
             self.carbonate_c *= 1.0 - sub;
             self.organic_c *= 1.0 - sub;
             flux.exchange(Element::Carbon, -c_out);
@@ -758,6 +857,9 @@ mod tests {
             subduction_per_year: 0.0,
             gravity: params.gravity(),
             area_m2: params.surface_area(),
+            biotic_weathering: 1.0,
+            land_phosphorus_routed: 0.0,
+            land_burial: 0.0,
         }
     }
 
