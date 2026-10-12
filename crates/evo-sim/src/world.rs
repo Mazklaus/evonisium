@@ -377,12 +377,15 @@ pub fn animal_bits(p: &Phenotype) -> u8 {
     let a = &p.animal;
     // Un corps organisé : eucaryote, aux cellules différenciées.
     let multi = p.is_multicellular() && p.is_eukaryote() && p.cell_types() >= 2;
-    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0;
+    // Un animal se nourrit d'autres êtres : sans voie de photosynthèse (un
+    // mixotrophe qui garde son plaste n'en est pas un).
+    let photosynthetic = evo_life::metabolism::REACTIONS.iter().any(|r| r.is_light() && p.signature & (1 << r.id) != 0);
+    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0 && !photosynthetic;
     let mut bits = 0u8;
     bits |= u8::from(animal);
     bits |= u8::from(multi && a.neural >= 0.5) << 1;
     bits |= u8::from(animal && a.support >= 0.5) << 2;
-    bits |= u8::from(multi && p.phototroph && p.is_terrestrial() && a.support > 0.0) << 3;
+    bits |= u8::from(multi && photosynthetic && p.is_terrestrial() && a.support > 0.0) << 3;
     bits |= u8::from(animal && p.is_terrestrial()) << 4;
     bits |= u8::from(a.sound.is_some()) << 5;
     bits

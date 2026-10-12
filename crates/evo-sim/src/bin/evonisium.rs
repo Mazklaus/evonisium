@@ -436,9 +436,14 @@ fn trace_complex(world: &World) {
         }
         if name == "mobiles" {
             let max = |f: &dyn Fn(&evo_life::Population) -> f64| rows.iter().map(|p| f(p)).fold(0.0, f64::max);
-            let animals = rows.iter().filter(|p| p.phenotype.is_multicellular() && p.phenotype.engulfment > 0.0).count();
+            let animal: Vec<_> = rows.iter().filter(|p| evo_sim::world::animal_bits(&p.phenotype) & 1 != 0).collect();
+            let animals = animal.len();
+            let animal_carbon: f64 = animal.iter().map(|p| p.biomass).sum();
+            let on_land = animal.iter().filter(|p| p.phenotype.is_terrestrial()).count();
+            let hunted = rows.iter().filter(|p| p.rates.predation > 0.1).count();
             println!(
-                "        animaux {animals} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                "        animaux {animals} ({animal_carbon:.2e} mol C, {on_land} hors de l'eau, proies {:.2}) | populations chassées {hunted} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                animal.iter().map(|p| p.rates.prey_share).sum::<f64>() / animals.max(1) as f64,
                 median(&|p| p.phenotype.animal.motor),
                 max(&|p| p.phenotype.animal.motor),
                 median(&|p| p.phenotype.animal.sensor),

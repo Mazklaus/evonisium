@@ -242,9 +242,24 @@ fn apply(g: &mut Genome, kind: MutationKind, params: &MutationParams, rng: &mut 
             ChangedElement::Module { start: start as u16, len: len as u16 }
         }
         MutationKind::LossOfFunction => {
-            let i = rng.random_range(0..g.genes.len());
-            g.genes[i].functional = false;
-            gene_at(g, i)
+            // Un gène d'organite peut aussi se perdre : un plaste qui ne
+            // photosynthétise plus reste dans la cellule (apicoplaste des
+            // apicomplexés, plastes des algues devenues parasites).
+            let in_organelles: usize = g.organelles.iter().map(|o| o.genes.len()).sum();
+            let mut i = rng.random_range(0..g.genes.len() + in_organelles);
+            if i < g.genes.len() {
+                g.genes[i].functional = false;
+                return gene_at(g, i);
+            }
+            i -= g.genes.len();
+            for (k, o) in g.organelles.iter_mut().enumerate() {
+                if i < o.genes.len() {
+                    o.genes[i].functional = false;
+                    return ChangedElement::OrganelleGene { organelle: k as u16, index: i as u16 };
+                }
+                i -= o.genes.len();
+            }
+            unreachable!("indice de gène hors du génome")
         }
         MutationKind::Duplication => {
             let i = rng.random_range(0..g.genes.len());
