@@ -199,14 +199,14 @@ func _draw_tree() -> void:
 		var k: int = l[0]
 		var at: Vector2 = l[1]
 		var clade_label := float(l[3]) < 0.0
-		var size := fs if clade_label else int(clampf(float(l[3]) * 0.7, 12.0, 18.0) * App.text_scale())
+		var font_px := fs if clade_label else int(clampf(float(l[3]) * 0.7, 12.0, 18.0) * App.text_scale())
 		var text := _name(ids[k])
 		if clade_label:
 			text = "%s · %d %s" % [text, leaves[k], App.t("tree_living")]
-		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px).x
 		# À droite de la feuille quand la branche part vers la droite, sinon à gauche.
 		var x := at.x if bool(l[4]) else at.x - w
-		var box := Rect2(Vector2(x, at.y - size * 0.75), Vector2(w, size * 1.1))
+		var box := Rect2(Vector2(x, at.y - font_px * 0.75), Vector2(w, font_px * 1.1))
 		var free := true
 		for r in placed:
 			if r.intersects(box):
@@ -215,9 +215,9 @@ func _draw_tree() -> void:
 		if not free:
 			continue
 		placed.append(box)
-		var pos := Vector2(x, at.y + size * 0.3)
-		canvas.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, Color(Atlas.PAPER, 0.9))
-		canvas.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Atlas.INK)
+		var pos := Vector2(x, at.y + font_px * 0.3)
+		canvas.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px, 4, Color(Atlas.PAPER, 0.9))
+		canvas.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px, Atlas.INK)
 
 func _colour(i: int) -> Color:
 	var c: Color = CLADE_COLORS[clade[i] % CLADE_COLORS.size()]
