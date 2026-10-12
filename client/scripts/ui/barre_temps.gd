@@ -108,7 +108,20 @@ func update_info(info: Dictionary, seeking: bool) -> void:
 		var mode: Dictionary = App.session.culture_mode()
 		if not mode.is_empty():
 			state += " · " + str(mode["text"])
+	# Moteur arrêté (panique) ou pas qui n'arrive plus : dit en clair, au
+	# lieu d'une vitesse qui tend vers zéro sans explication.
+	var err: String = str(info.get("engine_error", ""))
+	var wait := float(info.get("waiting_s", 0.0))
+	if err != "":
+		state = App.t("engine_stopped")
+	elif wait > 30.0:
+		state = App.t("engine_waiting") % roundi(wait)
 	state_label.text = state
+	state_label.tooltip_text = err
+	if err != "" or wait > 30.0:
+		state_label.add_theme_color_override("font_color", Atlas.VERMILION)
+	else:
+		state_label.remove_theme_color_override("font_color")
 	play_button.text = "▶ " + App.t("play") if paused else "❚❚ " + App.t("pause")
 	var real: float = float(info["real_speed"])
 	real_label.text = "" if paused else "%s %s" % [App.t("real_speed"), info["real_speed_text"]]

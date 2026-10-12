@@ -72,6 +72,7 @@ func _open_file() -> void:
 		"appels_dessin", "primitives", "objets", "memoire_mo", "memoire_video_mo", "lignees", "especes"]
 	for k in App.PERF_KEYS:
 		cols.append(k + "_ms")
+	cols.append_array(["attente_pas_s", "graine", "niveau", "erreur_moteur"])
 	if file:
 		file.store_line(",".join(cols))
 	App.perf_on = true
@@ -121,6 +122,10 @@ func _process(delta: float) -> void:
 	]
 	for k in App.PERF_KEYS:
 		row.append("%.2f" % parts[k])
+	row.append("%.1f" % float(info.get("waiting_s", 0.0)))
+	row.append(str(info.get("seed", "")))
+	row.append(str(info.get("level", "")))
+	row.append(str(info.get("engine_error", "")).replace(",", ";").replace("\n", " "))
 	if file:
 		file.store_line(",".join(row))
 		file.flush()
