@@ -870,6 +870,7 @@ impl Phenotype {
             // changent de forme et englobent.
             + physio.cytoskeleton_cost_kj * org.cytoskeleton.min(1.5)
             // Muscles et cils, récepteurs, tissu nerveux, matrice (étape 5).
+            + physio.cuticle_cost_kj * org.cuticle
             + physio.motor_cost_kj * org.motor.min(3.0)
             + physio.sensor_cost_kj * org.sensor.min(3.0)
             + physio.neural_cost_kj * org.neural.min(3.0)

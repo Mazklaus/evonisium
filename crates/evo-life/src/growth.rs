@@ -158,6 +158,9 @@ pub struct Physiology {
     /// des moteurs (cils, muscles), des récepteurs sensoriels, du tissu
     /// nerveux (le plus cher, comme le cerveau) et de la matrice de soutien.
     pub motor_cost_kj: f64,
+    /// Entretien de l'enveloppe protectrice par unité, sans plafond : une
+    /// enveloppe plus épaisse que le besoin se perd.
+    pub cuticle_cost_kj: f64,
     pub sensor_cost_kj: f64,
     pub neural_cost_kj: f64,
     pub matrix_cost_kj: f64,
@@ -254,7 +257,7 @@ impl Default for Physiology {
             max_sinking_share: 0.5,
             terrestrial_tolerance: 0.5,
             desiccation_mortality: 200.0,
-            cuticle_water_penalty: 0.5,
+            cuticle_water_penalty: 0.2,
             land_burial_share: 0.003,
             land_co2_compensation_pa: 10.0,
             land_co2_half_pa: 30.0,
@@ -284,6 +287,7 @@ impl Default for Physiology {
             contact_sheet: 0.5,
             contact_sphere: 0.5,
             motor_cost_kj: 6000.0,
+            cuticle_cost_kj: 600.0,
             sensor_cost_kj: 2000.0,
             neural_cost_kj: 12000.0,
             matrix_cost_kj: 1500.0,
