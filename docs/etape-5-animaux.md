@@ -64,34 +64,59 @@ La coordination d'un corps est n / (n + 0,3 × doublements / 12), où n est le t
 
 **Étapes datées** (chemin « animaux et plantes », événements `Innovation`) : animal mobile, système nerveux, squelette, plante à tissus de soutien hors de l'eau, animal hors de l'eau, organe sonore. Sauvegardes au format 9.
 
+## Porte : des animaux qui mangent
+
+**Hétérotrophes.** Un animal est un eucaryote multicellulaire mobile qui englobe, sans photosynthèse. La perte du plaste passe par la perte de fonction d'un gène d'organite (comme l'apicoplaste des apicomplexes, devenu non photosynthétique).
+
+**Horloge métabolique** (Kleiber ; West, Brown et Enquist, 1997). Un corps à réseau de distribution (circulation, ou squelette au tiers) vit plus lentement à mesure qu'il grossit. Le facteur vaut 1 / (1 + réseau × (N^¼ − 1)) pour N cellules. Il ralentit l'entretien, la mortalité de fond et l'ingestion maximale. Il est réservé aux eucaryotes à au moins deux types cellulaires : appliqué à toutes les colonies, il laissait les procaryotes coloniaux tout envahir.
+
+**Recherche des proies** (réponse de Holling). La clairance d'un chasseur vaut π (détection + L/2)² × vitesse, rapportée à son carbone. La demi-saturation de son ingestion est le minimum entre celle des proies et ingestion maximale / clairance : un chasseur rapide et doté de sens trouve des proies rares.
+
+**Peau d'une cellule.** Une sphère de plus de 4 096 cellules a une peau d'une cellule au contact du milieu. Ses zones intérieures sont vues à mi-épaisseur.
+
+**Pelotes fécales** (Turner, 2015). Les restes non digérés des mangeurs multicellulaires coulent comme leurs cadavres, avec leur phosphore. Ceux des brouteurs unicellulaires restent dans la boucle microbienne : appliquées à eux, les pelotes retardaient les eucaryotes d'un milliard d'années.
+
+**Méthane de l'air.** Les méthanotrophes des couches de surface demandaient à l'air jusqu'à 2 × 10¹⁵ mol de méthane par an, pour un stock de 2 × 10¹³ mol. Le facteur commun aux flux carbonés tombait alors vers 10⁻⁵ et coupait l'export organique et l'O₂ de la photosynthèse : l'O₂ s'effondrait après 1,5 Ga. Cette oxydation est désormais freinée seule, avec son oxydant (O₂, ou sulfate sans O₂), à bilans de carbone et d'électrons exacts.
+
+**Endosymbioses dans l'eau.** [Simplification] L'eucaryogenèse et les plastes primaires sont aquatiques. Un hôte des terres, où les proies sont rares, ne gardait qu'une lignée condamnée : sur la Terre (graine 2026), l'eucaryote que l'accélérateur faisait naître sur la terre ferme s'éteignait, et la partie restait sans animaux.
+
+**Extinctions de masse et radiations.** Le nombre de lignées vivantes est relevé par fenêtres de 10 Ma. Une extinction de masse (`MassExtinction`) est notée quand il tombe à 60 % ou moins du maximum des six fenêtres précédentes. Une radiation (`Radiation`) l'est quand il double au moins par rapport à leur minimum. Les deux règles ne valent qu'à partir de 50 lignées, et un épisode à la fois.
+
+**Mémoire des longues parties.** [Simplification] À 3,5 Ga, une partie fondait 18,7 millions de lignées et inscrivait 14 millions d'événements « nouvelle lignée » : 5,5 Go en mémoire.
+- Le génome fondateur d'une lignée éteinte est oublié.
+- Une lignée éteinte depuis plus de 50 Ma, sans descendance gardée, sort du registre.
+- Ses naissances et extinctions sortent du journal au même âge. La base SQLite de la partie garde tout le journal.
+- Les identifiants restent uniques et croissants : registre et journal deviennent creux, et leurs lecteurs suivent un curseur d'identifiant (`total`, `since`).
+
+Sauvegardes au format 11.
+
 ## Résultats
 
-Commande `evonisium complexite --suivre --bilan`, niveau 4 puis 6, un tour d'évolution par 300 ka, jusqu'à 3,5 Ga, environ 760 ka/s sur 4 cœurs (porte : 100 ka/s sur 6 cœurs). Bilans de carbone, de phosphore et d'électrons à 10⁻¹⁰ près sur toutes les parties. ⚑ : après l'accélérateur de la complexité.
+Résultats de la porte (graine 2026, niveau 4, pas de 100 ka, un tour d'évolution par 300 ka, jusqu'à 3,5 Ga), commande `evonisium complexite --bilan`. Bilans de carbone, de phosphore et d'électrons à 10⁻¹⁰ près sur toutes les parties. ⚑ : eucaryote venu de l'accélérateur de la complexité.
 
-| Monde | Eucaryote | Multicellulaire à 2 types | Animal mobile | Système nerveux | Squelette | Plante de terre | Animal hors de l'eau | Organe sonore |
+| Monde | Eucaryote | Multicellulaire à 2 types | Plante de terre | Système nerveux | Animal mobile | Squelette | Animal hors de l'eau | Mémoire max |
 |---|---|---|---|---|---|---|---|---|
-| Terre, graine 2026 | 933 Ma | 2,32 Ga ⚑ | 2,32 Ga | 2,35 Ga | 2,37 Ga | 2,37 Ga | 2,32 Ga | 2,37 Ga |
-| Terre, graine 7 | 1,93 Ga ⚑ | 3,03 Ga ⚑ | non | non | non | non | non | non |
-| Sans lune | 892 Ma | 2,54 Ga ⚑ | 2,54 Ga | non | non | non | non | non |
+| Terre | 1,88 Ga ⚑ | 2,41 Ga | 2,46 Ga | 2,41 Ga | 2,51 Ga | 2,54 Ga | 2,54 Ga | 2,2 Go |
+| Super-Terre | 2,19 Ga ⚑ | 2,25 Ga | 2,27 Ga | 2,44 Ga | 2,46 Ga | 2,54 Ga | 2,47 Ga | 5,4 Go (avant l'élagage du journal) |
+| Sans lune | 1,02 Ga | 1,42 Ga | 1,42 Ga | 2,63 Ga | 2,70 Ga | 2,73 Ga | 2,77 Ga | 2,5 Go |
+| Petite planète | 2,69 Ga ⚑ | 3,28 Ga | 3,29 Ga | 3,28 Ga | non | non | non | 1,2 Go |
+| Désert | 2,21 Ga ⚑, éteint | non | non | non | non | non | non | 2,1 Go |
+| Océan | vie éteinte | | | | | | | |
 
-O₂ (part de l'atmosphère) :
-- Terre, graine 2026 : 13 à 25 % de 1,5 à 2,5 Ga.
-- Terre, graine 7 : 23 à 25 % de 2,5 à 3 Ga.
-- Sans lune : 0,2 à 8 %.
+- **Plantes avant animaux** sur les trois mondes à animaux.
+- **O₂** (part de l'atmosphère) : de 18 à 29 % sur la Terre de 1,2 à 3,4 Ga, 22 % sur la super-Terre à 3,5 Ga, de 5 à 35 % sans lune. Il ne s'effondre plus.
+- **Prédateurs et proies.** Sur la Terre, de 2,5 à 2,8 Ga : 2 à 34 populations d'animaux, de 9 à 6 000 mol C. Leur alimentation vient pour 1 à 16 % des proies, et 13 à 1 557 populations sont chassées. Les corps vont jusqu'à 11 m et 11 m/s, avec jusqu'à 14 paires d'appendices et des organes sonores. Les animaux restent une petite part de la biomasse.
+- **Extinctions de masse et radiations** : 2 ou 3 de chaque par partie.
+- **Rejeu identique.** Les deux parties de la Terre, avant et après l'élagage du journal, ont la même histoire.
+- **Vitesse.** À l'ère animale (Terre, 2,8 Ga), 30 Ma prennent 115 s sur 4 cœurs, lecture de la sauvegarde comprise, soit ≈ 260 ka/s ; 147 ka/s sur 2 cœurs. Porte : 100 ka/s sur 6 cœurs.
 
-Il retombe en fin de partie sur les deux Terres : sous 0,1 % vers 3 Ga (graine 2026), 0,06 % à 3,5 Ga (graine 7).
-
-**Verdict : porte pas encore franchie.** Les animaux, leurs nerfs, leurs squelettes, les plantes de terre et les organes sonores apparaissent sans script sur la Terre (graine 2026). Mais :
-- les deux autres parties n'ont pas d'animaux à terre ;
-- le premier animal naît déjà terrestre au lieu de suivre les plantes ;
-- l'O₂ ne tient pas jusqu'à la fin ;
-- la fin de partie oscille entre glaciations globales et épisodes chauds (cycle limite à dégazage faible, Mills et coll., 2011).
-
-Sur une partie précédente (graine 2026, avant le correctif de l'enveloppe), la chronologie était meilleure : animaux à 1,60 Ga, squelette et plantes de terre à 2,51 Ga, O₂ de 7 à 26 % de 0,6 à 3,0 Ga.
+**Verdict : porte franchie avec accélération déclarée.** Des animaux mobiles, prédateurs, à squelette et sortis de l'eau apparaissent sans script sur la Terre et sur deux mondes de la vague 1 (super-Terre et sans lune), après les plantes de terre. Sur deux de ces trois mondes, l'eucaryote vient de l'accélérateur de la complexité ; ensuite, aucune transition n'est accélérée. La mémoire reste sous 5 Go.
 
 ## Reste à faire
 
-- La porte : animaux et sortie des eaux sur deux mondes de la vague 1, plantes avant animaux, O₂ tenu jusqu'à la fin.
-- Une sortie du cycle des glaciations de fin de partie.
-- Les extinctions et radiations, suivies par un compteur.
-- Les lectures cognitives du fil Cognition (`evo_culture::cognition::Cognition`), après la fusion.
+- Désert : l'eucaryote de l'accélérateur ne vit que de matière dissoute (sa photosynthèse ne fixe pas de carbone) et s'éteint. La chimie de ses lacs est aussi extrême : 200 mol/m³ d'O₂, 5 × 10⁵ mol/m³ de sulfate.
+- Océan : la vie s'éteint (déjà fragile à l'étape 4, 324 K).
+- Petite planète et désert : l'O₂ monte de 50 à 86 % de l'atmosphère.
+- Les animaux restent une petite part de la biomasse. La Terre finit en glaciation globale vers 3,5 Ga (cycle limite déjà noté).
+- Les lectures cognitives du fil Cognition (`evo_culture::cognition::Cognition`).
+- Le chantier vitesse, après cette PR.
