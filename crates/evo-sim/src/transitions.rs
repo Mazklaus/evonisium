@@ -96,7 +96,10 @@ pub fn engulfed_partners(
     let physio = &cfg.physiology;
     let params = &cfg.transitions;
     let host = &resident.phenotype;
-    if host.engulfment <= 0.0 || resident.genome.organelles.len() >= params.max_organelles {
+    // [Simplification] Les endosymbioses se font dans l'eau (l'eucaryogenèse
+    // et les plastes primaires sont aquatiques) : un hôte des terres, où les
+    // proies sont rares, n'y gardait qu'une lignée condamnée.
+    if host.engulfment <= 0.0 || host.is_terrestrial() || resident.genome.organelles.len() >= params.max_organelles {
         return Vec::new();
     }
     let eaten = resident.rates.prey_demand();

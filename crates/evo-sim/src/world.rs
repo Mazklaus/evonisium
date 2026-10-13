@@ -329,7 +329,20 @@ pub struct Progress {
     /// ([`ANIMAL_STAGES`], étape 5) : date et événement.
     pub animal_years: [Option<f64>; ANIMAL_STAGE_COUNT],
     pub animal_events: [Option<u64>; ANIMAL_STAGE_COUNT],
+    /// Lignées vivantes à la fin des dernières fenêtres de 10 Ma (la plus
+    /// récente en dernier ; 0 : pas encore mesurée), fenêtre et niveau de la
+    /// grille du vivant de la dernière mesure, et épisodes en cours.
+    pub diversity: [u32; DIVERSITY_WINDOWS],
+    pub diversity_window: u64,
+    pub diversity_level: u32,
+    pub extinction_episode: bool,
+    pub radiation_episode: bool,
 }
+
+/// Extinctions de masse et radiations : fenêtres de mesure du nombre de
+/// lignées vivantes.
+pub const DIVERSITY_WINDOWS: usize = 6;
+pub const DIVERSITY_WINDOW_YEARS: f64 = 10e6;
 
 /// Étapes de la complexité suivies et signalées (chemin des « cellules
 /// complexes ») ; chacune est datée à sa première apparition sur la planète,
@@ -377,12 +390,15 @@ pub fn animal_bits(p: &Phenotype) -> u8 {
     let a = &p.animal;
     // Un corps organisé : eucaryote, aux cellules différenciées.
     let multi = p.is_multicellular() && p.is_eukaryote() && p.cell_types() >= 2;
-    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0;
+    // Un animal se nourrit d'autres êtres : sans voie de photosynthèse (un
+    // mixotrophe qui garde son plaste n'en est pas un).
+    let photosynthetic = evo_life::metabolism::REACTIONS.iter().any(|r| r.is_light() && p.signature & (1 << r.id) != 0);
+    let animal = multi && a.motility > 0.0 && p.engulfment > 0.0 && !photosynthetic;
     let mut bits = 0u8;
     bits |= u8::from(animal);
     bits |= u8::from(multi && a.neural >= 0.5) << 1;
     bits |= u8::from(animal && a.support >= 0.5) << 2;
-    bits |= u8::from(multi && p.phototroph && p.is_terrestrial() && a.support > 0.0) << 3;
+    bits |= u8::from(multi && photosynthetic && p.is_terrestrial() && a.support > 0.0) << 3;
     bits |= u8::from(animal && p.is_terrestrial()) << 4;
     bits |= u8::from(a.sound.is_some()) << 5;
     bits
@@ -921,7 +937,7 @@ impl World {
         let dt = self.next_step_years();
         let step_index = self.stats.steps;
         let years = self.years;
-        let first_event = self.events.events.len();
+        let first_event = self.events.total();
         let oxygen_before = self.planet.reservoirs.mixing_ratio(Gas::O2);
 
         let debug = std::env::var_os("EVO_DEBUG_ELECTRONS").is_some();
@@ -1090,9 +1106,9 @@ impl World {
         }
     }
 
-    fn adapt_step(&mut self, first_event: usize, oxygen_before: f64) {
+    fn adapt_step(&mut self, first_event: u64, oxygen_before: f64) {
         let Some(a) = self.config.adaptive_step else { return };
-        let notable = self.events.events[first_event..].iter().any(|e| e.interest >= a.notable_interest);
+        let notable = self.events.since(first_event).iter().any(|e| e.interest >= a.notable_interest);
         let o2 = self.planet.reservoirs.mixing_ratio(Gas::O2);
         let change = (o2 - oxygen_before).abs() / o2.max(oxygen_before).max(1e-6);
         self.progress.step_factor =
@@ -1364,6 +1380,8 @@ impl World {
             let names = ["DIC", "DOC", "H2", "CH4", "O2", "SO4", "H2S", "Fe2", "Mn2", "FeOx", "MnOx", "PO4"];
             let r: Vec<String> = rates.iter().zip(names).map(|(x, n)| format!("{n} {x:.2e}")).collect();
             eprintln!("{:.1} Ma : sources {:.3e} ; {}", years / 1e6, vents * rest, r.join(", "));
+            let e: Vec<String> = total.exact.iter().zip(names).map(|(x, n)| format!("{n} {x:.2e}")).collect();
+            eprintln!("   exact (t_eco {t_eco:.1e}) : {}", e.join(", "));
         }
     }
 
@@ -1651,6 +1669,52 @@ impl World {
         self.stats.occupied_cell_steps += occupied;
     }
 
+    /// Extinctions de masse et radiations (étape 5) : à la fin de chaque
+    /// fenêtre de 10 Ma, le nombre de lignées vivantes est comparé aux
+    /// fenêtres précédentes. Une chute d'au moins 40 % sous leur maximum est
+    /// une extinction de masse, un doublement au-dessus de leur minimum une
+    /// radiation (un épisode à la fois). Le changement de grille du vivant
+    /// multiplie les lignées sans rien dire de l'histoire : il remet la
+    /// mesure à zéro.
+    fn diversity_bookkeeping(&mut self, years: f64) {
+        let window = (years / DIVERSITY_WINDOW_YEARS) as u64;
+        let progress = &mut self.progress;
+        if window <= progress.diversity_window {
+            return;
+        }
+        progress.diversity_window = window;
+        let level = self.bio.grid.level;
+        if level != progress.diversity_level {
+            progress.diversity_level = level;
+            progress.diversity = [0; DIVERSITY_WINDOWS];
+        }
+        let living = self.lineages.living_count() as u32;
+        let previous: Vec<u32> = progress.diversity.iter().copied().filter(|&n| n > 0).collect();
+        progress.diversity.rotate_left(1);
+        progress.diversity[DIVERSITY_WINDOWS - 1] = living;
+        if previous.len() < 2 {
+            return;
+        }
+        let (max, min) = (previous.iter().copied().max().unwrap_or(0), previous.iter().copied().min().unwrap_or(0));
+        let now = f64::from(living);
+        if max >= 50 && now <= 0.6 * f64::from(max) {
+            if !progress.extinction_episode {
+                progress.extinction_episode = true;
+                self.events.push(years, None, EventKind::MassExtinction { lost_share: 1.0 - now / f64::from(max), lineages_before: max });
+            }
+        } else if now >= 0.8 * f64::from(max) {
+            progress.extinction_episode = false;
+        }
+        if living >= 50 && min > 0 && now >= 2.0 * f64::from(min) {
+            if !progress.radiation_episode {
+                progress.radiation_episode = true;
+                self.events.push(years, None, EventKind::Radiation { gain: now / f64::from(min), lineages: living });
+            }
+        } else if now < 1.5 * f64::from(min) {
+            progress.radiation_episode = false;
+        }
+    }
+
     fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>) {
         let years = self.years;
         // Lignées éteintes.
@@ -1658,10 +1722,13 @@ impl World {
         present.sort_unstable();
         present.dedup();
         let (clades, leaves) = self.lineages.retire_absent(&present, years);
+        self.lineages.prune(years);
+        self.events.prune(years);
         self.stats.leaf_extinctions += leaves as u64;
         for id in clades {
             self.events.push(years, None, EventKind::LineageExtinct { lineage: id });
         }
+        self.diversity_bookkeeping(years);
 
         // Innovations : première apparition d'une étape sur la planète.
         let mut best: Option<(u8, usize, usize, GenomeChangeCause)> = None;
@@ -2044,9 +2111,8 @@ impl World {
                 }
             })
             .collect();
-        let new_events =
-            self.events.events[self.published_events.min(self.events.events.len())..].iter().map(EventView::from_event).collect();
-        self.published_events = self.events.events.len();
+        let new_events = self.events.since(self.published_events as u64).iter().map(EventView::from_event).collect();
+        self.published_events = self.events.total() as usize;
         self.scan_species_origins();
         let species = self.species();
         let p = &self.config.influence;
@@ -2077,10 +2143,10 @@ impl World {
     /// Met à jour la cellule d'origine de chaque signature avec les
     /// lignées fondées depuis le dernier appel.
     fn scan_species_origins(&mut self) {
-        for r in &self.lineages.records[self.origin_scanned..] {
+        for r in self.lineages.since(self.origin_scanned as u32) {
             self.species_origin.entry(r.signature).or_insert(r.origin_cell);
         }
-        self.origin_scanned = self.lineages.records.len();
+        self.origin_scanned = self.lineages.total();
     }
 
     pub fn species(&self) -> Vec<SpeciesView> {
@@ -2213,8 +2279,8 @@ impl World {
             h.f(e.elevation_m);
             h.f(e.temperature_k);
         }
-        h.u(self.events.events.len() as u64);
-        h.u(self.lineages.records.len() as u64);
+        h.u(self.events.total());
+        h.u(self.lineages.total() as u64);
         h.u(self.journal.total());
         h.u(self.disturbances.barriers.len() as u64);
         h.u(self.disturbances.anomalies.len() as u64);
@@ -2259,7 +2325,7 @@ impl World {
             populations: self.communities.iter().map(Vec::len).sum(),
             biomass: self.biomass(),
             guilds,
-            lineages_total: self.lineages.records.len(),
+            lineages_total: self.lineages.total(),
             lineages_living: self.lineages.living_count(),
             thermal_mismatch_k: if weight > 0.0 { mismatch / weight } else { f64::NAN },
             mean_genes: mean(self.communities.iter().flatten().map(|p| p.genome.genes.len() as f64)),
@@ -2761,9 +2827,9 @@ mod tests {
             let mut spans = Vec::new();
             for _ in 0..40 {
                 let before = w.years;
-                let first = w.events.events.len();
+                let first = w.events.total();
                 w.step();
-                let notable = w.events.events[first..].iter().any(|e| e.interest >= 0.5);
+                let notable = w.events.since(first).iter().any(|e| e.interest >= 0.5);
                 spans.push((w.years - before, notable));
             }
             (spans, w.state_hash())

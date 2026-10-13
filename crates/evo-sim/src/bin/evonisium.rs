@@ -230,8 +230,15 @@ fn complexity(args: &[String]) {
     let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
     let mut accelerated = false;
     let mut seen_oxygenic = false;
+    let mut seen_events = world.events.total();
     while world.years() < max_years {
         world.step();
+        for e in world.events.since(seen_events) {
+            if matches!(e.kind, evo_core::events::EventKind::MassExtinction { .. } | evo_core::events::EventKind::Radiation { .. }) {
+                println!("  ✦ {} : {}", e.kind.describe(), format_years(e.years));
+            }
+        }
+        seen_events = world.events.total();
         if let Some((y, path)) = save_at.as_ref().filter(|(y, _)| world.years() >= *y) {
             world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
             eprintln!("sauvegarde à {} (demandée à {})", format_years(world.years()), format_years(*y));
@@ -275,6 +282,26 @@ fn complexity(args: &[String]) {
         if world.years() >= next {
             next += every;
             let s = world.summary();
+            if std::env::var_os("EVO_DEBUG_MEM").is_some() {
+                let m = world.memory_bytes();
+                let mut bodies = 0usize;
+                for p in world.communities.iter().flatten() {
+                    if let Some(b) = &p.phenotype.body {
+                        bodies += b.types.len() * std::mem::size_of::<evo_life::Phenotype>()
+                            + b.types.iter().map(|t| t.enzymes.capacity() * 40).sum::<usize>();
+                    }
+                }
+                println!(
+                    "  MÉMOIRE populations {:.0} Mo, génomes {:.0} Mo ({} distincts), corps {:.0} Mo, lignées {:.0} Mo ({} fiches), journal {:.0} Mo",
+                    m.populations as f64 / 1e6,
+                    m.genomes as f64 / 1e6,
+                    m.distinct_genomes,
+                    bodies as f64 / 1e6,
+                    m.lineages as f64 / 1e6,
+                    world.lineages.records.len(),
+                    m.journal as f64 / 1e6
+                );
+            }
             let mut euk = 0.0;
             let mut phago = 0.0;
             let mut multi = 0.0;
@@ -436,9 +463,14 @@ fn trace_complex(world: &World) {
         }
         if name == "mobiles" {
             let max = |f: &dyn Fn(&evo_life::Population) -> f64| rows.iter().map(|p| f(p)).fold(0.0, f64::max);
-            let animals = rows.iter().filter(|p| p.phenotype.is_multicellular() && p.phenotype.engulfment > 0.0).count();
+            let animal: Vec<_> = rows.iter().filter(|p| evo_sim::world::animal_bits(&p.phenotype) & 1 != 0).collect();
+            let animals = animal.len();
+            let animal_carbon: f64 = animal.iter().map(|p| p.biomass).sum();
+            let on_land = animal.iter().filter(|p| p.phenotype.is_terrestrial()).count();
+            let hunted = rows.iter().filter(|p| p.rates.predation > 0.1).count();
             println!(
-                "        animaux {animals} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                "        animaux {animals} ({animal_carbon:.2e} mol C, {on_land} hors de l'eau, proies {:.2}) | populations chassées {hunted} | moteurs {:.2} (max {:.2}) sens {:.2} nerfs max {:.2} matrice max {:.2} | longueur max {:.1e} m vitesse max {:.1e} m/s | défense {:.2} | appendices max {:.0} | organes sonores {}",
+                animal.iter().map(|p| p.rates.prey_share).sum::<f64>() / animals.max(1) as f64,
                 median(&|p| p.phenotype.animal.motor),
                 max(&|p| p.phenotype.animal.motor),
                 median(&|p| p.phenotype.animal.sensor),

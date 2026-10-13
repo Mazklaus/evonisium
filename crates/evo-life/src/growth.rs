@@ -506,7 +506,10 @@ pub struct GrowthRates {
 impl GrowthRates {
     /// Durée d'une génération, an.
     pub fn generation_time(&self, physio: &Physiology) -> f64 {
-        std::f64::consts::LN_2 / self.birth.max(physio.background_mortality)
+        // Plancher : la mortalité (celle de fond d'une cellule au plus), qui
+        // baisse avec l'horloge métabolique d'un grand corps.
+        let floor = if self.mortality > 0.0 { self.mortality.min(physio.background_mortality) } else { physio.background_mortality };
+        std::f64::consts::LN_2 / self.birth.max(floor)
     }
 
     /// Part de la croissance dont le carbone est fixé par la voie autotrophe
@@ -530,6 +533,39 @@ impl GrowthRates {
 fn monod(c: f64, k: f64) -> f64 {
     let c = c.max(0.0);
     c / (k + c)
+}
+
+/// Horloge métabolique d'un corps : les flux par unité de masse (entretien,
+/// ingestion, mortalité de fond) baissent comme la masse à la puissance
+/// −1/4 (Kleiber). Cette loi naît du réseau qui distribue les ressources
+/// dans le corps (West, Brown et Enquist, 1997) : une circulation chez
+/// l'animal, des vaisseaux dans les tissus de soutien chez la plante. Sans
+/// réseau (colonie, corps de cellules qui vivent chacune pour soi), chaque
+/// cellule garde les taux d'un microbe. Comptée sur le nombre de cellules.
+#[inline]
+fn metabolic_clock(p: &Phenotype) -> f64 {
+    if p.body.is_none() || !p.is_eukaryote() || p.cell_types() < 2 {
+        return 1.0;
+    }
+    let network = p.animal.circulation.max((p.animal.support / 3.0).min(1.0)).clamp(0.0, 1.0);
+    1.0 / (1.0 + network * (p.cells().max(1.0).sqrt().sqrt() - 1.0))
+}
+
+/// Recherche des proies : demi-saturation de l'ingestion (mol·m⁻³). Un
+/// prédateur qui nage et perçoit explore un volume π (portée)² × vitesse par
+/// unité de temps (réponse fonctionnelle de Holling) ; quand ce volume
+/// rapporté à son carbone dépasse celui d'une cellule qui filtre, la
+/// demi-saturation baisse d'autant.
+#[inline]
+fn prey_half_saturation(p: &Phenotype, clock: f64, physio: &Physiology) -> f64 {
+    let a = &p.animal;
+    let reach = a.detection_m + 0.5 * a.length_m;
+    let carbon = physio.carbon_per_cell * p.cell_volume() * p.cells();
+    if a.speed_m_s <= 0.0 || carbon <= 0.0 {
+        return physio.prey_half;
+    }
+    let clearance = std::f64::consts::PI * reach * reach * a.speed_m_s * evo_core::units::SECONDS_PER_YEAR / carbon;
+    physio.prey_half.min(physio.max_ingestion * clock / clearance)
 }
 
 /// Bilan d'énergie d'une cellule (ou d'une zone d'un corps), avant les
@@ -583,7 +619,8 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
     }
     let cond = &cond.for_habitat(p.is_terrestrial());
     let prey = cond.edible_prey(p, physio);
-    let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, chem, physio);
+    let forage = Forage { ingestion: physio.max_ingestion, half: prey_half_saturation(p, 1.0, physio) };
+    let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, forage, chem, physio);
     finish(p, &b, cond, chem, physio)
 }
 
@@ -597,6 +634,8 @@ fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &
     let cond = &cond.for_habitat(p.is_terrestrial());
     let mut total = Budget::default();
     let prey = cond.edible_prey(p, physio);
+    let clock = metabolic_clock(p);
+    let forage = Forage { ingestion: physio.max_ingestion * clock, half: prey_half_saturation(p, clock, physio) };
     let caps: Vec<Capacities> = body.types.iter().map(|t| t.capacities(cond.temperature_k, physio)).collect();
     for (k, z) in body.zones.iter().enumerate() {
         let t = &body.types[z.cell_type as usize];
@@ -610,6 +649,7 @@ fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &
             // Un tube digestif et une circulation portent la nourriture à
             // tout le corps.
             if surface { prey } else { prey * p.animal.circulation },
+            forage,
             &zone_chem,
             physio,
         );
@@ -618,10 +658,27 @@ fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &
     finish(p, &total, cond, chem, physio)
 }
 
+/// Ingestion maximale (molC·molC⁻¹·an⁻¹) et demi-saturation (mol·m⁻³) d'un
+/// mangeur de proies.
+#[derive(Clone, Copy, Debug)]
+struct Forage {
+    ingestion: f64,
+    half: f64,
+}
+
 /// Bilan d'énergie d'une cellule exposée à `light_kj`, `uv` et à des proies
 /// englobables de concentration `prey` (molC·m⁻³).
 #[allow(clippy::too_many_arguments)]
-fn budget(p: &Phenotype, caps: &Capacities, light_kj: f64, uv: f64, prey: f64, chem: &WaterChemistry, physio: &Physiology) -> Budget {
+fn budget(
+    p: &Phenotype,
+    caps: &Capacities,
+    light_kj: f64,
+    uv: f64,
+    prey: f64,
+    forage: Forage,
+    chem: &WaterChemistry,
+    physio: &Physiology,
+) -> Budget {
     let o2 = chem[WaterPool::O2 as usize].max(0.0);
     let anaerobic_factor = physio.oxygen_inhibition_half / (physio.oxygen_inhibition_half + o2);
     let chemical_gain = 1.0 + physio.electron_transport_gain * p.electron_transport;
@@ -676,7 +733,7 @@ fn budget(p: &Phenotype, caps: &Capacities, light_kj: f64, uv: f64, prey: f64, c
     // (dans le cytoplasme) ou par respiration aérobie (sur la membrane de
     // l'hôte ou dans un organite), selon ce qui rend le plus.
     if p.engulfment > 0.0 && prey > 0.0 {
-        let ingest = physio.max_ingestion * p.engulfment * monod(prey, physio.prey_half);
+        let ingest = forage.ingestion * p.engulfment * monod(prey, forage.half);
         let ferm = &REACTIONS[FERMENTATION as usize];
         let resp = &REACTIONS[AEROBIC_RESPIRATION as usize];
         let dg = |r: &crate::metabolism::Reaction| match r.energy {
@@ -723,7 +780,8 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     // L'énergie d'appoint (phototrophie simple, rhodopsine) ne fournit pas
     // d'électrons : elle paie l'entretien, pas la fabrication de biomasse à
     // partir du CO₂. Seules les voies qui apportent du carbone font croître.
-    let surplus = carbon_energy - (b.maintenance - b.supplement).max(0.0);
+    let clock = metabolic_clock(p);
+    let surplus = carbon_energy - (clock * b.maintenance - b.supplement).max(0.0);
     // Sans voie qui apporte du carbone, l'énergie d'appoint ne fait que
     // réduire la famine.
     let birth = if carbon_energy > 0.0 {
@@ -761,7 +819,8 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
     } else {
         (birth * (1.0 - physio.cuticle_water_penalty * p.desiccation_tolerance), 0.0)
     };
-    let mortality = if dormant { 0.0 } else { physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
+    let mortality =
+        if dormant { 0.0 } else { clock * physio.background_mortality + starvation + b.oxygen_stress + b.uv + predation + desiccation };
 
     out.energy_kj = carbon_energy + b.supplement;
     out.autotroph_energy_kj = b.auto;

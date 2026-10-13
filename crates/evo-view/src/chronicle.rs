@@ -40,8 +40,8 @@ impl Family {
     pub fn of(e: &Event) -> Family {
         match &e.kind {
             EventKind::LifeSeeded { .. } | EventKind::OxygenThreshold { .. } => Family::Milestone,
-            EventKind::NewLineage { .. } => Family::Speciation,
-            EventKind::LineageExtinct { .. } => Family::Extinction,
+            EventKind::NewLineage { .. } | EventKind::Radiation { .. } => Family::Speciation,
+            EventKind::LineageExtinct { .. } | EventKind::MassExtinction { .. } => Family::Extinction,
             EventKind::Innovation { .. } => Family::Innovation,
             EventKind::Snowball { .. } => Family::Catastrophe,
             EventKind::PlateReorganisation { .. } => Family::Geology,
@@ -294,6 +294,14 @@ pub fn body(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
             format!("Les plaques se réorganisent : {plates} plaques, de nouveaux pôles de rotation.")
         }
         (EventKind::PlateReorganisation { plates }, Lang::En) => format!("The plates reorganise: {plates} plates, new rotation poles."),
+        (EventKind::MassExtinction { lost_share, .. }, Lang::Fr) => {
+            format!("Extinction de masse : {:.0} % des lignées disparaissent en peu de temps.", 100.0 * lost_share)
+        }
+        (EventKind::MassExtinction { lost_share, .. }, Lang::En) => {
+            format!("Mass extinction: {:.0} % of lineages vanish in a short time.", 100.0 * lost_share)
+        }
+        (EventKind::Radiation { gain, .. }, Lang::Fr) => format!("Radiation : les lignées se multiplient (×{gain:.1})."),
+        (EventKind::Radiation { gain, .. }, Lang::En) => format!("Radiation: lineages multiply (×{gain:.1})."),
         (EventKind::OrderApplied { label, .. }, Lang::Fr) => {
             if e.origin == Origin::Player {
                 format!("Votre intervention s'applique : {label}.")
