@@ -47,6 +47,18 @@ Volet « peuples » de la livraison 3 (`evo-son/src/peuples.rs`), lu dans l'éta
 
 [Simplification] Une voix humaine de synthèse quelle que soit l'espèce ; pas de grammaire ni d'intonation propre à chaque langue au-delà de l'accent de mot. Les espèces qui ne parlent pas par le son auront leurs voix propres avec la livraison 2.
 
+## Voix d'espèces (livraison 2, étape 5)
+
+Chaque animal du moteur porte un organe sonore (`evo_life::body::SoundOrgan`, fonction du premier module du plan de construction) : type, taille, puissance, complexité, chœur, moment de l'appel et graine héritée. Le son (`evo-son/src/faune.rs`) en tire la voix de l'espèce, sans rien écrire dans le moteur.
+
+- **Neuf façons d'appeler.** Stridulation (trilles aigus, grillons), tymbale (bande de bruit pulsée, cigales), ailes (bourdonnement), syrinx (sifflets modulés en fréquence, oiseaux), larynx (voix à formants avec voyelles : cris, hurlements, mugissements), sac vocal (croassements pulsés), percussion (coups frappés), vessie natatoire (grognements sourds des poissons), clics (trains de clics et sifflets dans l'eau). Le moteur ne produit pas encore les ailes ni la syrinx (pas de vol) ; leurs voix sont prêtes.
+- **Ce que lit chaque paramètre.** La taille fixe la hauteur (plus grand, plus grave), la puissance le volume, la complexité le nombre de syllabes de l'appel (1 à 7), la graine le motif : deux espèces du même type ne chantent pas pareil, et le motif ne change qu'avec les gènes qui portent l'appel. Une espèce en chœur appelle à deux à cinq.
+- **Au sol.** La scène appelle `faune(sol)` à son ouverture : chaque espèce simulée qui a un organe appelle, d'autant plus souvent qu'elle est nombreuse dans la scène et qu'elle appelle de jour (le crépuscule et la nuit comptent moins tant que la scène n'a pas de cycle du jour). Les appels viennent de côtés au hasard, 48 voix à la fois au plus ; ils se taisent pendant un chant de peuple.
+- **Dosage contre la cacophonie** (comme l'hypothèse de la niche acoustique chez les vrais animaux) : trois espèces seulement tiennent le premier plan, tirées selon leur rythme, et la main tourne toutes les 25 à 60 s ; les autres ne font entendre qu'un appel sur quatre, au loin (45 à 90 m). Deux espèces qui appellent dans la même octave ne se coupent pas la parole, et deux appels ne commencent jamais à moins de 1,5 s d'écart (0,75 s pour un appel lointain). Une jungle de 14 espèces coûte ainsi 1,7 % d'un cœur au lieu de 4,8 %. Suivre une espèce lui fait pousser un cri tout près (`cri(sol, k)`). Les figurants de banc d'essai se taisent.
+- **Essai** : `cargo run --release -p evo-son --example faune -- dossier` rend les neuf voix et quatre scènes de 90 s (forêt, mare, mer, jungle de 14 espèces). Coût d'une scène : 1,3 à 2,2 % d'un cœur.
+
+[Simplification] Pas de propagation du son dans le milieu (forêt qui étouffe, eau qui porte) au-delà de la distance et du filtre ; pas de réponse d'une espèce à l'autre.
+
 ## Fond musical par ère (boucles enregistrées)
 
 Sur demande de l'utilisateur (2026-10-11), le fond de chaque ère n'est plus
@@ -107,5 +119,5 @@ Moyenne 2,1 %, sous le budget de 5 à 10 % d'un cœur fixé par Vision (pris sur
 
 ## Suite
 
-- Livraison 2, avec l'étape 5 : voix des espèces tirées de l'organe sonore (paramètres demandés au fil Animaux et écosystèmes), scène au sol, cycle jour et nuit, budget de densité sonore par scène, ères animales de la musique, narrateur (voix masculine à choisir, textes par gabarits).
+- Livraison 2, suite : cycle jour et nuit quand la scène au sol en aura un, budget de densité sonore par scène, ères animales de la musique, narrateur (voix masculine à choisir, textes par gabarits).
 - Livraison 3, coupée en deux par Vision : le volet peuples avec l'étape 6 (langues et chants, ci-dessus, à brancher sur l'état culturel publié une fois l'étape intégrée au moteur) ; le volet villes avec l'étape 7.

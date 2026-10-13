@@ -9,6 +9,7 @@
 mod bodies;
 mod culture;
 mod region;
+mod slide;
 mod son;
 mod story;
 mod tools;
@@ -155,10 +156,13 @@ impl EvoSession {
         self.game.as_ref().map(|g| g.lineages.clone()).unwrap_or_default()
     }
 
+    /// Lignée `id`. Le registre est trié par identifiant mais peut être
+    /// creux (le moteur élague les vieilles lignées éteintes sans
+    /// descendance) : la place `id` d'abord, sinon une recherche dichotomique.
     fn lineage(lineages: &[LineageFrame], id: u32) -> Option<&LineageFrame> {
         match lineages.get(id as usize).filter(|l| l.id == id) {
             Some(l) => Some(l),
-            None => lineages.iter().find(|l| l.id == id),
+            None => lineages.binary_search_by_key(&id, |l| l.id).ok().map(|i| &lineages[i]),
         }
     }
 
@@ -984,46 +988,59 @@ impl EvoSession {
         d
     }
 
-    /// Arbre du vivant élagué : tableaux parallèles, un noeud par indice.
+    /// Arbre du vivant fractal (`evo_view::fractal`) : tableaux parallèles,
+    /// un noeud par indice dans l'ordre préfixe. `flags` : 1 feuille,
+    /// 2 vivante, 4 branche qui ouvre le clade d'une lignée fille. Les noms
+    /// se demandent à part (`lineage_label`) pour les seuls noeuds visibles.
     #[func]
-    fn tree(&self, max_leaves: i64) -> VarDictionary {
+    fn tree_fractal(&self) -> VarDictionary {
         let mut d = VarDictionary::new();
-        let Some(f) = self.frame() else { return d };
         let lineages = self.lineages();
-        let t = evo_view::tree::build(&lineages, f.state.years, max_leaves.max(2) as usize);
-        let mut ids = PackedInt32Array::new();
-        let mut species = PackedInt64Array::new();
-        let mut parents = PackedInt32Array::new();
-        let mut born = PackedFloat64Array::new();
-        let mut end = PackedFloat64Array::new();
-        let mut ys = PackedFloat32Array::new();
-        let mut living = PackedByteArray::new();
-        let mut collapsed = PackedInt32Array::new();
-        let mut names = PackedStringArray::new();
-        for n in &t.nodes {
-            ids.push(n.lineage as i32);
-            species.push(n.signature as i64);
-            parents.push(n.parent as i32);
-            born.push(n.born_years);
-            end.push(n.end_years);
-            ys.push(n.y);
-            living.push(n.living as u8);
-            collapsed.push(n.collapsed as i32);
-            names.push(&self.name_of(&lineages, n.lineage));
+        let t = evo_view::fractal::build(&lineages);
+        let n = t.nodes.len();
+        let (mut from, mut to) = (PackedVector2Array::new(), PackedVector2Array::new());
+        let mut length = PackedFloat32Array::new();
+        let mut bbox = PackedFloat32Array::new();
+        let (mut ids, mut leaves, mut next) = (PackedInt32Array::new(), PackedInt32Array::new(), PackedInt32Array::new());
+        let (mut flags, mut clade) = (PackedByteArray::new(), PackedByteArray::new());
+        for nd in &t.nodes {
+            from.push(Vector2::new(nd.from[0], nd.from[1]));
+            to.push(Vector2::new(nd.to[0], nd.to[1]));
+            length.push(nd.length);
+            for v in nd.bbox {
+                bbox.push(v);
+            }
+            ids.push(nd.lineage as i32);
+            leaves.push(nd.leaves as i32);
+            next.push(nd.next as i32);
+            flags.push(nd.leaf as u8 | (nd.living as u8) << 1 | (nd.founds as u8) << 2);
+            clade.push(nd.clade);
         }
+        d.set("count", n as i64);
+        d.set("from", &from);
+        d.set("to", &to);
+        d.set("length", &length);
+        d.set("bbox", &bbox);
         d.set("ids", &ids);
-        d.set("species", &species);
-        d.set("parents", &parents);
-        d.set("born", &born);
-        d.set("end", &end);
-        d.set("y", &ys);
-        d.set("living", &living);
-        d.set("collapsed", &collapsed);
-        d.set("names", &names);
-        d.set("leaves", t.leaves as i64);
-        d.set("from_years", if t.from_years.is_finite() { t.from_years } else { 0.0 });
-        d.set("to_years", t.to_years);
+        d.set("leaves", &leaves);
+        d.set("next", &next);
+        d.set("flags", &flags);
+        d.set("clade", &clade);
+        d.set("living", t.leaves as i64);
         d.set("total", lineages.len() as i64);
+        d
+    }
+
+    /// Nom, signature d'espèce et dates d'une lignée (arbre du vivant).
+    #[func]
+    fn lineage_label(&self, id: i64) -> VarDictionary {
+        let mut d = VarDictionary::new();
+        let lineages = self.lineages();
+        let Some(l) = Self::lineage(&lineages, id.max(0) as u32) else { return d };
+        d.set("name", self.name_of(&lineages, l.id).as_str());
+        d.set("species", l.signature as i64);
+        d.set("born", l.born_years);
+        d.set("extinct", l.extinct_years.unwrap_or(-1.0));
         d
     }
 

@@ -15,6 +15,7 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod ambiance;
+pub mod faune;
 pub mod fond;
 pub mod musique;
 pub mod peuples;
@@ -148,6 +149,11 @@ pub enum Ordre {
     Ere(u8),
     /// Une boucle du fond musical, déjà décodée au taux du son.
     Boucle(Boucle),
+    /// Faune de la scène au sol : organe sonore de chaque espèce et nombre
+    /// d'individus ; `None` quand on quitte le sol.
+    Faune(Option<Vec<(faune::Organe, u32)>>),
+    /// Appel d'une espèce, tout près (l'espèce que l'on suit).
+    Cri(faune::Organe),
 }
 
 /// Ce que le son signale au fil principal (sous-titres, fin de phrase).
@@ -193,6 +199,7 @@ pub struct Son {
     rumeur: Option<Rumeur>,
     chant: Option<Chant>,
     pub fond: Fond,
+    faune: faune::Faune,
 }
 
 /// Pas de contrôle, en échantillons.
@@ -228,6 +235,7 @@ impl Son {
             rumeur: None,
             chant: None,
             fond: Fond::new(rate),
+            faune: faune::Faune::default(),
         }
     }
 
@@ -261,6 +269,14 @@ impl Son {
             Ordre::Rite(i) => self.chanter(i),
             Ordre::Ere(e) => self.fond.changer_ere(e),
             Ordre::Boucle(b) => self.fond.ajouter(b),
+            Ordre::Faune(f) => self.faune = faune::Faune::new(f.as_deref().unwrap_or(&[]), &mut self.rng),
+            Ordre::Cri(o) => {
+                let mut v = Vec::new();
+                faune::appel(&o, 2.0, 0.0, 0.0, false, &self.mk, &mut self.rng, &mut v);
+                for x in v {
+                    self.push(x);
+                }
+            }
             Ordre::Prononcer(mot) => {
                 if let Some(r) = &self.rumeur {
                     let loc = peuples::Locuteur::homme(&mut self.rng);
@@ -371,6 +387,11 @@ impl Son {
         self.globe.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
         self.micro.tick(dt, &l, &self.mk, &mut self.rng, &mut fresh);
         self.peuple(dt, &mut fresh);
+        // La faune appelle au sol, et se tait pendant les chants des peuples.
+        if self.vue == Vue::Sol && self.chant.is_none() && !self.faune.is_empty() {
+            let voix = self.voices.iter().filter(|v| v.bus == Bus::Ambiance).count();
+            self.faune.tick(dt, voix, &self.mk, &mut self.rng, &mut fresh);
+        }
         for v in fresh.drain(..) {
             self.push(v);
         }

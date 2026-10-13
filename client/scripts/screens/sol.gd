@@ -5,14 +5,17 @@ extends Control
 ##
 ## Les espèces vraies de la cellule assez grandes pour se voir sont des
 ## agents du moteur (individus tirés de leur population, comportements tirés
-## de leurs traits) ; les autres sont des figurants de banc d'essai. Rien de
-## ce qu'ils font ne change l'histoire.
+## de leurs traits) ; une cellule dont la vie est microscopique montre son
+## paysage vide et invite à la loupe. Les figurants de banc d'essai ne
+## restent que dans les essais (`EvoGround.bench`). Rien de ce que font les
+## êtres de la scène ne change l'histoire.
 
 signal closed
 
 const AnimalShader := preload("res://shaders/animal.gdshader")
 const ImpostorShader := preload("res://shaders/imposteur.gdshader")
 const TerrainShader := preload("res://shaders/sol_terrain.gdshader")
+const Raconter := preload("res://scripts/ui/raconter.gd")
 
 ## Individus animés (les plus proches de la caméra).
 var animated := 1000
@@ -41,6 +44,8 @@ var people := {}
 var rite_clock := 0.0
 
 var followed := -1
+## Cellule de la descente (récit du narrateur), -1 sur un banc d'essai.
+var cell := -1
 var free_target := Vector3.ZERO
 var yaw := 0.6
 var pitch := 0.35
@@ -118,6 +123,7 @@ func _build_ui() -> void:
 	follow_button = Atlas.button(App.t("ground_free"), _toggle_follow)
 	row.add_child(follow_button)
 	row.add_child(Atlas.button(App.t("ground_next"), _follow_next))
+	row.add_child(Raconter.new(func(): return Son.raconter_lieu(cell) if cell >= 0 else -1))
 	var row2 := HBoxContainer.new()
 	v.add_child(row2)
 	var al := Atlas.text(App.t("ground_action"), 15)
@@ -153,12 +159,24 @@ func _people_sound(on: bool) -> void:
 	else:
 		Son.son.sans_peuple()
 
+## Les voix des espèces de la scène (fil Design sonore, `EvoSon.faune`).
+func _fauna_sound(on: bool) -> void:
+	if not is_instance_valid(Son) or Son.son == null:
+		return
+	if on:
+		Son.son.faune(ground)
+	else:
+		Son.son.sans_faune()
+
 func _exit_tree() -> void:
 	_people_sound(false)
+	_fauna_sound(false)
 
 func _setup_scene() -> void:
 	ready_done = true
 	waiting_label.visible = false
+	if ground.species_count() == 0:
+		notice_label.text = App.t("ground_empty")
 	var t: Dictionary = ground.terrain()
 	sky = t["sky"]
 	is_water = bool(t["water"])
@@ -241,6 +259,7 @@ func _setup_scene() -> void:
 	_build_camp()
 	if not camp.is_empty():
 		_people_sound(true)
+	_fauna_sound(true)
 	# Actions du lexique.
 	keys = [""]
 	actions_box.add_item(App.t("ground_free_behaviour"))
@@ -291,6 +310,7 @@ func _build_camp() -> void:
 			world.add_child(mi)
 			if which == 0:
 				var buf: PackedFloat32Array = fixed[k]
+				@warning_ignore("integer_division")
 				mm.instance_count = buf.size() / 12
 				if buf.size() > 0:
 					mm.buffer = buf
@@ -315,6 +335,7 @@ func _update_props() -> void:
 	for k in prop_mms.size():
 		var buf: PackedFloat32Array = props[k]
 		var mm: MultiMesh = prop_mms[k]
+		@warning_ignore("integer_division")
 		var n := buf.size() / 12
 		if n > mm.instance_count:
 			mm.instance_count = max(8, nearest_po2(n))
@@ -334,6 +355,8 @@ func follow_species(k: int) -> void:
 		var d: Dictionary = ground.individual(followed)
 		target_distance = clampf(float(d["size_m"]) * 4.5, 0.3, 300.0)
 		distance = target_distance
+		if is_instance_valid(Son) and Son.son != null:
+			Son.son.cri(ground, k)
 	follow_button.text = App.t("ground_free")
 
 func _follow_next() -> void:
@@ -441,10 +464,10 @@ func _update_animated() -> void:
 		var img: Image = ground.poses(k, ids, rows)
 		if img == null:
 			continue
-		var size := Vector2i(img.get_width(), img.get_height())
-		if s["tex"] == null or s["tex_size"] != size:
+		var dims := Vector2i(img.get_width(), img.get_height())
+		if s["tex"] == null or s["tex_size"] != dims:
 			s["tex"] = ImageTexture.create_from_image(img)
-			s["tex_size"] = size
+			s["tex_size"] = dims
 			(s["mat"] as ShaderMaterial).set_shader_parameter("poses", s["tex"])
 		else:
 			(s["tex"] as ImageTexture).update(img)

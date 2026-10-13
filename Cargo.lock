@@ -135,6 +135,7 @@ dependencies = [
  "evo-life",
  "evo-planet",
  "evo-sim",
+ "mimalloc",
  "rayon",
  "rusqlite",
 ]

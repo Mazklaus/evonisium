@@ -5,6 +5,8 @@ extends PanelContainer
 ## automatique, rendu du globe, narrateur, volumes du son (entendus
 ## aussitôt, gardés par l'autoload Son dans user://son.cfg).
 
+const Deplacable := preload("res://scripts/ui/deplacable.gd")
+
 var draft := {}
 
 func _ready() -> void:
@@ -19,7 +21,15 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(v)
-	v.add_child(Atlas.title(App.t("settings"), 32))
+	var title := Atlas.title(App.t("settings"), 32)
+	v.add_child(title)
+	# À l'accueil, la fenêtre a sa place ; dans la partie, elle s'ouvre au centre.
+	var origin := position
+	Deplacable.attach(self, title, "reglages", func():
+		if origin != Vector2.ZERO:
+			position = origin
+		else:
+			Deplacable.centre(self))
 	v.add_child(Atlas.hsep())
 
 	_option(v, "lang", ["Français", "English"], ["fr", "en"])

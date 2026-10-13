@@ -7,6 +7,8 @@ signal species_requested(species: int)
 signal anatomy_requested(species: int)
 signal compare_requested(species: int)
 
+const Raconter := preload("res://scripts/ui/raconter.gd")
+
 var species := -1
 var decor: TextureRect
 var figure: TextureRect
@@ -26,6 +28,9 @@ func open(l: int) -> void:
 		content.add_child(Atlas.text(App.t("no_species"), 18, true))
 		return
 	set_title(info["common"])
+	var tell := Raconter.new(func(): return Son.raconter_espece(species))
+	header.add_child(tell)
+	header.move_child(tell, header.get_child_count() - 2)
 	var sci := Atlas.title(info["scientific"], 22)
 	sci.add_theme_font_override("font", Atlas.title_italic)
 	content.add_child(sci)

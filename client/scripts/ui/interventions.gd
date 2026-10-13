@@ -191,8 +191,8 @@ func _update() -> void:
 func _confirm() -> void:
 	# Point de sauvegarde propre à l'intervention, juste avant : elle se
 	# défait en le rechargeant, et « avec et sans » en part.
-	var name := "%s %d" % [App.t("before_intervention"), int(Time.get_unix_time_from_system())]
-	var order: int = App.session.intervene_ex(engine_kind(), params(), cell, App.save_path(name), name)
+	var save_name := "%s %d" % [App.t("before_intervention"), int(Time.get_unix_time_from_system())]
+	var order: int = App.session.intervene_ex(engine_kind(), params(), cell, App.save_path(save_name), save_name)
 	if order >= 0:
 		intervened.emit(kind, order)
 	close()

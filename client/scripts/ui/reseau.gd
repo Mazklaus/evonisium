@@ -96,8 +96,8 @@ func _draw_graph() -> void:
 		var p: Vector2 = positions[i]
 		graph.draw_circle(p, 16.0, n["colour"])
 		graph.draw_arc(p, 16.0, 0.0, TAU, 32, Atlas.INK, 2.0, true)
-		var name: String = n["name"]
-		graph.draw_string(font, p + Vector2(-90, 32), name, HORIZONTAL_ALIGNMENT_CENTER, 180, 13, Atlas.INK)
+		var label: String = n["name"]
+		graph.draw_string(font, p + Vector2(-90, 32), label, HORIZONTAL_ALIGNMENT_CENTER, 180, 13, Atlas.INK)
 		graph.draw_string(font, p + Vector2(-90, 46), "%s mol C" % n["biomass"], HORIZONTAL_ALIGNMENT_CENTER, 180, 11, Atlas.INK.lightened(0.25))
 
 func _arrow(a: Vector2, b: Vector2, c: Color, width: float) -> void:

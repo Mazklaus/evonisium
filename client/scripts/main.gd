@@ -47,13 +47,13 @@ func _ready() -> void:
 		return
 	_show(first, {})
 
-func _show(name: String, params: Dictionary) -> void:
+func _show(screen_name: String, params: Dictionary) -> void:
 	if screen:
 		screen.queue_free()
 		screen = null
-	App.current_screen = name
-	screen = SCREENS[name].new()
-	screen.name = name.capitalize()
+	App.current_screen = screen_name
+	screen = SCREENS[screen_name].new()
+	screen.name = screen_name.capitalize()
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.theme = Atlas.theme
