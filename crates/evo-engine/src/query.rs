@@ -235,7 +235,7 @@ impl Store {
         db.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = OFF;").map_err(sql_err)?;
         db.execute_batch(SCHEMA).map_err(sql_err)?;
         let regions = BioGrid::new(&world.bio.grid, REGION_LEVEL.min(world.bio.grid.level));
-        let stored_events: i64 = db.query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0)).map_err(sql_err)?;
+        let stored_events: i64 = db.query_row("SELECT COALESCE(MAX(id) + 1, 0) FROM events", [], |r| r.get(0)).map_err(sql_err)?;
         let last: Option<f64> = db.query_row("SELECT MAX(years) FROM species", [], |r| r.get(0)).map_err(sql_err)?;
         let stored_samples = match last {
             Some(y) => world.history.samples.iter().filter(|s| s.years <= y).count(),
@@ -243,7 +243,7 @@ impl Store {
         };
         let mut store = Store {
             db,
-            stored_events: (stored_events as usize).min(world.events.events.len()),
+            stored_events: (stored_events as usize).min(world.events.total() as usize),
             stored_samples,
             regions: regions.len(),
             region_of: regions.parent,
@@ -259,12 +259,12 @@ impl Store {
         let tx = self.db.transaction()?;
         {
             let mut ins = tx.prepare_cached("INSERT OR REPLACE INTO events (id, years, interest, data) VALUES (?1, ?2, ?3, ?4)")?;
-            for e in &world.events.events[self.stored_events..] {
+            for e in world.events.since(self.stored_events as u64) {
                 let blob = bincode::serialize(e).expect("événement sérialisable");
                 ins.execute(params![e.id as i64, e.years, e.interest, blob])?;
             }
         }
-        self.stored_events = world.events.events.len();
+        self.stored_events = world.events.total() as usize;
         // La grille du vivant s'affine quand les multicellulaires gagnent les
         // terres : la table des régions suit (les grilles sont emboîtées,
         // une région garde son numéro).

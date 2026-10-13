@@ -937,7 +937,7 @@ impl World {
         let dt = self.next_step_years();
         let step_index = self.stats.steps;
         let years = self.years;
-        let first_event = self.events.events.len();
+        let first_event = self.events.total();
         let oxygen_before = self.planet.reservoirs.mixing_ratio(Gas::O2);
 
         let debug = std::env::var_os("EVO_DEBUG_ELECTRONS").is_some();
@@ -1106,9 +1106,9 @@ impl World {
         }
     }
 
-    fn adapt_step(&mut self, first_event: usize, oxygen_before: f64) {
+    fn adapt_step(&mut self, first_event: u64, oxygen_before: f64) {
         let Some(a) = self.config.adaptive_step else { return };
-        let notable = self.events.events[first_event..].iter().any(|e| e.interest >= a.notable_interest);
+        let notable = self.events.since(first_event).iter().any(|e| e.interest >= a.notable_interest);
         let o2 = self.planet.reservoirs.mixing_ratio(Gas::O2);
         let change = (o2 - oxygen_before).abs() / o2.max(oxygen_before).max(1e-6);
         self.progress.step_factor =
@@ -1723,6 +1723,7 @@ impl World {
         present.dedup();
         let (clades, leaves) = self.lineages.retire_absent(&present, years);
         self.lineages.prune(years);
+        self.events.prune(years);
         self.stats.leaf_extinctions += leaves as u64;
         for id in clades {
             self.events.push(years, None, EventKind::LineageExtinct { lineage: id });
@@ -2110,9 +2111,8 @@ impl World {
                 }
             })
             .collect();
-        let new_events =
-            self.events.events[self.published_events.min(self.events.events.len())..].iter().map(EventView::from_event).collect();
-        self.published_events = self.events.events.len();
+        let new_events = self.events.since(self.published_events as u64).iter().map(EventView::from_event).collect();
+        self.published_events = self.events.total() as usize;
         self.scan_species_origins();
         let species = self.species();
         let p = &self.config.influence;
@@ -2279,7 +2279,7 @@ impl World {
             h.f(e.elevation_m);
             h.f(e.temperature_k);
         }
-        h.u(self.events.events.len() as u64);
+        h.u(self.events.total());
         h.u(self.lineages.total() as u64);
         h.u(self.journal.total());
         h.u(self.disturbances.barriers.len() as u64);
@@ -2827,9 +2827,9 @@ mod tests {
             let mut spans = Vec::new();
             for _ in 0..40 {
                 let before = w.years;
-                let first = w.events.events.len();
+                let first = w.events.total();
                 w.step();
-                let notable = w.events.events[first..].iter().any(|e| e.interest >= 0.5);
+                let notable = w.events.since(first).iter().any(|e| e.interest >= 0.5);
                 spans.push((w.years - before, notable));
             }
             (spans, w.state_hash())

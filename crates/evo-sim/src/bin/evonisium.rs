@@ -230,15 +230,15 @@ fn complexity(args: &[String]) {
     let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
     let mut accelerated = false;
     let mut seen_oxygenic = false;
-    let mut seen_events = world.events.events.len();
+    let mut seen_events = world.events.total();
     while world.years() < max_years {
         world.step();
-        for e in &world.events.events[seen_events..] {
+        for e in world.events.since(seen_events) {
             if matches!(e.kind, evo_core::events::EventKind::MassExtinction { .. } | evo_core::events::EventKind::Radiation { .. }) {
                 println!("  ✦ {} : {}", e.kind.describe(), format_years(e.years));
             }
         }
-        seen_events = world.events.events.len();
+        seen_events = world.events.total();
         if let Some((y, path)) = save_at.as_ref().filter(|(y, _)| world.years() >= *y) {
             world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
             eprintln!("sauvegarde à {} (demandée à {})", format_years(world.years()), format_years(*y));

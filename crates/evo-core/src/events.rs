@@ -188,12 +188,29 @@ pub struct Event {
 }
 
 /// Journal en mémoire, dans l'ordre déterministe d'application.
+///
+/// [Simplification] Les naissances et extinctions de lignées se comptent par
+/// dizaines de millions dans une partie : passé `MINOR_EVENTS_KEPT_YEARS`,
+/// elles sortent du journal en mémoire (la base de la partie les garde). Les
+/// identifiants restent uniques et croissants, le journal devient creux.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct EventLog {
+    /// Événements gardés, par identifiant croissant.
     pub events: Vec<Event>,
     /// Types déjà vus, pour le bonus de nouveauté.
     seen: Vec<Cow<'static, str>>,
+    /// Identifiant du prochain événement : nombre d'événements inscrits.
+    next_id: u64,
+    /// Date du dernier élagage.
+    pruned_years: f64,
 }
+
+/// Durée pendant laquelle une naissance ou une extinction de lignée reste au
+/// journal en mémoire, en années.
+pub const MINOR_EVENTS_KEPT_YEARS: f64 = 50e6;
+
+/// Intervalle entre deux élagages du journal, en années.
+pub const PRUNE_EVENTS_EVERY_YEARS: f64 = 10e6;
 
 impl EventLog {
     /// Inscrit un événement du moteur, sans cause liée.
@@ -204,7 +221,8 @@ impl EventLog {
     /// Inscrit un événement avec son origine et sa cause ; renvoie son
     /// identifiant.
     pub fn push_with(&mut self, years: f64, cell: Option<u32>, kind: EventKind, origin: Origin, cause: Option<u64>) -> u64 {
-        let id = self.events.len() as u64;
+        let id = self.total();
+        self.next_id = id + 1;
         let name = kind.type_name();
         let novelty = if self.seen.iter().any(|s| s == name) {
             0.0
@@ -215,6 +233,40 @@ impl EventLog {
         let interest = (kind.base_interest() + novelty).min(1.0);
         self.events.push(Event { id, years, cell, kind, origin, cause, interest });
         id
+    }
+
+    /// Nombre d'événements inscrits depuis le début de la partie : le
+    /// curseur des lecteurs du journal.
+    pub fn total(&self) -> u64 {
+        self.next_id.max(self.events.last().map_or(0, |e| e.id + 1))
+    }
+
+    /// Événements gardés à partir de l'identifiant `id`.
+    pub fn since(&self, id: u64) -> &[Event] {
+        &self.events[self.events.partition_point(|e| e.id < id)..]
+    }
+
+    pub fn get(&self, id: u64) -> Option<&Event> {
+        self.events.binary_search_by_key(&id, |e| e.id).ok().map(|i| &self.events[i])
+    }
+
+    /// Retire les naissances et extinctions de lignées plus vieilles que
+    /// `MINOR_EVENTS_KEPT_YEARS`, au plus une fois par
+    /// `PRUNE_EVENTS_EVERY_YEARS` ; renvoie le nombre d'événements retirés.
+    pub fn prune(&mut self, years: f64) -> usize {
+        if years < self.pruned_years + PRUNE_EVENTS_EVERY_YEARS {
+            return 0;
+        }
+        self.pruned_years = years;
+        self.next_id = self.total();
+        let limit = years - MINOR_EVENTS_KEPT_YEARS;
+        let before = self.events.len();
+        self.events.retain(|e| e.years >= limit || !matches!(e.kind, EventKind::NewLineage { .. } | EventKind::LineageExtinct { .. }));
+        let removed = before - self.events.len();
+        if removed > 0 {
+            self.events.shrink_to(self.events.len() + self.events.len() / 4);
+        }
+        removed
     }
 
     pub fn count(&self, pred: impl Fn(&EventKind) -> bool) -> usize {
@@ -258,5 +310,18 @@ mod tests {
         assert!(log.events[0].interest > log.events[1].interest);
         assert_eq!(log.events[1].cause, Some(0));
         assert!(log.to_tsv().contains("accélérateur"));
+    }
+
+    #[test]
+    fn pruning_keeps_ids_and_notable_events() {
+        let mut log = EventLog::default();
+        log.push(1e6, None, EventKind::NewLineage { lineage: 1, parent: 0, signature: 1 });
+        log.push(2e6, None, EventKind::Snowball { ice_fraction: 1.0, starts: true });
+        log.push(90e6, None, EventKind::LineageExtinct { lineage: 1 });
+        assert_eq!(log.prune(100e6), 1);
+        assert_eq!(log.events.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(log.since(2).len(), 1);
+        assert_eq!(log.push(101e6, None, EventKind::Snowball { ice_fraction: 1.0, starts: true }), 3);
+        assert_eq!(log.total(), 4);
     }
 }
