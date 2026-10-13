@@ -1271,10 +1271,12 @@ impl World {
                 }
                 // Extinctions locales : la biomasse restante redevient matière
                 // organique dissoute et phosphate.
-                // Une cellule sans terre ferme du tout (océan) ne garde pas
+                // Une cellule sans terre émergée du tout (océan) ne garde pas
                 // d'organismes terrestres : leurs formes dormantes n'y
-                // attendent rien.
-                let landless = env.dry_area_m2 <= 0.0;
+                // attendent rien. Une terre prise sous la glace les garde :
+                // elles attendent le dégel (sinon une glaciation globale
+                // effaçait toute la vie des terres).
+                let landless = env.area_m2 - env.water_area_m2 <= 1e-6 * env.area_m2;
                 pops.retain(|p| {
                     if p.biomass < cfg.extinction_biomass || (landless && p.phenotype.is_terrestrial()) {
                         chem[WaterPool::Doc as usize] += p.biomass / v;

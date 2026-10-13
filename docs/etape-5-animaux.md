@@ -88,7 +88,7 @@ La coordination d'un corps est n / (n + 0,3 × doublements / 12), où n est le t
 - Ses naissances et extinctions sortent du journal au même âge. La base SQLite de la partie garde tout le journal.
 - Les identifiants restent uniques et croissants : registre et journal deviennent creux, et leurs lecteurs suivent un curseur d'identifiant (`total`, `since`).
 
-Sauvegardes au format 11.
+Sauvegardes au format 12.
 
 ## Résultats
 

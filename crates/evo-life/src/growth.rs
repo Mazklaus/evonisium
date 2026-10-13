@@ -56,6 +56,15 @@ pub struct Physiology {
     pub thermal_reference_width_k: f64,
     /// Mortalité de fond, an⁻¹.
     pub background_mortality: f64,
+    /// Feux des terres : part de l'O₂ de l'air au-dessus de laquelle la
+    /// végétation brûle, et mortalité par le feu d'un sol sec quand l'O₂
+    /// atteint `fire_full_o2`, an⁻¹ (elle croît comme le carré de l'excès).
+    /// [Simplification] Le feu est le frein de l'O₂ de l'air au-delà de 25 à
+    /// 35 % (charbons fossiles, Lenton et Watson) : il rend aux terres
+    /// émergées un plafond que la mer seule n'a pas.
+    pub fire_onset_o2: f64,
+    pub fire_full_o2: f64,
+    pub fire_mortality: f64,
     /// Mortalité de famine au plus, an⁻¹ : une cellule affamée ralentit son
     /// entretien et entre en dormance au lieu de se consumer (les bactéries
     /// affamées survivent des semaines à des années).
@@ -251,6 +260,9 @@ impl Default for Physiology {
             thermal_reference_width_k: 10.0,
             background_mortality: 20.0,
             max_starvation: 20.0,
+            fire_onset_o2: 0.21,
+            fire_full_o2: 0.35,
+            fire_mortality: 2.0,
             oxygen_stress_mortality: 200.0,
             oxygen_stress_half: 1e-3,
             oxygen_inhibition_half: 1e-4,
@@ -417,6 +429,8 @@ pub struct Conditions {
     pub soil_po4: f64,
     /// Pression partielle du CO₂ de l'air, Pa.
     pub co2_pa: f64,
+    /// Part de l'O₂ dans l'air, de 0 à 1.
+    pub o2_mixing: f64,
     /// Vrai une fois les conditions tournées vers la terre ferme
     /// ([`Conditions::for_habitat`]).
     pub on_land: bool,
@@ -438,6 +452,7 @@ impl Conditions {
             has_land: false,
             soil_po4: 0.0,
             co2_pa: 40.0,
+            o2_mixing: 0.0,
             on_land: false,
         }
     }
@@ -837,7 +852,9 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
             // suit l'humidité du sol.
             let wet = cond.moisture.clamp(0.0, 1.0);
             let co2 = if p.phototroph { physio.land_co2_factor(cond.co2_pa) } else { 1.0 };
-            (birth * wet * co2, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
+            let excess = ((cond.o2_mixing - physio.fire_onset_o2) / (physio.fire_full_o2 - physio.fire_onset_o2)).max(0.0);
+            let fire = physio.fire_mortality * excess * excess * (1.0 - 0.5 * wet);
+            (birth * wet * co2, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet) + fire)
         } else {
             // Plus de terre ferme libre (glace) : spores et formes de
             // dormance attendent son retour, sans croître ni mourir.
