@@ -82,6 +82,14 @@ var peoples := false
 var peoples_ready := false
 var peoples_tex: ImageTexture
 var people_labels: Node3D
+## Sociétés sur le globe (étape 7, sociétés d'essai).
+const GlobeSocietes := preload("res://scripts/globe_societes.gd")
+var societies := false
+var societies_ready := false
+var societes: Node3D
+var society_serial := -1
+var society_wait := 0.0
+signal societies_changed(ready: bool)
 signal peoples_changed(ready: bool)
 
 func _ready() -> void:
@@ -156,6 +164,9 @@ func _ready() -> void:
 
 	people_labels = Node3D.new()
 	add_child(people_labels)
+	societes = GlobeSocietes.new(self)
+	societes.visible = false
+	add_child(societes)
 
 	App.settings_changed.connect(_apply_settings)
 	_apply_settings()
@@ -351,6 +362,9 @@ func _update_comparison() -> void:
 ## Peuples sur le globe : le premier appel pose les peuples d'essai.
 func set_peoples(on: bool) -> void:
 	peoples = on
+	if societies:
+		# Les sociétés tiennent le globe ; les peuples reviennent après.
+		return
 	material.set_shader_parameter("show_peoples", on and peoples_ready)
 	people_labels.visible = on
 	if on and App.session.culture_status() == 0:
@@ -406,6 +420,92 @@ func _build_peoples() -> void:
 		lb.render_priority = 3
 		lb.position = (p["position"] as Vector3).normalized() * 1.03
 		lb.set_meta("people", int(p["id"]))
+		people_labels.add_child(lb)
+
+## Sociétés sur le globe : territoires et champs dans la texture des
+## peuples, noms des sociétés, villes, routes et lumières. Le premier appel
+## pose les peuples d'essai puis les sociétés d'essai sur leur pays.
+func set_societies(on: bool) -> void:
+	societies = on
+	societes.visible = on and societies_ready
+	if on:
+		society_wait = 0.0
+		society_serial = -1
+		people_labels.visible = true
+		if App.session.culture_status() == 0:
+			App.session.culture_bench(PEOPLES_SEED)
+	else:
+		# Les peuples reprennent leur place s'ils sont affichés.
+		material.set_shader_parameter("show_peoples", false)
+		for c in people_labels.get_children():
+			c.queue_free()
+		if societies_ready:
+			societies_ready = false
+			societies_changed.emit(false)
+		peoples_ready = false
+		people_labels.visible = peoples
+		if peoples:
+			_update_peoples()
+
+func _update_societies(delta: float) -> void:
+	var status: int = App.session.society_status()
+	if status == 0:
+		# Les sociétés partent du pays des peuples d'essai ; sur une planète
+		# où ils ne naissent pas, elles partent seules.
+		society_wait += delta
+		if App.session.culture_status() == 2 or society_wait > 6.0:
+			App.session.society_bench(PEOPLES_SEED)
+		return
+	if status < 2:
+		return
+	if not societies_ready:
+		societies_ready = true
+		societes.visible = true
+		societies_changed.emit(true)
+	var serial: int = App.session.society_serial()
+	if serial != society_serial:
+		society_serial = serial
+		_build_societies()
+	societes.update(delta)
+	var eye := camera.global_position.normalized()
+	for l in people_labels.get_children():
+		var lb := l as Label3D
+		var facing := lb.position.normalized().dot(eye)
+		lb.visible = facing > 0.2
+		lb.modulate.a = clampf((facing - 0.2) / 0.2, 0.0, 1.0)
+	var taken: Array = []
+	GlobeSocietes.declutter(people_labels.get_children(), camera, taken)
+	GlobeSocietes.declutter(societes.labels.get_children(), camera, taken)
+
+func _build_societies() -> void:
+	var img: Image = App.session.society_texture()
+	if img == null:
+		return
+	if peoples_tex != null and peoples_tex.get_width() == img.get_width() and peoples_tex.get_height() == img.get_height():
+		peoples_tex.update(img)
+	else:
+		peoples_tex = ImageTexture.create_from_image(img)
+	material.set_shader_parameter("data5", peoples_tex)
+	material.set_shader_parameter("people_palette", ImageTexture.create_from_image(App.session.people_palette()))
+	material.set_shader_parameter("show_peoples", true)
+	for c in people_labels.get_children():
+		c.queue_free()
+	for p in App.session.society_labels():
+		var lb := Label3D.new()
+		lb.text = str(p["name"]).to_upper()
+		lb.font = Atlas.heading_font()
+		lb.font_size = 36 if float(p["population"]) > 1.0e6 else 28
+		lb.pixel_size = 0.0009
+		lb.fixed_size = true
+		lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lb.no_depth_test = true
+		lb.modulate = Atlas.INK
+		lb.outline_modulate = Color(Atlas.PAPER, 0.85)
+		lb.outline_size = 10
+		lb.render_priority = 3
+		lb.offset = Vector2(0, -26)
+		lb.position = (p["position"] as Vector3).normalized() * 1.03
+		lb.set_meta("society", int(p["id"]))
 		people_labels.add_child(lb)
 
 ## Calque de données (dictionnaire de session.layers()) ou {} : vue naturelle.
@@ -565,7 +665,11 @@ func _process(delta: float) -> void:
 		observe_timer = 0.5
 		_send_observation()
 	App.perf_add("globe", t0)
-	if peoples:
+	if societies:
+		var t1 := Time.get_ticks_usec()
+		_update_societies(delta)
+		App.perf_add("sociétés", t1)
+	elif peoples:
 		var t1 := Time.get_ticks_usec()
 		_update_peoples()
 		App.perf_add("peuples", t1)

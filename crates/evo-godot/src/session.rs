@@ -10,6 +10,7 @@ mod bodies;
 mod culture;
 mod region;
 mod slide;
+mod society;
 mod son;
 mod story;
 mod tools;
@@ -105,6 +106,7 @@ pub struct EvoSession {
     watch_step: u64,
     bridge_ms: f64,
     culture: culture::CultureSlot,
+    society: society::SocietySlot,
     /// Vitesse tenue, mesurée entre les pas publiés (attente du frein comprise).
     meter: std::cell::RefCell<(Instant, evo_view::pace::Meter)>,
 }
@@ -131,6 +133,7 @@ impl IRefCounted for EvoSession {
             watch_step: 0,
             bridge_ms: 0.0,
             culture: Default::default(),
+            society: Default::default(),
             meter: std::cell::RefCell::new((Instant::now(), Default::default())),
         }
     }

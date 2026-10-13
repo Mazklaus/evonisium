@@ -156,10 +156,9 @@ impl EvoSession {
     #[func]
     fn culture_texture(&mut self) -> Option<Gd<Image>> {
         let st = self.culture()?;
-        let grid = self.grid.clone()?;
         let cells = self.frame()?.cells().len();
         let (w, h) = layers::texture_size(cells);
-        image_rgbaf(w, h, &cv::territory_texture(&st, &grid, cells))
+        image_rgbaf(w, h, &cv::territory_texture(&st, cells))
     }
 
     /// Palette des peuples (une ligne de 16 texels ; le rang 0 est vide).

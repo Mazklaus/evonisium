@@ -8,6 +8,8 @@ signal species_requested(species: int)
 signal tool_requested(tool: String, cell: int)
 ## Fiche du peuple qui habite la cellule (étape 6).
 signal people_requested(id: int)
+## Fiche de la société qui tient la cellule (étape 7).
+signal society_requested(id: int)
 
 const Raconter := preload("res://scripts/ui/raconter.gd")
 
@@ -108,6 +110,16 @@ func _fill(with_loupe: bool = true) -> void:
 			ph.add_child(pl)
 			ph.add_child(Atlas.button(App.t("people_sheet"), people_requested.emit.bind(int(pc["people"]))))
 			body.add_child(ph)
+	if App.globe.societies_ready:
+		var sc: Dictionary = App.session.society_at(cell)
+		if not sc.is_empty():
+			var sh := HBoxContainer.new()
+			var sl := Atlas.text(sc["text"], 16)
+			sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sl.custom_minimum_size.x = 200
+			sh.add_child(sl)
+			sh.add_child(Atlas.button(App.t("society_sheet"), society_requested.emit.bind(int(sc["society"]))))
+			body.add_child(sh)
 	body.add_child(Atlas.hsep())
 	body.add_child(Atlas.title(App.t("populations"), 20))
 	var pops: Array = d["populations"]

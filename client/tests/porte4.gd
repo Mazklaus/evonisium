@@ -459,6 +459,91 @@ func _perf_only() -> void:
 	report["echantillons"] = samples
 	_finish(true)
 
+## Essai de l'affichage de l'étape 7 sur sociétés d'essai : territoires,
+## champs, villes, routes et lumières la nuit sur le globe, inspecteur,
+## fenêtre des sociétés (liste, chronique, récit, planète), fiche,
+## comparaison de civilisations et encyclopédie.
+func _societies_only() -> void:
+	await _run_to(2.0e5)
+	var jeu = _screen()
+	jeu._toggle_societies(true)
+	var ok := await _until(func(): return App.globe.societies_ready, 180.0)
+	report["societes_pretes"] = ok
+	if not ok:
+		report["statut"] = App.session.society_status()
+		_finish(false)
+		return
+	var target := int(opts.get("an", "1500"))
+	await _until(func(): return App.session.society_year_value() >= target or App.session.society_status() == 3, 900.0)
+	await _wait(1.0)
+	report["annee"] = App.session.society_year_value()
+	var rows: Array = App.session.society_list()
+	report["societes"] = rows.size()
+	if rows.is_empty():
+		_finish(false)
+		return
+	report["noms"] = rows.slice(0, 12).map(func(r): return "%s (%s)" % [r["name"], r["label"]])
+	var cities: Array = App.session.society_cities()
+	report["villes"] = cities.size()
+	var first: Dictionary = App.session.society_sheet(int(rows[0]["id"]))
+	var core := int(first["cell"])
+	App.globe.go_to_cell(core, 2.4)
+	await _wait(2.0)
+	await _shot("societes-globe")
+	App.globe.go_to_cell(core, 1.35)
+	await _wait(2.0)
+	await _shot("societes-proche")
+	# Lumières : l'étoile est fixe quand le terminateur est affiché ; on
+	# vise la ville la plus peuplée du côté de la nuit, près du terminateur.
+	App.settings["terminator"] = true
+	App.globe._apply_settings()
+	var light := Vector3(-0.6, 0.35, 0.72).normalized()
+	var night := -1
+	for c in cities:
+		var d: float = (c["position"] as Vector3).normalized().dot(light)
+		if d < -0.15 and d > -0.7:
+			night = int(c["cell"])
+			break
+	report["ville_de_nuit"] = night
+	if night >= 0:
+		App.globe.go_to_cell(night, 2.2)
+		await _wait(2.5)
+		await _shot("societes-nuit")
+	App.settings["terminator"] = false
+	App.globe._apply_settings()
+	App.globe.go_to_cell(core, 1.5)
+	jeu.inspecteur.show_cell(core)
+	App.globe.select_cell(core)
+	await _wait(1.5)
+	await _shot("societes-inspecteur")
+	jeu.inspecteur.show_cell(-1)
+	jeu.open_societies()
+	await _wait(0.6)
+	await _shot("societes-liste")
+	for k in 3:
+		jeu.fiche.tabs.current_tab = k + 1
+		await _wait(0.6)
+		await _shot(["societes-chronique", "societes-recit", "societes-planete"][k])
+	var span: Vector2i = App.session.society_span()
+	report["recit"] = Array(App.session.society_story(span.x, span.y)).slice(0, 3)
+	jeu.open_society(int(rows[0]["id"]))
+	await _wait(0.6)
+	await _shot("societes-fiche")
+	jeu.fiche.body.get_parent().scroll_vertical = 900
+	await _wait(0.4)
+	await _shot("societes-fiche-suite")
+	if rows.size() >= 2:
+		jeu.open_society_compare(int(rows[0]["id"]), int(rows[1]["id"]))
+		await _wait(0.6)
+		await _shot("societes-comparaison")
+	jeu.open_encyclopedia()
+	await _wait(0.6)
+	await _shot("encyclopedie-simplifications")
+	jeu.fiche.tabs.current_tab = 1
+	await _wait(0.4)
+	await _shot("encyclopedie-techniques")
+	_finish(true)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
@@ -495,6 +580,9 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "peuples":
 		await _peoples_only()
+		return
+	if opts.get("seul", "") == "societes":
+		await _societies_only()
 		return
 	if opts.get("seul", "") == "mesures":
 		await _perf_only()

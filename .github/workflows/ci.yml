@@ -103,6 +103,9 @@ jobs:
       - name: Étape 6 — peuples d'essai sur le globe, fiches, mythes, campement au sol
         timeout-minutes: 15
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=peuples --niveau=4 --sortie=$PWD/porte/peuples
+      - name: Étape 7 — sociétés d'essai sur le globe, fiches, comparaison, récit, encyclopédie
+        timeout-minutes: 15
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=societes --niveau=4 --an=-6000 --sortie=$PWD/porte/societes
       - uses: actions/upload-artifact@v4
         if: always()
         with:

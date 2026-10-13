@@ -26,6 +26,10 @@ const Sol := preload("res://scripts/screens/sol.gd")
 const Lame := preload("res://scripts/screens/lame.gd")
 const Peuples := preload("res://scripts/ui/peuples.gd")
 const FichePeuple := preload("res://scripts/ui/fiche_peuple.gd")
+const Societes := preload("res://scripts/ui/societes.gd")
+const FicheSociete := preload("res://scripts/ui/fiche_societe.gd")
+const ComparaisonSocietes := preload("res://scripts/ui/comparaison_societes.gd")
+const Encyclopedie := preload("res://scripts/ui/encyclopedie.gd")
 const Deplacable := preload("res://scripts/ui/deplacable.gd")
 
 var bar: PanelContainer
@@ -79,6 +83,7 @@ func setup(params: Dictionary) -> void:
 			narrateur.tool_opened("calques"))
 	calques.raw_toggled.connect(func(on): App.globe.set_tiles(on))
 	calques.peoples_toggled.connect(_toggle_peoples)
+	calques.societies_toggled.connect(_toggle_societies)
 
 	inspecteur = Inspecteur.new()
 	var dock := func():
@@ -93,12 +98,13 @@ func setup(params: Dictionary) -> void:
 	inspecteur.species_requested.connect(open_species)
 	inspecteur.tool_requested.connect(open_tool)
 	inspecteur.people_requested.connect(open_people)
+	inspecteur.society_requested.connect(open_society)
 
 	frise = Frise.new()
 	add_child(frise)
 	frise.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 10)
 	frise.event_clicked.connect(go_to_event)
-	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["peoples", "P", open_peoples], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
+	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["peoples", "P", open_peoples], ["societies", "S", open_societies], ["encyclopedia", "E", open_encyclopedia], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
 		var b := Atlas.button(App.t(m[0]), m[2], App.t(m[0]) + ("" if m[1] == "" else " (%s)" % m[1]))
 		menu_buttons[m[0]] = b
 		b.add_theme_font_size_override("font_size", int(17 * App.text_scale()))
@@ -430,6 +436,47 @@ func open_notable(id: int) -> void:
 	f.open_notable(id)
 	f.go_to_cell.connect(_go_cell)
 
+## Sociétés (étape 7) : sur le globe, puis la fenêtre des sociétés, les
+## fiches et la comparaison. Tant que le moteur ne fait pas naître de
+## sociétés, des sociétés d'essai vivent leur histoire sur les terres de la
+## partie, et l'écran le dit.
+func _toggle_societies(on: bool) -> void:
+	App.globe.set_societies(on)
+	if on:
+		_flash(App.t("societies_bench_short"))
+	if calques.societies.button_pressed != on:
+		calques.societies.set_pressed_no_signal(on)
+
+func open_societies() -> void:
+	if not App.globe.societies:
+		_toggle_societies(true)
+	var f = _open(Societes.new())
+	f.society_requested.connect(open_society)
+	f.compare_requested.connect(open_society_compare)
+	f.go_to_cell.connect(_go_society_cell)
+
+func open_society(id: int) -> void:
+	var f = _open(FicheSociete.new())
+	f.open_society(id)
+	f.society_requested.connect(open_society)
+	f.compare_requested.connect(open_society_compare)
+	f.people_requested.connect(open_people)
+	f.go_to_cell.connect(_go_society_cell)
+
+func open_society_compare(a: int, b: int) -> void:
+	var f = _open(ComparaisonSocietes.new())
+	f.open_pair(a, b)
+	f.society_requested.connect(open_society)
+
+func open_encyclopedia() -> void:
+	_open(Encyclopedie.new())
+
+func _go_society_cell(cell: int) -> void:
+	if fiche and is_instance_valid(fiche):
+		fiche.close()
+	App.globe.go_to_cell(cell, 1.3)
+	inspecteur.show_cell(cell)
+
 func _go_cell(cell: int) -> void:
 	if fiche and is_instance_valid(fiche):
 		fiche.close()
@@ -563,6 +610,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			open_with_without()
 		KEY_P:
 			open_peoples()
+		KEY_S:
+			open_societies()
+		KEY_E:
+			open_encyclopedia()
 		KEY_F5:
 			open_save()
 		_:

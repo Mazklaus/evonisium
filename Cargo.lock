@@ -164,6 +164,7 @@ dependencies = [
  "evo-morph",
  "evo-planet",
  "evo-sim",
+ "evo-society",
  "evo-son",
  "evo-view",
  "godot",
@@ -252,6 +253,7 @@ dependencies = [
  "evo-morph",
  "evo-planet",
  "evo-sim",
+ "evo-society",
 ]
 
 [[package]]
