@@ -32,6 +32,7 @@ struct Earth {
     carbon: f64,
     /// Première année où le CO₂ fossile est le premier forçage humain.
     fossil_lead: Option<i64>,
+    v1: Option<i64>,
 }
 
 fn income(b: &Bench) -> (f64, f64) {
@@ -91,6 +92,7 @@ fn run_earth(seed: u64, until: i64) -> Earth {
         step10,
         carbon: b.world.carbon_balance() / b.world.carbon_initial,
         fossil_lead,
+        v1: b.world.v1.get(&HUMANS).copied(),
     }
 }
 
@@ -122,8 +124,8 @@ fn porte_cinq_terres() {
         };
         let p = plateau(&e);
         eprintln!(
-            "graine {} : foyers {:?} ({} indépendants), premier État {:?} ({:?} ans après), effondrements {}, sortie {:?}, plateau {:?}, sociétés au plus {}, forçage {:.2} W/m², pas de 10 ans dès {:?}, CO₂ fossile en tête dès {:?}, bilan carbone {:.1e}",
-            e.seed, e.hearths, e.independent, e.first_state, delay, e.collapses, e.takeoff, p, e.max_societies, e.forcing, e.step10, e.fossil_lead, e.carbon
+            "graine {} : foyers {:?} ({} indépendants), premier État {:?} ({:?} ans après), effondrements {}, sortie {:?}, plateau {:?}, sociétés au plus {}, forçage {:.2} W/m², pas de 10 ans dès {:?}, CO₂ fossile en tête dès {:?}, fin de la v1 {:?}, bilan carbone {:.1e}",
+            e.seed, e.hearths, e.independent, e.first_state, delay, e.collapses, e.takeoff, p, e.max_societies, e.forcing, e.step10, e.fossil_lead, e.v1, e.carbon
         );
         report.push((e, delay, p));
     }
@@ -143,6 +145,10 @@ fn porte_cinq_terres() {
         let t = e.takeoff.unwrap_or_else(|| panic!("graine {} : pas de sortie industrielle", e.seed));
         let lead = e.fossil_lead.unwrap_or_else(|| panic!("graine {} : le CO₂ fossile n'est jamais en tête", e.seed));
         assert!(lead - t <= 300, "graine {} : CO₂ fossile en tête {} ans après la sortie", e.seed, lead - t);
+        // La fin de la v1 vient 150 à 350 ans après le début de l'industrie
+        // (point ajouté par Vision).
+        let v1 = e.v1.unwrap_or_else(|| panic!("graine {} : pas de fin de la v1", e.seed));
+        assert!((150..=350).contains(&(v1 - t)), "graine {} : fin de la v1 {} ans après la sortie", e.seed, v1 - t);
     }
 }
 

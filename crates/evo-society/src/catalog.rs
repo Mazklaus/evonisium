@@ -458,6 +458,8 @@ pub struct Keys {
     pub locomotive: Option<u16>,
     pub bateau_vapeur: Option<u16>,
     pub machine_vapeur: Option<u16>,
+    pub methode_scientifique: Option<u16>,
+    pub pompe_vapeur: Option<u16>,
 }
 
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
@@ -839,6 +841,8 @@ impl Catalog {
             locomotive: id("locomotive"),
             bateau_vapeur: id("bateau_vapeur"),
             machine_vapeur: id("machine_vapeur"),
+            methode_scientifique: id("methode_scientifique"),
+            pompe_vapeur: id("pompe_vapeur"),
         };
         Ok(Catalog { techniques, pre_masks, any_masks, producers, instrument_of, families, depth, flagged, fishing, keys })
     }

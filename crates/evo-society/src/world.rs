@@ -40,6 +40,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Taux d'invention de base, par habitant connecté et par an.
 pub const INVENTION_RATE: f64 = 1.5e-10;
+/// Années qu'il faut, après la méthode expérimentale, pour qu'une société
+/// monte d'une marche au-dessus de son savoir le plus haut : il faut une
+/// génération d'ingénieurs pour tirer parti d'une découverte (trente ans de
+/// Maxwell à Marconi, de la radio au transistor ; Mokyr, 1990).
+pub const MATURATION_YEARS: i64 = 45;
 /// Coût de chaque marche de prérequis pour l'invention.
 pub const DEPTH_COST: f64 = 0.6;
 /// Plafond des morts par maladies endémiques, par an.
@@ -59,6 +64,9 @@ pub const DIFFUSION_RATE: f64 = 0.004;
 /// Facteur de la diffusion par l'écrit dans un pays, sur la part des
 /// lettrés : un pays tout lettré apprend en quelques décennies.
 pub const WRITTEN_DIFFUSION: f64 = 10.0;
+/// Chance annuelle qu'un pays qui sait extraire le charbon ouvre une mine
+/// sur un de ses gisements.
+pub const MINES_OPENED: f64 = 0.05;
 /// Facteur de la diffusion par l'écrit entre partenaires de commerce.
 pub const PARTNER_DIFFUSION: f64 = 3.0;
 /// Rythme des sous-systèmes lents (inventions, pertes, sciences, choix de
@@ -447,6 +455,7 @@ impl SocietyWorld {
             victories: 0,
             defeats: 0,
             peak: Label::Bands,
+            frontier: (0, self.year),
         });
         id
     }
@@ -737,6 +746,13 @@ impl SocietyWorld {
             // Lire et la méthode expérimentale aident à inventer (Mokyr,
             // 2002 : les Lumières industrielles).
             let lettered = (1.0 + 3.0 * soc.agg.literacy) * if method { 2.0 } else { 1.0 };
+            // Au-delà de la machine à vapeur, on n'invente qu'avec des
+            // moteurs qui tournent : l'électricité, la chimie et
+            // l'électronique sont nées dans des économies industrielles
+            // (Mokyr, 1990).
+            let steam_depth = cat.keys.machine_vapeur.map(|t| cat.depth[t as usize]).unwrap_or(u16::MAX);
+            let method_depth = cat.keys.methode_scientifique.map(|t| cat.depth[t as usize]).unwrap_or(u16::MAX);
+            let industrial = (soc.agg.modern_energy / 0.3).clamp(0.0, 1.0);
             let base = INVENTION_RATE
                 * lettered
                 * connected
@@ -751,6 +767,12 @@ impl SocietyWorld {
                 }
                 let tech = cat.get(t);
                 if tech.science.iter().any(|&(d, lvl)| soc.sciences[d.index()].precision < lvl) {
+                    continue;
+                }
+                // Une marche de plus que le savoir le plus haut attend que
+                // celui-ci ait mûri.
+                let depth = cat.depth[t as usize];
+                if depth > method_depth && depth > soc.frontier.0 && year - soc.frontier.1 < MATURATION_YEARS {
                     continue;
                 }
                 // Écrire, juger, battre monnaie : il faut un pouvoir central.
@@ -771,6 +793,7 @@ impl SocietyWorld {
                     // idée lointaine demande tout un savoir autour d'elle
                     // (Kremer, 1993 ; Mokyr, 2002).
                     base * tech.inventiveness
+                        * if cat.depth[t as usize] > steam_depth { industrial } else { 1.0 }
                         * need(tech.need)
                         * ease
                         * ease
@@ -1119,10 +1142,14 @@ impl SocietyWorld {
         }
         for (k, r) in &self.relations {
             let (a, b) = (k.0 as usize, k.1 as usize);
-            if a >= n || b >= n || !matches!(r.kind, RelationKind::Trade | RelationKind::Alliance) {
+            if a >= n || b >= n || matches!(r.kind, RelationKind::War { .. }) {
                 continue;
             }
-            let ok = |x: usize, y: usize| ind[x] && (ind[y] || has[y][0] || has[y][1]) && self.societies[y].alive();
+            // Les traités de commerce lient deux pays industriels ; un pays
+            // minier en paix vend son charbon à l'industriel voisin sans
+            // traité (le charbon gallois en France).
+            let trade = matches!(r.kind, RelationKind::Trade | RelationKind::Alliance);
+            let ok = |x: usize, y: usize| ind[x] && self.societies[y].alive() && (trade && ind[y] || has[y][0] || has[y][1]);
             if ok(a, b) || ok(b, a) {
                 member[a] = true;
                 member[b] = true;
@@ -1536,6 +1563,18 @@ impl SocietyWorld {
                             let tech = cat.get(t);
                             if cat.ready(t, &s.known) && this.feasible(tech, cell, s) {
                                 out.push((t, l.to));
+                            }
+                        }
+                    }
+                }
+                // Sur un gisement, le pays qui sait extraire ouvre des puits
+                // et y envoie ses mineurs, même loin de ses villes (les
+                // compagnies du Nord et de la Ruhr).
+                if cell.eco.deposits.coal_c > 1.0 {
+                    if let Some(soc) = this.societies.get(s.society as usize) {
+                        for t in [Some(cat.keys.extraction_charbon), cat.keys.pompe_vapeur].into_iter().flatten() {
+                            if soc.known.has(t) && !s.known.has(t) && r.random::<f64>() < MINES_OPENED {
+                                out.push((t, cell.id));
                             }
                         }
                     }
@@ -2231,6 +2270,10 @@ impl SocietyWorld {
                 s.agg = agg;
                 s.dims = d;
                 s.institutions = it;
+                let top = known.iter().map(|t| cat.depth[t as usize]).max().unwrap_or(0);
+                if top > s.frontier.0 {
+                    s.frontier = (top, year);
+                }
                 s.known = known;
                 s.label = lbl;
                 if !capital_ok || biggest.0 > 3.0 * self.cells[s.capital as usize].settlement.as_ref().map(|x| x.pop).unwrap_or(0.0) {
@@ -2317,7 +2360,11 @@ impl SocietyWorld {
                             {
                                 let pct = 100.0 * (1.0 - pop / bpop.max(1.0)).max(0.0);
                                 if lbl.rank() < blabel.rank() {
-                                    format!("Effondrement des {name} : {} à {}, {pct:.0} % de la population perdue.", de(blabel), lbl.label())
+                                    format!(
+                                        "Effondrement des {name} : {} à {}, {pct:.0} % de la population perdue.",
+                                        de(blabel),
+                                        lbl.label()
+                                    )
                                 } else {
                                     let land = 100.0 * (1.0 - now_cells as f64 / f64::from(bcells.max(1))).max(0.0);
                                     format!(
@@ -3181,7 +3228,7 @@ impl SocietyWorld {
                 continue;
             }
             let name = self.species(sp).map(|s| s.name.clone()).unwrap_or_default();
-            // La sortie industrielle : une première société d'un million
+            // La sortie industrielle : une première société de cinq millions
             // d'habitants au moins tire de ses moteurs à charbon ou à pétrole
             // plus d'un sixième de son travail (l'Angleterre vers 1800,
             // selon Wrigley, 2010) ; l'eau et le vent n'y suffisent pas, ni
@@ -3205,7 +3252,7 @@ impl SocietyWorld {
                     .filter(|s| {
                         s.alive()
                             && s.species == sp
-                            && s.agg.population >= 1e6
+                            && s.agg.population >= 5e6
                             && cat.keys.machine_vapeur.is_some_and(|t| s.known.has(t))
                             && s.agg.modern_energy > 0.15
                             && fossil(s) > 0.15
@@ -3227,7 +3274,14 @@ impl SocietyWorld {
                 for (best, m) in sciences.iter_mut().zip(&s.sciences) {
                     *best = best.max(m.precision);
                 }
-                if s.known.intersects(&cat.flagged.network) && leader.is_none_or(|l| s.agg.population > l.0) {
+                // La tête : la plus peuplée des sociétés reliées au réseau et
+                // industrielles (un pays qui a reçu le réseau sans moteurs ne
+                // compte pas).
+                if s.known.intersects(&cat.flagged.network)
+                    && s.agg.population >= 1e6
+                    && s.agg.modern_energy > 0.2
+                    && leader.is_none_or(|l| s.agg.population > l.0)
+                {
                     leader = Some((s.agg.population, s.id));
                 }
             }
@@ -3387,8 +3441,11 @@ impl Market {
         }
         let g = self.group[society] as usize;
         let mut e = [0.0; 2];
+        // Chaque mine vend tout ce qu'elle peut, jusqu'au manque du marché
+        // entier : les grandes compensent les petites, et le surplus reste
+        // au stock du marché.
         if self.mines[cell] && self.sources[g][0] > 0 {
-            e[0] = self.short[g][0] / f64::from(self.sources[g][0]);
+            e[0] = self.short[g][0];
         }
         if self.sources[g][1] > 0 {
             e[1] = self.short[g][1] / f64::from(self.sources[g][1]);

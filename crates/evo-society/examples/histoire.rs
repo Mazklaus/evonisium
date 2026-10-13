@@ -26,7 +26,7 @@ fn main() {
     let mut first: Vec<Option<i64>> = vec![None; ncat];
     for i in 1..=years {
         b.step();
-        if i % 25 == 0 {
+        if i % 5 == 0 {
             for soc in b.world.alive_societies() {
                 for t in soc.known.iter() {
                     first[t as usize].get_or_insert(b.world.year);

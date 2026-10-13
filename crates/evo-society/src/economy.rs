@@ -705,7 +705,7 @@ pub fn run(inp: &Input, eco: &Economy) -> (Economy, Year) {
     // 1978).
     let mut invest_at = usize::MAX;
     if inp.policy.invest {
-        let target = nonfood * 2.0;
+        let target = nonfood * 3.0;
         let invest = ((target - machines) * 0.2).max(0.0) + machines * Good::Machines.decay();
         invest_at = demands.len();
         demands.push((Good::Machines, invest));
@@ -869,14 +869,14 @@ pub fn run(inp: &Input, eco: &Economy) -> (Economy, Year) {
         out
     }
     // Extraction pour les voisins et le pays, payée par les acheteurs :
-    // elle passe avant les besoins de la cellule, sur la moitié au plus de
-    // son travail (les bassins houillers attiraient la main-d'œuvre).
+    // elle passe avant les besoins de la cellule, sur les quatre cinquièmes au
+    // plus de son travail (les bassins houillers attiraient la main-d'œuvre).
     let mut exported: Vec<(Good, f64)> = Vec::with_capacity(for_stock.len());
     for &(g, q) in &for_stock {
         if q <= 0.0 {
             continue;
         }
-        let reserve = labour_left * 0.5;
+        let reserve = labour_left * 0.2;
         labour_left -= reserve;
         let got = make(
             g,
