@@ -439,11 +439,17 @@ impl Conditions {
 
     /// Conditions vues par un organisme terrestre (`terrestrial`) ou
     /// aquatique : la lumière, les proies et les prédateurs de son habitat.
-    pub fn for_habitat(&self, terrestrial: bool) -> Self {
+    pub fn for_habitat(&self, terrestrial: bool) -> std::borrow::Cow<'_, Self> {
         if !terrestrial {
-            return *self;
+            return std::borrow::Cow::Borrowed(self);
         }
-        Self { light_kj: self.land_light_kj, prey: self.land_prey, predators: self.land_predators, on_land: true, ..*self }
+        std::borrow::Cow::Owned(Self {
+            light_kj: self.land_light_kj,
+            prey: self.land_prey,
+            predators: self.land_predators,
+            on_land: true,
+            ..*self
+        })
     }
 
     /// Carbone des proies que le prédateur `p` peut prendre, mol·m⁻³.
@@ -608,16 +614,28 @@ pub fn growth_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, phy
     if p.body.is_some() {
         return body_rates(p, cond, chem, physio);
     }
-    growth_rates_with(p, &p.capacities(cond.temperature_k, physio), cond, chem, physio)
+    growth_rates_with(p, &p.capacities(cond.temperature_k, physio), &[], cond, chem, physio)
 }
 
 /// [`growth_rates`] avec les capacités déjà calculées à la température de
-/// `cond` (pour un corps, elles sont recalculées par type cellulaire).
-pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
-    if p.body.is_some() {
+/// `cond` : celles de la cellule (`caps`) et, pour un corps, celles de ses
+/// types cellulaires (`types`, dans l'ordre de `Body::types` ; vide, elles
+/// sont recalculées).
+pub fn growth_rates_with(
+    p: &Phenotype,
+    caps: &Capacities,
+    types: &[Capacities],
+    cond: &Conditions,
+    chem: &WaterChemistry,
+    physio: &Physiology,
+) -> GrowthRates {
+    if let Some(body) = &p.body {
+        if types.len() == body.types.len() {
+            return body_rates_with(p, types, cond, chem, physio);
+        }
         return body_rates(p, cond, chem, physio);
     }
-    let cond = &cond.for_habitat(p.is_terrestrial());
+    let cond = &*cond.for_habitat(p.is_terrestrial());
     let prey = cond.edible_prey(p, physio);
     let forage = Forage { ingestion: physio.max_ingestion, half: prey_half_saturation(p, 1.0, physio) };
     let b = budget(p, caps, cond.light_kj, cond.uv_w_m2, prey, forage, chem, physio);
@@ -630,13 +648,17 @@ pub fn growth_rates_with(p: &Phenotype, caps: &Capacities, cond: &Conditions, ch
 /// sont prises que par la surface, sauf circulation) ; les bilans des zones s'ajoutent,
 /// pondérés par leur part des cellules.
 fn body_rates(p: &Phenotype, cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
+    body_rates_with(p, &p.type_capacities(cond.temperature_k, physio), cond, chem, physio)
+}
+
+/// [`body_rates`] avec les capacités de chaque type cellulaire.
+fn body_rates_with(p: &Phenotype, caps: &[Capacities], cond: &Conditions, chem: &WaterChemistry, physio: &Physiology) -> GrowthRates {
     let body = p.body.as_ref().expect("corps");
-    let cond = &cond.for_habitat(p.is_terrestrial());
+    let cond = &*cond.for_habitat(p.is_terrestrial());
     let mut total = Budget::default();
     let prey = cond.edible_prey(p, physio);
     let clock = metabolic_clock(p);
     let forage = Forage { ingestion: physio.max_ingestion * clock, half: prey_half_saturation(p, clock, physio) };
-    let caps: Vec<Capacities> = body.types.iter().map(|t| t.capacities(cond.temperature_k, physio)).collect();
     for (k, z) in body.zones.iter().enumerate() {
         let t = &body.types[z.cell_type as usize];
         let zone_chem: WaterChemistry = std::array::from_fn(|i| chem[i] * z.access);

@@ -52,7 +52,45 @@ use evo_life::{selection_coefficient, GrowthRates, Phenotype, Physiology};
 use evo_planet::CellEnvironment;
 use evo_planet::WaterChemistry;
 use rand::Rng;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Base calculée pendant un tour, à verser au cache.
+pub type NewBasis = (Arc<Genome>, Arc<Basis>);
+
+/// Bases phénotypiques des génotypes vivants, gardées d'un tour à l'autre :
+/// la base ne dépend que du génome (et de la physiologie, fixée pour la
+/// partie), elle n'est recalculée que quand le génotype change. La clé est
+/// l'adresse du génome partagé ; l'entrée garde le génome en vie, l'adresse
+/// ne peut donc pas resservir à un autre. Sans effet sur l'histoire.
+#[derive(Clone, Debug, Default)]
+pub struct BasisCache {
+    map: HashMap<usize, (Arc<Genome>, Arc<Basis>)>,
+}
+
+impl BasisCache {
+    pub fn get(&self, genome: &Arc<Genome>) -> Option<&Arc<Basis>> {
+        self.map.get(&(Arc::as_ptr(genome) as usize)).filter(|(g, _)| Arc::ptr_eq(g, genome)).map(|(_, b)| b)
+    }
+
+    pub fn insert(&mut self, genome: Arc<Genome>, basis: Arc<Basis>) {
+        self.map.insert(Arc::as_ptr(&genome) as usize, (genome, basis));
+    }
+
+    /// Ne garde que les génomes que porte encore une population.
+    pub fn retain_living(&mut self, communities: &[Vec<Population>]) {
+        let living: std::collections::HashSet<usize> = communities.iter().flatten().map(|p| Arc::as_ptr(&p.genome) as usize).collect();
+        self.map.retain(|k, _| living.contains(k));
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
 
 /// Réglages de l'évolution.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -544,6 +582,8 @@ pub fn evolve_genotype(
     dt: f64,
     years: f64,
     group: &GenotypeGroup,
+    basis: &Basis,
+    cell_conditions: &[(usize, evo_life::Conditions)],
     rng: &mut impl Rng,
     accelerator_on: bool,
     complex_boost: f64,
@@ -557,22 +597,39 @@ pub fn evolve_genotype(
     if resident.rates.birth <= 0.0 {
         return None;
     }
+    // Conditions de chaque cellule du dème, calculées une fois par tour ;
+    // une cellule hors de la liste est calculée sur place.
+    let conditions_in = |c: usize| {
+        cell_conditions.iter().find(|x| x.0 == c).map(|x| x.1).unwrap_or_else(|| {
+            let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
+            ctx.conditions_of(&communities[c], physio)
+        })
+    };
     // Conditions des cellules où le mutant est jugé (la représentative
     // d'abord).
     let judged: Vec<(usize, usize, f64, evo_life::Conditions, RawCapacities)> = group
         .members
         .iter()
         .map(|&(c, j, b)| {
-            let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-            let cnd = ctx.conditions_of(&communities[c], physio);
+            let cnd = conditions_in(c);
             (c, j, b, cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
         })
         .collect();
+    // Capacités des types cellulaires du résident à chaque température où
+    // un mutant est jugé : un type que la mutation ne touche pas les garde.
+    let resident_types = resident.phenotype.body.as_ref().map(|b| &b.types[..]).unwrap_or(&[]);
+    let mut type_caps: Vec<(u64, Vec<evo_life::phenotype::Capacities>)> = Vec::new();
+    if !resident_types.is_empty() {
+        for t in judged.iter().map(|j| j.3.temperature_k).chain(std::iter::once(conditions_in(rc).temperature_k)) {
+            if !type_caps.iter().any(|x| x.0 == t.to_bits()) {
+                type_caps.push((t.to_bits(), resident_types.iter().map(|ty| ty.capacities(t, physio)).collect()));
+            }
+        }
+    }
     let weight: f64 = judged.iter().map(|j| j.2).sum::<f64>().max(f64::MIN_POSITIVE);
     let chem = &chemistry[rc];
     let (cond, base) = judged.iter().find(|j| (j.0, j.1) == (rc, i)).map(|j| (j.3, j.4)).unwrap_or_else(|| {
-        let ctx = CellContext { env: &envs[rc], light_biomass_per_m2: cfg.light_biomass_per_m2 };
-        let cnd = ctx.conditions_of(pops, physio);
+        let cnd = conditions_in(rc);
         (cnd, RawCapacities::of(&resident.phenotype.enzymes, cnd.temperature_k, physio))
     });
     let weight_total: f64 = cfg.mutation.weights.iter().sum();
@@ -617,8 +674,27 @@ pub fn evolve_genotype(
         // par génotype et par cellule : seules les enzymes qui diffèrent sont
         // recalculées.
         let rates_in = |cnd: &evo_life::Conditions, base: &RawCapacities, chem: &WaterChemistry| {
-            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype, cnd.temperature_k, physio);
-            growth_rates_with(&phenotype, &caps, cnd, chem, physio)
+            let t = cnd.temperature_k;
+            let caps = base.mutant(&resident.phenotype.enzymes, &phenotype, t, physio);
+            let types: Vec<evo_life::phenotype::Capacities> = match &phenotype.body {
+                Some(body) => {
+                    let known = type_caps.iter().find(|x| x.0 == t.to_bits()).map(|x| &x.1[..]).unwrap_or(&[]);
+                    body.types
+                        .iter()
+                        .map(|ty| {
+                            let same = resident_types
+                                .iter()
+                                .position(|r| r.cell_size.to_bits() == ty.cell_size.to_bits() && r.enzymes == ty.enzymes);
+                            match same.and_then(|r| known.get(r)) {
+                                Some(c) => *c,
+                                None => ty.capacities(t, physio),
+                            }
+                        })
+                        .collect()
+                }
+                None => Vec::new(),
+            };
+            growth_rates_with(&phenotype, &caps, &types, cnd, chem, physio)
         };
         let rates = rates_in(&cond, &base, chem);
         // Un mutant de guilde nouvelle est jugé contre la population de
@@ -645,9 +721,8 @@ pub fn evolve_genotype(
         }
         judged_s(Some((s / weight, phenotype, rates)))
     };
-    // Construction incrémentale : la base du résident sert à tous ses
-    // mutants ponctuels.
-    let basis = Basis::new(&resident.genome, physio);
+    // Construction incrémentale : la base du résident (`basis`) sert à tous
+    // ses mutants ponctuels.
     let evaluate = |change: &GenomeChange, stats: &mut EvolutionStats| -> Option<(f64, Phenotype, GrowthRates)> {
         let genome = &change.genome;
         let unchanged = match change.element {
@@ -664,7 +739,7 @@ pub fn evolve_genotype(
         } else {
             match basis.derive(&resident.genome, genome, change.element, physio) {
                 Some(b) => Phenotype::assemble(genome, &b, physio),
-                None => Phenotype::from_genome(genome, physio),
+                None => Phenotype::assemble(genome, &basis.rebuild(&resident.genome, genome, change.element, physio), physio),
             }
         };
         stats.genetic_evaluations += 1;
@@ -831,7 +906,11 @@ pub fn evolve_genotype(
         // seconde mutation seule, bien plus fréquente, l'emporte sur ce double
         // qui traîne la première comme un poids mort. Ce critère se lit sur le
         // phénotype, avant tout calcul de croissance.
-        let phenotype2 = Phenotype::from_genome(&second.genome, physio);
+        let first = basis.derive(&resident.genome, &change.genome, change.element, physio);
+        let first = first.unwrap_or_else(|| basis.rebuild(&resident.genome, &change.genome, change.element, physio));
+        let both = first.derive(&change.genome, &second.genome, second.element, physio);
+        let both = both.unwrap_or_else(|| first.rebuild(&change.genome, &second.genome, second.element, physio));
+        let phenotype2 = Phenotype::assemble(&second.genome, &both, physio);
         stats.genetic_evaluations += 1;
         if !gains_function(&phenotype2, &resident.phenotype) {
             continue;
@@ -940,7 +1019,11 @@ pub fn evolve_genotype(
                 // Plusieurs changements : le phénotype se construit en entier
                 // (la construction incrémentale ne suit qu'un élément).
                 stats.genetic_evaluations += 1;
-                if let Some((s, phenotype, rates)) = judge(Phenotype::from_genome(&change.genome, physio)) {
+                if let Some((s, phenotype, rates)) = judge(Phenotype::assemble(
+                    &change.genome,
+                    &basis.rebuild(&resident.genome, &change.genome, change.element, physio),
+                    physio,
+                )) {
                     if s >= first.s && phenotype.signature == first.phenotype.signature {
                         let extra = taken[1..]
                             .iter()
@@ -975,20 +1058,57 @@ pub fn evolve_deme(
     round: u64,
     accelerator_on: bool,
     complex_boost: f64,
-) -> (Vec<Fixation>, EvolutionStats) {
+    cache: &BasisCache,
+) -> (Vec<Fixation>, EvolutionStats, Vec<NewBasis>) {
     let mut stats = EvolutionStats::default();
     let mut out = Vec::new();
-    for group in genotype_groups(cells, communities, envs, cfg) {
+    let mut fresh: Vec<NewBasis> = Vec::new();
+    let groups = genotype_groups(cells, communities, envs, cfg);
+    let mut conditions: Vec<(usize, evo_life::Conditions)> = Vec::new();
+    for g in &groups {
+        for &(c, _, _) in g.members.iter().chain(std::iter::once(&(g.rep.0, 0, 0.0))) {
+            if !conditions.iter().any(|x| x.0 == c) {
+                let ctx = CellContext { env: &envs[c], light_biomass_per_m2: cfg.light_biomass_per_m2 };
+                conditions.push((c, ctx.conditions_of(&communities[c], &cfg.physiology)));
+            }
+        }
+    }
+    for group in groups {
         let (c, i) = group.rep;
+        let resident = &communities[c][i];
+        if resident.rates.birth <= 0.0 {
+            continue;
+        }
+        let basis =
+            match cache.get(&resident.genome).or_else(|| fresh.iter().find(|(g, _)| Arc::ptr_eq(g, &resident.genome)).map(|(_, b)| b)) {
+                Some(b) => b.clone(),
+                None => {
+                    let b = Arc::new(Basis::new(&resident.genome, &cfg.physiology));
+                    fresh.push((resident.genome.clone(), b.clone()));
+                    b
+                }
+            };
         // Le premier tour garde le tirage d'un pas à un seul tour.
         let mut rng = if round == 0 {
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64])
         } else {
             rng_for(cfg.seed, Stream::Mutation, &[step_index, deme as u64, c as u64, i as u64, round])
         };
-        if let Some(Fixed { change, phenotype, rates, selection, extra }) =
-            evolve_genotype(communities, chemistry, envs, cfg, dt, years, &group, &mut rng, accelerator_on, complex_boost, &mut stats)
-        {
+        if let Some(Fixed { change, phenotype, rates, selection, extra }) = evolve_genotype(
+            communities,
+            chemistry,
+            envs,
+            cfg,
+            dt,
+            years,
+            &group,
+            &basis,
+            &conditions,
+            &mut rng,
+            accelerator_on,
+            complex_boost,
+            &mut stats,
+        ) {
             let GenomeChange { genome, cause, element } = change;
             out.push(Fixation {
                 habitat: group.habitat,
@@ -1003,7 +1123,7 @@ pub fn evolve_deme(
             });
         }
     }
-    (out, stats)
+    (out, stats, fresh)
 }
 
 #[cfg(test)]

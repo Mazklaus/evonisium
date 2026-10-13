@@ -95,6 +95,11 @@ impl CellContext<'_> {
     /// partagée, proies et pression des prédateurs (d'après leur dernière
     /// évaluation), chaque habitat pour soi.
     pub fn conditions_of(&self, pops: &[Population], physio: &Physiology) -> Conditions {
+        self.conditions_with(pops, None, physio)
+    }
+
+    /// [`conditions_of`](Self::conditions_of) avec les constantes du pas.
+    pub fn conditions_with(&self, pops: &[Population], constants: Option<&[PopulationConstants]>, physio: &Physiology) -> Conditions {
         let mut cond = self.conditions(pops);
         let v = self.env.water_volume_m3;
         if v <= 0.0 {
@@ -112,7 +117,8 @@ impl CellContext<'_> {
             if p.phenotype.engulfment <= 0.0 || demand <= 0.0 {
                 continue;
             }
-            let edible = edible_biomass(pops, j, physio);
+            let edible =
+                edible_biomass(pops, j, constants.and_then(|k| k.get(j)).map(|k| &k.capture[..]).filter(|e| e.len() == pops.len()), physio);
             if edible > 0.0 {
                 let list = if p.phenotype.is_terrestrial() { &mut cond.land_predators } else { &mut cond.predators };
                 list.push(p.phenotype.as_predator(demand / edible));
@@ -140,15 +146,29 @@ fn shared_light(light_w_m2: f64, area_m2: f64, light_biomass_per_m2: f64, photo_
 }
 
 /// Biomasse que le prédateur `j` peut englober dans la communauté (lui
-/// excepté), pondérée par la facilité à englober chaque proie.
-fn edible_biomass(pops: &[Population], j: usize, physio: &Physiology) -> f64 {
+/// excepté), pondérée par la facilité à englober chaque proie ; `capture`,
+/// quand il est fourni, donne la capture de chaque proie (voir
+/// [`PopulationConstants`]).
+fn edible_biomass(pops: &[Population], j: usize, capture_of: Option<&[f64]>, physio: &Physiology) -> f64 {
     let hunter = pops[j].phenotype.as_predator(1.0);
     let land = pops[j].phenotype.is_terrestrial();
     pops.iter()
         .enumerate()
         .filter(|&(q, p)| q != j && p.phenotype.is_terrestrial() == land)
-        .map(|(_, q)| q.biomass * capture(&hunter, &q.phenotype.as_prey(1.0, physio), physio))
+        .map(|(q, p)| p.biomass * capture_of.map_or_else(|| capture(&hunter, &p.phenotype.as_prey(1.0, physio), physio), |e| e[q]))
         .sum()
+}
+
+/// Ce qui reste constant pour une population pendant les sous-pas
+/// écologiques d'un pas (les phénotypes et la température ne changent pas) :
+/// ses capacités, celles de ses types cellulaires, et, pour un prédateur, la
+/// capture de chaque population de la cellule.
+#[derive(Clone, Debug)]
+pub struct PopulationConstants {
+    pub cell: Capacities,
+    pub types: Vec<Capacities>,
+    /// Vide pour une population qui n'englobe rien.
+    pub capture: Vec<f64>,
 }
 
 /// Évalue toutes les populations d'une cellule dans l'état courant.
@@ -159,15 +179,27 @@ pub fn evaluate(pops: &mut [Population], ctx: &CellContext, chem: &WaterChemistr
 
 /// Capacités des populations d'une cellule à sa température (constantes
 /// pendant les sous-pas de l'écologie d'un pas).
-pub fn capacities(pops: &[Population], ctx: &CellContext, physio: &Physiology) -> Vec<Capacities> {
-    pops.iter().map(|p| p.phenotype.capacities(ctx.env.temperature_k, physio)).collect()
+pub fn capacities(pops: &[Population], ctx: &CellContext, physio: &Physiology) -> Vec<PopulationConstants> {
+    let t = ctx.env.temperature_k;
+    let prey: Vec<_> = pops.iter().map(|p| p.phenotype.as_prey(1.0, physio)).collect();
+    pops.iter()
+        .map(|p| {
+            let capture = if p.phenotype.engulfment > 0.0 {
+                let hunter = p.phenotype.as_predator(1.0);
+                prey.iter().map(|q| capture(&hunter, q, physio)).collect()
+            } else {
+                Vec::new()
+            };
+            PopulationConstants { cell: p.phenotype.capacities(t, physio), types: p.phenotype.type_capacities(t, physio), capture }
+        })
+        .collect()
 }
 
 /// [`evaluate`] avec les capacités déjà calculées (une par population).
-pub fn evaluate_with(pops: &mut [Population], caps: &[Capacities], ctx: &CellContext, chem: &WaterChemistry, physio: &Physiology) {
-    let cond = ctx.conditions_of(pops, physio);
+pub fn evaluate_with(pops: &mut [Population], caps: &[PopulationConstants], ctx: &CellContext, chem: &WaterChemistry, physio: &Physiology) {
+    let cond = ctx.conditions_with(pops, Some(caps), physio);
     for (p, c) in pops.iter_mut().zip(caps) {
-        p.rates = growth_rates_with(&p.phenotype, c, &cond, chem, physio);
+        p.rates = growth_rates_with(&p.phenotype, &c.cell, &c.types, &cond, chem, physio);
     }
 }
 
@@ -189,7 +221,7 @@ pub fn substep(pops: &mut [Population], ctx: &CellContext, chem: &mut WaterChemi
 /// [`substep`] avec les capacités déjà calculées (une par population).
 pub fn substep_with(
     pops: &mut [Population],
-    caps: &[Capacities],
+    caps: &[PopulationConstants],
     ctx: &CellContext,
     chem: &mut WaterChemistry,
     dt: f64,
@@ -255,14 +287,19 @@ pub fn substep_with(
             if pops[j].phenotype.engulfment <= 0.0 || want <= 0.0 {
                 continue;
             }
-            let edible = edible_biomass(pops, j, physio);
+            let row = Some(&caps[j].capture[..]).filter(|e| e.len() == n);
+            let edible = edible_biomass(pops, j, row, physio);
             if edible <= 0.0 {
                 continue;
             }
             let hunter = pops[j].phenotype.as_predator(1.0);
             for q in 0..n {
                 let same = pops[q].phenotype.is_terrestrial() == pops[j].phenotype.is_terrestrial();
-                let e = if q == j || !same { 0.0 } else { capture(&hunter, &pops[q].phenotype.as_prey(1.0, physio), physio) };
+                let e = if q == j || !same {
+                    0.0
+                } else {
+                    row.map_or_else(|| capture(&hunter, &pops[q].phenotype.as_prey(1.0, physio), physio), |e| e[q])
+                };
                 if e > 0.0 {
                     let a = want * e * pops[q].biomass / edible;
                     alloc.push((j, q, a));
