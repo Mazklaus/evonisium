@@ -30,6 +30,8 @@ struct Earth {
     forcing: f64,
     step10: Option<i64>,
     carbon: f64,
+    /// Première année où le CO₂ fossile est le premier forçage humain.
+    fossil_lead: Option<i64>,
 }
 
 fn income(b: &Bench) -> (f64, f64) {
@@ -48,10 +50,14 @@ fn run_earth(seed: u64, until: i64) -> Earth {
     let mut max_societies = 0;
     let t0 = Instant::now();
     let mut step10 = None;
+    let mut fossil_lead = None;
     while b.world.year < until {
         b.step();
         if step10.is_none() && b.world.climate_step_years() == 10 {
             step10 = Some(b.world.year);
+        }
+        if fossil_lead.is_none() && b.world.forcing_parts().fossil_leads() {
+            fossil_lead = Some(b.world.year);
         }
         if b.world.year % 100 == 0 {
             let (pop, inc) = income(&b);
@@ -84,6 +90,7 @@ fn run_earth(seed: u64, until: i64) -> Earth {
         forcing: b.world.forcing_w_m2(),
         step10,
         carbon: b.world.carbon_balance() / b.world.carbon_initial,
+        fossil_lead,
     }
 }
 
@@ -115,8 +122,8 @@ fn porte_cinq_terres() {
         };
         let p = plateau(&e);
         eprintln!(
-            "graine {} : foyers {:?} ({} indépendants), premier État {:?} ({:?} ans après), effondrements {}, sortie {:?}, plateau {:?}, sociétés au plus {}, forçage {:.2} W/m², pas de 10 ans dès {:?}, bilan carbone {:.1e}",
-            e.seed, e.hearths, e.independent, e.first_state, delay, e.collapses, e.takeoff, p, e.max_societies, e.forcing, e.step10, e.carbon
+            "graine {} : foyers {:?} ({} indépendants), premier État {:?} ({:?} ans après), effondrements {}, sortie {:?}, plateau {:?}, sociétés au plus {}, forçage {:.2} W/m², pas de 10 ans dès {:?}, CO₂ fossile en tête dès {:?}, bilan carbone {:.1e}",
+            e.seed, e.hearths, e.independent, e.first_state, delay, e.collapses, e.takeoff, p, e.max_societies, e.forcing, e.step10, e.fossil_lead, e.carbon
         );
         report.push((e, delay, p));
     }
@@ -130,6 +137,12 @@ fn porte_cinq_terres() {
         // Les flux humains changent le climat ; le carbone ne se perd pas.
         assert!(e.forcing > 0.1 && e.step10.is_some(), "graine {} : forçage {:.3}", e.seed, e.forcing);
         assert!(e.carbon.abs() < 1e-9, "graine {} : bilan carbone {:.1e}", e.seed, e.carbon);
+        // Là où le charbon existe, le CO₂ fossile devient le premier forçage
+        // moins de 300 ans après le début de l'industrie (point ajouté par
+        // Vision ; vérification finale avec les vrais gisements).
+        let t = e.takeoff.unwrap_or_else(|| panic!("graine {} : pas de sortie industrielle", e.seed));
+        let lead = e.fossil_lead.unwrap_or_else(|| panic!("graine {} : le CO₂ fossile n'est jamais en tête", e.seed));
+        assert!(lead - t <= 300, "graine {} : CO₂ fossile en tête {} ans après la sortie", e.seed, lead - t);
     }
 }
 
@@ -246,18 +259,24 @@ fn les_flux_humains_changent_le_climat_et_les_sols_sans_perdre_de_carbone() {
     let mut b = bench::modern(7);
     let soil0: f64 = b.world.cells.iter().map(|c| c.eco.soil).sum();
     let mut step10 = None;
+    let mut fossil_lead = None;
     for _ in 0..250 {
         b.step();
         if step10.is_none() && b.world.climate_step_years() == 10 {
             step10 = Some(b.world.year);
         }
+        if fossil_lead.is_none() && b.world.forcing_parts().fossil_leads() {
+            fossil_lead = Some(b.world.year);
+        }
     }
     let w = &b.world;
     let soil: f64 = w.cells.iter().map(|c| c.eco.soil).sum();
     eprintln!(
-        "an {} : forçage {:.2} W/m², pas du climat à 10 ans dès {:?}, CO₂ cumulé {:.2e} t C, sols {:.1} → {:.1}, érosion {:.2e} t, bilan {:.3e} t C sur {:.3e}",
+        "an {} : forçage {:.2} W/m² ({:?}), CO₂ fossile en tête dès {:?}, pas du climat à 10 ans dès {:?}, CO₂ cumulé {:.2e} t C, sols {:.1} → {:.1}, érosion {:.2e} t, bilan {:.3e} t C sur {:.3e}",
         w.year,
         w.forcing_w_m2(),
+        w.forcing_parts(),
+        fossil_lead,
         step10,
         w.totals.cum_co2_c,
         soil0,
@@ -270,6 +289,9 @@ fn les_flux_humains_changent_le_climat_et_les_sols_sans_perdre_de_carbone() {
     // 250 ans d'industrie naissante, il doit au moins apparaître.
     assert!(w.forcing_w_m2() > 0.01, "forçage {}", w.forcing_w_m2());
     let _ = step10;
+    // Sur une Terre de 1750 riche en charbon, le CO₂ fossile passe en tête
+    // dans les 300 ans.
+    assert!(fossil_lead.is_some_and(|y| y <= 2050), "CO₂ fossile en tête : {fossil_lead:?}");
     assert!((soil - soil0).abs() > 1.0 && w.totals.cum_erosion_t > 0.0);
     assert!(w.carbon_balance().abs() < 1e-9 * w.carbon_initial, "bilan {}", w.carbon_balance());
 }

@@ -81,6 +81,14 @@ fn main() {
                 famine / (every as f64 * 1e6),
                 crisis / 1e6
             );
+            let f = b.world.forcing_parts();
+            if f.fossil_co2 + f.land_co2 + f.methane > 0.01 {
+                let modern: f64 = b.world.alive_societies().map(|s| s.agg.population * s.agg.modern_energy).sum::<f64>() / pop.max(1.0);
+                println!(
+                    "           forçage : CO₂ fossile {:.3}, CO₂ des terres {:.3}, méthane {:.3}, aérosols {:.3} W/m² ; énergie moderne {:.3}",
+                    f.fossil_co2, f.land_co2, f.methane, f.aerosol, modern
+                );
+            }
             d_epi = 0.0;
             d_war = 0.0;
             famine = 0.0;

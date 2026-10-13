@@ -282,6 +282,35 @@ impl Default for Effects {
 
 impl Effects {
     /// Composition de deux jeux d'effets.
+    /// Même chose que `combine`, sur place.
+    #[inline]
+    pub fn add(&mut self, o: &Effects) {
+        self.forage *= o.forage;
+        self.fishing *= o.fishing;
+        self.crop_yield *= o.crop_yield;
+        self.field_labour *= o.field_labour;
+        self.irrigation += o.irrigation;
+        self.soil += o.soil;
+        self.storage += o.storage;
+        self.herd *= o.herd;
+        self.traction += o.traction;
+        self.craft *= o.craft;
+        self.transport *= o.transport;
+        self.fidelity += o.fidelity;
+        self.admin += o.admin;
+        self.military *= o.military;
+        self.defence *= o.defence;
+        self.health *= o.health;
+        self.epidemic *= o.epidemic;
+        self.immunity *= o.immunity;
+        self.birth *= o.birth;
+        self.science *= o.science;
+        self.urban += o.urban;
+        self.reach += o.reach;
+        self.fuel_km2 += o.fuel_km2;
+        self.fertilizer_km2 += o.fertilizer_km2;
+    }
+
     pub fn combine(&self, o: &Effects) -> Effects {
         Effects {
             forage: self.forage * o.forage,
@@ -393,6 +422,42 @@ pub struct Catalog {
     /// Profondeur : longueur de la plus longue chaîne de prérequis (un
     /// groupe « ou » compte par son option la plus courte).
     pub depth: Vec<u16>,
+    /// Techniques portant chaque drapeau, pour tester un savoir d'un coup.
+    pub flagged: FlagMasks,
+    /// Techniques de la famille de la pêche.
+    pub fishing: Known,
+    /// Identifiants des techniques que le moteur consulte chaque année.
+    pub keys: Keys,
+}
+
+/// Masques des techniques par drapeau.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FlagMasks {
+    pub agriculture: Known,
+    pub herding: Known,
+    pub writing: Known,
+    pub method: Known,
+    pub printing: Known,
+    pub money: Known,
+    pub market: Known,
+    pub industry: Known,
+    pub navigation: Known,
+    pub law: Known,
+    pub school: Known,
+    pub network: Known,
+}
+
+/// Techniques nommées dont le moteur a besoin à chaque pas (0 si absente,
+/// comme `id(…).unwrap_or(0)`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Keys {
+    pub village: u16,
+    pub ecole_obligatoire: u16,
+    pub extraction_charbon: u16,
+    pub radeau: Option<u16>,
+    pub locomotive: Option<u16>,
+    pub bateau_vapeur: Option<u16>,
+    pub machine_vapeur: Option<u16>,
 }
 
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
@@ -737,7 +802,45 @@ impl Catalog {
         }
         let mut memo = vec![None; techniques.len()];
         let depth = (0..techniques.len()).map(|i| depth_of(i, &techniques, &mut memo)).collect();
-        Ok(Catalog { techniques, pre_masks, any_masks, producers, instrument_of, families, depth })
+        let mut flagged = FlagMasks::default();
+        for t in &techniques {
+            let f = &t.flags;
+            for (on, m) in [
+                (f.agriculture, &mut flagged.agriculture),
+                (f.herding, &mut flagged.herding),
+                (f.writing, &mut flagged.writing),
+                (f.method, &mut flagged.method),
+                (f.printing, &mut flagged.printing),
+                (f.money, &mut flagged.money),
+                (f.market, &mut flagged.market),
+                (f.industry, &mut flagged.industry),
+                (f.navigation, &mut flagged.navigation),
+                (f.law, &mut flagged.law),
+                (f.school, &mut flagged.school),
+                (f.network, &mut flagged.network),
+            ] {
+                if on {
+                    m.set(t.id);
+                }
+            }
+        }
+        let mut fishing = Known::default();
+        for t in &techniques {
+            if t.family == Some(Family::Fishing) {
+                fishing.set(t.id);
+            }
+        }
+        let id = |k: &str| techniques.iter().position(|t| t.key == k).map(|i| i as u16);
+        let keys = Keys {
+            village: id("village").unwrap_or(0),
+            ecole_obligatoire: id("ecole_obligatoire").unwrap_or(0),
+            extraction_charbon: id("extraction_charbon").unwrap_or(0),
+            radeau: id("radeau"),
+            locomotive: id("locomotive"),
+            bateau_vapeur: id("bateau_vapeur"),
+            machine_vapeur: id("machine_vapeur"),
+        };
+        Ok(Catalog { techniques, pre_masks, any_masks, producers, instrument_of, families, depth, flagged, fishing, keys })
     }
 
     pub fn len(&self) -> usize {
@@ -774,6 +877,10 @@ impl Catalog {
 
     /// Effets combinés d'un ensemble de techniques.
     pub fn effects(&self, known: &Known) -> Effects {
-        known.iter().fold(Effects::default(), |e, t| e.combine(&self.techniques[t as usize].effects))
+        let mut e = Effects::default();
+        for t in known.iter() {
+            e.add(&self.techniques[t as usize].effects);
+        }
+        e
     }
 }
