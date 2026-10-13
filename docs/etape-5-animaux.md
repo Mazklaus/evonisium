@@ -97,7 +97,7 @@ Résultats de la porte (graine 2026, niveau 4, pas de 100 ka, un tour d'évoluti
 | Monde | Eucaryote | Multicellulaire à 2 types | Plante de terre | Système nerveux | Animal mobile | Squelette | Animal hors de l'eau | Mémoire max |
 |---|---|---|---|---|---|---|---|---|
 | Terre | 1,88 Ga ⚑ | 2,41 Ga | 2,46 Ga | 2,41 Ga | 2,51 Ga | 2,54 Ga | 2,54 Ga | 2,2 Go |
-| Super-Terre | 2,19 Ga ⚑ | 2,25 Ga | 2,27 Ga | 2,44 Ga | 2,46 Ga | 2,54 Ga | 2,47 Ga | 5,4 Go (avant l'élagage du journal) |
+| Super-Terre | 2,19 Ga ⚑ | 2,25 Ga | 2,27 Ga | 2,44 Ga | 2,46 Ga | 2,54 Ga | 2,47 Ga | 2,8 Go |
 | Sans lune | 1,02 Ga | 1,42 Ga | 1,42 Ga | 2,63 Ga | 2,70 Ga | 2,73 Ga | 2,77 Ga | 2,5 Go |
 | Petite planète | 2,69 Ga ⚑ | 3,28 Ga | 3,29 Ga | 3,28 Ga | non | non | non | 1,2 Go |
 | Désert | 2,21 Ga ⚑, éteint | non | non | non | non | non | non | 2,1 Go |
@@ -107,7 +107,7 @@ Résultats de la porte (graine 2026, niveau 4, pas de 100 ka, un tour d'évoluti
 - **O₂** (part de l'atmosphère) : de 18 à 29 % sur la Terre de 1,2 à 3,4 Ga, 22 % sur la super-Terre à 3,5 Ga, de 5 à 35 % sans lune. Il ne s'effondre plus.
 - **Prédateurs et proies.** Sur la Terre, de 2,5 à 2,8 Ga : 2 à 34 populations d'animaux, de 9 à 6 000 mol C. Leur alimentation vient pour 1 à 16 % des proies, et 13 à 1 557 populations sont chassées. Les corps vont jusqu'à 11 m et 11 m/s, avec jusqu'à 14 paires d'appendices et des organes sonores. Les animaux restent une petite part de la biomasse.
 - **Extinctions de masse et radiations** : 2 ou 3 de chaque par partie.
-- **Rejeu identique.** Les deux parties de la Terre, avant et après l'élagage du journal, ont la même histoire.
+- **Rejeu identique.** Les parties de la Terre et de la super-Terre, avant et après l'élagage du journal, ont la même histoire. La super-Terre seule sur 4 cœurs va à 589 ka/s en moyenne sur 3,5 Ga.
 - **Vitesse.** À l'ère animale (Terre, 2,8 Ga), 30 Ma prennent 115 s sur 4 cœurs, lecture de la sauvegarde comprise, soit ≈ 260 ka/s ; 147 ka/s sur 2 cœurs. Porte : 100 ka/s sur 6 cœurs.
 
 **Verdict : porte franchie avec accélération déclarée.** Des animaux mobiles, prédateurs, à squelette et sortis de l'eau apparaissent sans script sur la Terre et sur deux mondes de la vague 1 (super-Terre et sans lune), après les plantes de terre. Sur deux de ces trois mondes, l'eucaryote vient de l'accélérateur de la complexité ; ensuite, aucune transition n'est accélérée. La mémoire reste sous 5 Go.
