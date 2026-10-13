@@ -1931,7 +1931,7 @@ impl SocietyWorld {
                     Some(c),
                     Some(t),
                     None,
-                    format!("Un foyer agricole naît chez les {name} : {wild} domestiqué."),
+                    format!("Un foyer agricole naît chez les {name}, qui domestiquent {wild}."),
                     0.9,
                 );
             }
@@ -2173,8 +2173,11 @@ impl SocietyWorld {
             elites = elites.clamp(0.0005, 0.25).min(e_target * 2.5).max(e_target * 0.3);
             let revenue = surplus * policy.tax * (0.4 + 0.6 * d.admin) / (1.0 + 0.3 * cells_pen);
             let expenses = public + elites * pop * 0.5 * d.centralisation;
+            // Sans trésor (bandes, tribus), pas de dette ; au-delà de vingt
+            // ans de recettes, le souverain fait défaut et la dette s'efface
+            // jusque-là (Reinhart et Rogoff, 2009).
             let mut debt = agg.debt * 1.03 + expenses - revenue;
-            debt = debt.max(0.0);
+            debt = if soc.label.rank() < 2 { 0.0 } else { debt.clamp(0.0, 20.0 * (revenue + 1.0)) };
             let mmp = ((1.05 - fpc) / 0.3).clamp(0.0, 1.0) * (0.5 + urban / pop);
             let emp = (elites / e_target.max(1e-4) - 1.0).max(0.0);
             let sfd = (debt / (revenue + 1.0) / 10.0).min(2.0);
@@ -2303,6 +2306,7 @@ impl SocietyWorld {
                     if collapsed {
                         self.counters.collapses += 1;
                         let name = self.societies[i].name();
+                        let now_cells = self.societies[i].cells.len();
                         self.event(
                             EventKind::Collapse,
                             Some(id),
@@ -2310,12 +2314,18 @@ impl SocietyWorld {
                             None,
                             None,
                             None,
-                            format!(
-                                "Effondrement des {name} : de {} à {}, {:.0} % de la population perdue.",
-                                blabel.label(),
-                                lbl.label(),
-                                100.0 * (1.0 - pop / bpop.max(1.0)).max(0.0)
-                            ),
+                            {
+                                let pct = 100.0 * (1.0 - pop / bpop.max(1.0)).max(0.0);
+                                if lbl.rank() < blabel.rank() {
+                                    format!("Effondrement des {name} : {} à {}, {pct:.0} % de la population perdue.", de(blabel), lbl.label())
+                                } else {
+                                    let land = 100.0 * (1.0 - now_cells as f64 / f64::from(bcells.max(1))).max(0.0);
+                                    format!(
+                                        "Effondrement des {name} : {} perd {pct:.0} % de sa population et {land:.0} % de ses terres.",
+                                        the(lbl)
+                                    )
+                                }
+                            },
                             0.85,
                         );
                     } else {
@@ -2637,8 +2647,12 @@ impl SocietyWorld {
                                 self.relations
                                     .insert((a, b), Relation { kind: RelationKind::War { attacker: att }, since: year, weariness: 0.0 });
                                 // Les razzias entre bandes ne font pas la chronique.
+                                // Une guerre qui reprend après moins d'une génération
+                                // de paix ne refait pas la chronique.
                                 if organised == 1.0 {
                                     self.counters.wars += 1;
+                                }
+                                if organised == 1.0 && year - rel.since >= 25 {
                                     let (na, nd) = (s.name(), d.name());
                                     self.event(
                                         EventKind::WarStart,
@@ -2650,7 +2664,7 @@ impl SocietyWorld {
                                         format!("Les {na} entrent en guerre contre les {nd}."),
                                         0.5,
                                     );
-                                } else {
+                                } else if organised < 1.0 {
                                     self.counters.raids += 1;
                                 }
                                 declared = true;
@@ -3380,5 +3394,27 @@ impl Market {
             e[1] = self.short[g][1] / f64::from(self.sources[g][1]);
         }
         e
+    }
+}
+
+/// « de l'empire » : « d'empire », « de chefferie ».
+fn de(l: Label) -> String {
+    let w = l.label();
+    if w.starts_with(['a', 'e', 'é', 'É', 'i', 'o', 'u']) {
+        format!("d'{w}")
+    } else {
+        format!("de {w}")
+    }
+}
+
+/// L'étiquette avec son article : « l'empire », « la chefferie ».
+fn the(l: Label) -> String {
+    match l {
+        Label::Bands => "les bandes".into(),
+        Label::Tribe => "la tribu".into(),
+        Label::Chiefdom => "la chefferie".into(),
+        Label::State => "l'État".into(),
+        Label::Empire => "l'empire".into(),
+        Label::ModernState => "l'État moderne".into(),
     }
 }
