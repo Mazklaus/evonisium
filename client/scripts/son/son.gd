@@ -34,6 +34,11 @@ var _sans_bandeau := {}
 
 var _inspecteur: WeakRef
 var _sol: WeakRef
+var _globe: WeakRef
+## Ville écoutée sur le globe : cellule, proximité, temps avant relecture.
+var _ville_cellule := -1
+var _ville_proche := 0.0
+var _ville_attente := 0.0
 var _saves := 0
 
 func _ready() -> void:
@@ -178,6 +183,8 @@ func _on_node_added(node: Node) -> void:
 		_inspecteur = weakref(node)
 	elif path.ends_with("screens/sol.gd"):
 		_sol = weakref(node)
+	elif path.ends_with("scripts/globe.gd"):
+		_globe = weakref(node)
 	elif node.has_signal("closed") and node is PanelContainer:
 		# Une fiche de l'Atlas s'ouvre : la plume gratte.
 		son.bruit("plume")
@@ -198,7 +205,7 @@ func _visible(ref: WeakRef) -> Node:
 	if ref == null:
 		return null
 	var n = ref.get_ref()
-	if n is CanvasItem and n.is_inside_tree() and n.is_visible_in_tree():
+	if (n is CanvasItem or n is Node3D) and n.is_inside_tree() and n.is_visible_in_tree():
 		return n
 	return null
 
@@ -229,11 +236,38 @@ func _ecouter() -> void:
 	if s == null or not s.is_running():
 		return
 	son.ecouter(s)
+	_ecouter_ville(vue, s)
 	# Un point de sauvegarde vient d'être écrit : coup de tampon.
 	var pending := s.saves_pending()
 	if pending < _saves:
 		son.bruit("tampon")
 	_saves = pending
+
+## Sons des villes (livraison 3) : avec le calque des sociétés, la ville au
+## centre de la vue sonne dès le zoom régional (bande 3), d'autant plus fort
+## qu'on est près.
+func _ecouter_ville(vue: String, s: EvoSession) -> void:
+	_ville_attente -= get_process_delta_time()
+	var cellule := -1
+	var proche := 0.0
+	var g = _visible(_globe) if vue == "globe" else null
+	if g and bool(g.get("societies")):
+		var bande: float = g.view_cap().y
+		proche = clampf((bande - 2.0) / 4.0, 0.0, 1.0)
+		if proche > 0.0:
+			cellule = g.pick(g.get_viewport().get_visible_rect().size * 0.5)
+	if cellule < 0:
+		if _ville_cellule >= 0:
+			son.sans_ville()
+		_ville_cellule = -1
+		return
+	# Relue quand on change de cellule ou de zoom, sinon toutes les 4 s
+	# (la ville grandit, apprend des techniques).
+	if cellule != _ville_cellule or proche != _ville_proche or _ville_attente <= 0.0:
+		son.ville(s, cellule, proche)
+		_ville_cellule = cellule
+		_ville_proche = proche
+		_ville_attente = 4.0
 
 func _suivre_narrateur(vue: String) -> void:
 	for n in son.nouvelles():

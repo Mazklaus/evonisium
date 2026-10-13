@@ -420,6 +420,7 @@ impl EvoSon {
             population: population as f32,
             taille: taille as f32,
             cle: cle as u64,
+            techniques: Vec::new(),
         };
         self.send(Ordre::Peuple(Some(p)));
     }
@@ -483,6 +484,7 @@ impl EvoSon {
         self.taire();
         self.send(Ordre::Peuple(None));
         self.send(Ordre::Faune(None));
+        self.send(Ordre::Ville(None));
     }
 
     /// Voix des espèces de la scène au sol (livraison 2) : chaque espèce
@@ -504,6 +506,35 @@ impl EvoSon {
             crowd.species.iter().zip(nombre).filter_map(|(sp, n)| Some((organe(&sp.sound?), n))).filter(|(_, n)| *n > 0).collect::<Vec<_>>()
         };
         self.send(Ordre::Faune(Some(organes)));
+    }
+
+    /// Ville regardée de près sur le globe (livraison 3, volet villes) : la
+    /// cellule au centre de la vue et la proximité de la caméra, de 0 (loin)
+    /// à 1 (au plus près). Sans ville dans la cellule, la ville se tait.
+    /// Lu seulement dans l'état des sociétés publié.
+    #[func]
+    fn ville(&mut self, session: Gd<EvoSession>, cellule: i64, proche: f64) {
+        let mut session = session;
+        let v = session.bind_mut().ville_du_son(cellule);
+        let proche = proche.clamp(0.0, 1.0) as f32;
+        self.send(Ordre::Ville(v.filter(|_| proche > 0.0).map(|v| (v, proche))));
+    }
+
+    /// Plus aucune ville écoutée.
+    #[func]
+    fn sans_ville(&mut self) {
+        self.send(Ordre::Ville(None));
+    }
+
+    /// Les techniques de la société du peuple regardé au sol (étape 7) lui
+    /// donnent ses instruments de métal, de machine ou d'électricité. À
+    /// appeler après `peuple`.
+    #[func]
+    fn techniques_du_peuple(&mut self, session: Gd<EvoSession>, peuple: i64) {
+        let t = session.bind().techniques_du_peuple(peuple);
+        if !t.is_empty() {
+            self.send(Ordre::Techniques(t));
+        }
     }
 
     /// Plus aucune espèce au sol.

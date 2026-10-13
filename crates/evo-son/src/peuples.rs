@@ -21,7 +21,7 @@
 //! livraison 2 (organes sonores). Pas de grammaire ni d'intonation propre à
 //! chaque langue au-delà de l'accent de mot.
 
-use crate::synth::{mtof, Biquad, Bus, FilterKind, Make, Rng, Smooth, Voice};
+use crate::synth::{mtof, Biquad, Bus, FilterKind, Make, Rng, Smooth, Timbre, Voice};
 use std::f32::consts::{PI, TAU};
 
 /// Un son de la langue, avec ce qu'il faut pour le prononcer. Les
@@ -524,6 +524,10 @@ pub struct Peuple {
     /// Taille du corps de l'espèce, par rapport à un humain.
     pub taille: f32,
     pub cle: u64,
+    /// Clés des techniques que connaît sa société (catalogue d'`evo-society`,
+    /// étape 7) : elles lui donnent ses instruments de métal, de machine et
+    /// d'électricité. Vide avant l'étape 7.
+    pub techniques: Vec<String>,
 }
 
 /// Caractère d'un chant selon l'objet du rite.
@@ -630,7 +634,39 @@ pub enum Instrument {
     /// Pierres qui sonnent.
     Lithophone,
     Guimbarde,
+    // Instruments des techniques (étape 7), du bronze à l'électronique.
+    /// Lyre : cordes pincées tendues sur un cadre.
+    Lyre,
+    /// Trompe de métal.
+    Trompe,
+    /// Gong de bronze.
+    Gong,
+    /// Orgue : des tuyaux soufflés par une machine.
+    Orgue,
+    /// Vièle à archet.
+    Vielle,
+    /// Piano : cordes d'acier frappées.
+    Piano,
+    /// Guitare électrique.
+    Guitare,
+    /// Synthétiseur.
+    Synthe,
 }
+
+/// Instruments des techniques, du plus ancien au plus récent : chacun vient
+/// avec l'une des techniques qui le rendent possible (clés du catalogue
+/// d'`evo-society`). [Simplification] Une date par instrument, sans chemin
+/// propre à chaque peuple ; les voies sans mains n'en ont pas.
+pub const INSTRUMENTS_DES_TECHNIQUES: [(Instrument, &[&str]); 8] = [
+    (Instrument::Lyre, &["bronze", "fonte_cuivre"]),
+    (Instrument::Trompe, &["fonte_cuivre", "bronze"]),
+    (Instrument::Gong, &["bronze"]),
+    (Instrument::Orgue, &["moulin_eau", "pompe_vapeur", "aq_acoustique"]),
+    (Instrument::Vielle, &["universite", "imprimerie"]),
+    (Instrument::Piano, &["machine_outil", "acier_bessemer"]),
+    (Instrument::Guitare, &["reseau_electrique", "radio"]),
+    (Instrument::Synthe, &["transistor", "ordinateur"]),
+];
 
 impl Instrument {
     pub const MELODIQUES: [Instrument; 5] =
@@ -662,10 +698,21 @@ impl Instrument {
             Instrument::Arc => "arc musical",
             Instrument::Lithophone => "pierres sonnantes",
             Instrument::Guimbarde => "guimbarde",
+            Instrument::Lyre => "lyre",
+            Instrument::Trompe => "trompe de métal",
+            Instrument::Gong => "gong",
+            Instrument::Orgue => "orgue",
+            Instrument::Vielle => "vièle à archet",
+            Instrument::Piano => "piano",
+            Instrument::Guitare => "guitare électrique",
+            Instrument::Synthe => "synthétiseur",
         }
     }
     pub fn melodique(self) -> bool {
-        Self::MELODIQUES.contains(&self)
+        Self::MELODIQUES.contains(&self) || (self.de_technique() && self != Instrument::Gong)
+    }
+    pub fn de_technique(self) -> bool {
+        INSTRUMENTS_DES_TECHNIQUES.iter().any(|&(i, _)| i == self)
     }
 }
 
@@ -724,6 +771,43 @@ impl Tradition {
         self.instruments.contains(&i)
     }
 
+    /// Les instruments que permettent les techniques du peuple : le plus
+    /// récent, parfois un plus ancien, le gong de temps en temps. Ils
+    /// prennent la place des instruments mélodiques d'avant, dont un seul
+    /// reste (la flûte d'os d'un peuple se joue encore à côté du piano).
+    pub fn avec_techniques(mut self, techniques: &[String], cle: u64) -> Self {
+        let possibles: Vec<Instrument> = INSTRUMENTS_DES_TECHNIQUES
+            .iter()
+            .filter(|(_, cles)| cles.iter().any(|c| techniques.iter().any(|t| t == c)))
+            .map(|&(i, _)| i)
+            .collect();
+        if possibles.is_empty() {
+            return self;
+        }
+        let mut r = Rng::new(cle ^ 0x7465_6368);
+        let melodiques: Vec<Instrument> = possibles.iter().copied().filter(|i| i.melodique()).collect();
+        let mut neufs = Vec::new();
+        if let Some(&dernier) = melodiques.last() {
+            neufs.push(dernier);
+            if melodiques.len() > 1 && r.chance(0.6) {
+                let autre = melodiques[(r.u() * (melodiques.len() - 1) as f32) as usize % (melodiques.len() - 1)];
+                neufs.push(autre);
+            }
+        }
+        if possibles.contains(&Instrument::Gong) && r.chance(0.5) {
+            neufs.push(Instrument::Gong);
+        }
+        let mut garde_ancien = true;
+        self.instruments.retain(|i| {
+            if !i.melodique() {
+                return true;
+            }
+            std::mem::replace(&mut garde_ancien, false)
+        });
+        self.instruments.extend(neufs);
+        self
+    }
+
     /// Manière de célébrer un rite : celles du peuple, sauf que les morts
     /// appellent souvent la lamentation et la chasse le chant scandé.
     pub fn forme(&self, car: &Caractere, rng: &mut Rng) -> Forme {
@@ -755,6 +839,9 @@ enum Coup {
     },
     Arc(f32),
     Pierre(f32),
+    /// Note d'un instrument des techniques : instrument, note MIDI, durée.
+    Note(Instrument, f32, f32),
+    Gong(f32),
 }
 
 /// Un chant rituel en cours : les voix chantées sont lancées d'un coup, les
@@ -821,7 +908,7 @@ impl Chant {
     /// Compose et lance un chant : renvoie le chant et ses voix chantées.
     pub fn composer(peuple: &Peuple, rite: usize, rng: &mut Rng, mk: &Make) -> (Chant, Vec<Voice>) {
         let rate = mk.rate;
-        let tr = Tradition::de(peuple.cle);
+        let tr = Tradition::de(peuple.cle).avec_techniques(&peuple.techniques, peuple.cle);
         let r = peuple.rites.get(rite).cloned().unwrap_or(Rite { nom: String::new(), objet: String::new() });
         let car = caractere(&r.objet);
         let graine = r.nom.bytes().fold(peuple.cle, |h, b| h.wrapping_mul(0x100_0000_01b3) ^ b as u64);
@@ -857,7 +944,7 @@ impl Chant {
         // Une mélodie jouée seule ouvre le chant quand le peuple a une flûte
         // ou des pierres sonnantes (sauf pour le chant scandé, qui part d'un
         // coup).
-        let solo = tr.a(Instrument::Flute) || tr.a(Instrument::Lithophone);
+        let solo = tr.a(Instrument::Flute) || tr.a(Instrument::Lithophone) || melodiques.iter().any(|i| i.de_technique());
         let intro = if solo && forme != Forme::Scande { duree(&appel) * beat + beat } else { 0.0 };
 
         let mut lignes: Vec<Ligne> = Vec::new();
@@ -1218,7 +1305,7 @@ impl Chant {
             }
         }
         for &inst in &melodiques {
-            if !matches!(inst, Instrument::Flute | Instrument::Lithophone) {
+            if matches!(inst, Instrument::Conque | Instrument::Arc | Instrument::Guimbarde) {
                 continue;
             }
             for (debut, notes) in &jeu {
@@ -1228,15 +1315,24 @@ impl Chant {
                         let m = crate::synth::degree(racine + 12, tr.gamme, deg);
                         coups.push((
                             t,
-                            if inst == Instrument::Flute {
-                                Coup::Souffle { midi: m + 12.0, dur: dur * 0.95, rauque: 0.1 }
-                            } else {
-                                Coup::Pierre(m + 12.0)
+                            match inst {
+                                Instrument::Flute => Coup::Souffle { midi: m + 12.0, dur: dur * 0.95, rauque: 0.1 },
+                                Instrument::Lithophone => Coup::Pierre(m + 12.0),
+                                Instrument::Guitare => Coup::Note(inst, m - 12.0, dur),
+                                Instrument::Piano | Instrument::Lyre => Coup::Note(inst, m + 12.0, dur),
+                                _ => Coup::Note(inst, m, dur),
                             },
                         ));
                     }
                     t += dur;
                 }
+            }
+        }
+        if tr.a(Instrument::Gong) {
+            // Le gong ouvre chaque phrase jouée, et le chant.
+            coups.push((0.0, Coup::Gong((racine - 24) as f32)));
+            for (debut, _) in &jeu {
+                coups.push((*debut, Coup::Gong((racine - 24) as f32)));
             }
         }
         coups.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -1272,6 +1368,8 @@ impl Chant {
                 }
                 Coup::Arc(m) => Voice::new(mk.pluck(rng, m, 0.15, 1.2), Bus::Ambiance, 0.2).pan(0.25).send(0.25),
                 Coup::Pierre(m) => Voice::new(mk.bell(m, 2.76, 1.0, 1.4), Bus::Ambiance, 0.08).pan(0.3).send(0.4),
+                Coup::Note(i, m, d) => note_de_technique(i, m, d, mk, rng),
+                Coup::Gong(m) => Voice::new(mk.bell(m, 1.41, 2.2, 6.0), Bus::Ambiance, 0.09).pan(-0.3).send(0.6),
             };
             out.push(v.at(at, mk.rate));
         }
@@ -1281,6 +1379,49 @@ impl Chant {
     pub fn fini(&self) -> bool {
         self.t >= self.fin
     }
+}
+
+/// Timbre d'un instrument des techniques (ceux qui ne sont pas des cordes
+/// pincées).
+pub fn timbre(i: Instrument) -> Timbre {
+    let scie = [1.0, 0.5, 0.33, 0.25, 0.2, 0.17, 0.14, 0.12];
+    let base = Timbre { harm: scie, eclat: 0.0, att: 0.02, rel: 0.1, chute: 0.0, vib: (0.0, 0.0), sature: 0.0, raideur: 0.0 };
+    match i {
+        Instrument::Trompe => {
+            Timbre { harm: [1.0, 0.8, 0.6, 0.5, 0.35, 0.25, 0.18, 0.12], eclat: 0.85, att: 0.07, vib: (5.0, 0.003), ..base }
+        }
+        Instrument::Vielle => Timbre { eclat: 0.2, att: 0.14, rel: 0.15, vib: (5.5, 0.006), ..base },
+        Instrument::Orgue => Timbre { harm: [1.0, 0.7, 0.0, 0.45, 0.0, 0.3, 0.0, 0.2], att: 0.03, rel: 0.08, ..base },
+        Instrument::Piano => {
+            Timbre { harm: [1.0, 0.6, 0.35, 0.25, 0.15, 0.1, 0.07, 0.05], att: 0.003, rel: 0.25, chute: 2.5, raideur: 0.0004, ..base }
+        }
+        Instrument::Guitare => Timbre {
+            harm: [1.0, 0.7, 0.5, 0.4, 0.3, 0.2, 0.15, 0.1],
+            att: 0.004,
+            rel: 0.15,
+            chute: 3.0,
+            vib: (5.0, 0.002),
+            sature: 0.7,
+            ..base
+        },
+        Instrument::Synthe => Timbre { eclat: 0.5, att: 0.15, rel: 0.4, vib: (0.4, 0.002), ..base },
+        _ => base,
+    }
+}
+
+/// Une note d'instrument des techniques.
+pub fn note_de_technique(i: Instrument, m: f32, d: f32, mk: &Make, rng: &mut Rng) -> Voice {
+    let (kind, g, pan) = match i {
+        Instrument::Lyre => (mk.pluck(rng, m, 0.5, 1.6), 0.18, 0.25),
+        Instrument::Trompe => (mk.additif(m, d * 0.9, timbre(i)), 0.06, -0.25),
+        Instrument::Vielle => (mk.additif(m, d * 0.98, timbre(i)), 0.06, 0.3),
+        Instrument::Orgue => (mk.additif(m, d * 0.98, timbre(i)), 0.05, 0.0),
+        Instrument::Piano => (mk.additif(m, d.max(0.4), timbre(i)), 0.09, 0.2),
+        Instrument::Guitare => (mk.additif(m, d.max(0.3), timbre(i)), 0.05, -0.3),
+        Instrument::Synthe => (mk.additif(m, d, timbre(i)), 0.045, 0.1),
+        _ => (mk.pluck(rng, m, 0.3, 1.0), 0.15, 0.0),
+    };
+    Voice::new(kind, Bus::Ambiance, g).pan(pan).send(0.35)
 }
 
 /// La rumeur d'un peuple : des gens qui se parlent, à quelques pas ou au
@@ -1392,6 +1533,7 @@ mod tests {
             population: 400.0,
             taille: 1.0,
             cle: 5,
+            techniques: Vec::new(),
         };
         let (mut chant, voix) = Chant::composer(&peuple, 0, &mut rng, &mk);
         assert!(voix.len() >= 4, "meneur et chœur : {}", voix.len());

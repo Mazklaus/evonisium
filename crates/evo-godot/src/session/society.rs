@@ -110,7 +110,7 @@ impl EvoSession {
         (self.society.key == self.society_key()).then(|| self.society.shared.clone()).flatten()
     }
 
-    fn society_state(&self) -> Option<Arc<SocietyState>> {
+    pub(super) fn society_state(&self) -> Option<Arc<SocietyState>> {
         self.society_shared()?.lock().unwrap().state.clone()
     }
 
