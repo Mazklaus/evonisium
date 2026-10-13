@@ -468,12 +468,23 @@ const FIXED: f64 = (1u64 << 40) as f64;
 
 #[inline]
 fn fx(x: f64) -> i128 {
-    (x * FIXED) as i128
+    let y = x * FIXED;
+    // La conversion vers 64 bits est bien plus rapide et, dans sa plage,
+    // identique à celle vers 128 bits.
+    if y.abs() < 9.0e18 {
+        y as i64 as i128
+    } else {
+        y as i128
+    }
 }
 
 #[inline]
 fn fl(v: i128) -> f64 {
-    v as f64 / FIXED
+    // Même arrondi au plus proche par 64 ou 128 bits.
+    match i64::try_from(v) {
+        Ok(w) => w as f64 / FIXED,
+        Err(_) => v as f64 / FIXED,
+    }
 }
 
 /// Sommes d'une cellule sur ses gènes exprimés (organites compris).
@@ -560,10 +571,191 @@ pub struct Basis {
     /// Jeu de gènes exprimés de chaque type (`None` : tous).
     masks: Vec<Option<Vec<bool>>>,
     sums: Vec<CellSums>,
+    enzymes: Vec<TypeEnzymes>,
 }
+
+/// Enzymes d'un type cellulaire, dans l'ordre des gènes (ceux de l'hôte
+/// puis ceux des organites), avec la clé du gène qui porte chacune : son
+/// indice pour l'hôte, `ORGANELLE_KEY | organite << 16 | indice` pour un
+/// organite. Les clés sont croissantes.
+#[derive(Clone, Debug, Default)]
+struct TypeEnzymes {
+    list: Vec<Enzyme>,
+    keys: Vec<u64>,
+}
+
+const ORGANELLE_KEY: u64 = 1 << 32;
+
+/// Enzyme que porte un gène, s'il en porte une.
+fn enzyme_of(gene: &Gene, internal: bool) -> Option<Enzyme> {
+    let d = gene.domain;
+    match d.family {
+        DomainFamily::Catalytic(r) if (r as usize) < REACTION_COUNT => Some(Enzyme {
+            reaction: r,
+            efficiency: d.efficiency,
+            affinity: d.affinity,
+            t_opt_k: d.t_opt_k,
+            t_width_k: d.t_width_k,
+            internal,
+        }),
+        _ => None,
+    }
+}
+
+impl TypeEnzymes {
+    fn of(genome: &Genome, mask: Option<&[bool]>) -> Self {
+        let mut out = Self::default();
+        for (i, g) in genome.genes.iter().enumerate() {
+            if g.functional && mask.is_none_or(|m| m[i]) {
+                if let Some(e) = enzyme_of(g, false) {
+                    out.list.push(e);
+                    out.keys.push(i as u64);
+                }
+            }
+        }
+        for (o, organelle) in genome.organelles.iter().enumerate() {
+            for (i, g) in organelle.genes.iter().enumerate() {
+                if g.functional {
+                    if let Some(e) = enzyme_of(g, true) {
+                        out.list.push(e);
+                        out.keys.push(ORGANELLE_KEY | (o as u64) << 16 | i as u64);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Remplace l'enzyme du gène `key` (`old`, s'il en exprimait une) par
+    /// `new`.
+    fn replace(&mut self, key: u64, old: Option<Enzyme>, new: Option<Enzyme>) {
+        match (old, new) {
+            (Some(_), Some(e)) => {
+                let k = self.keys.binary_search(&key).expect("enzyme du résident");
+                self.list[k] = e;
+            }
+            (Some(_), None) => {
+                let k = self.keys.binary_search(&key).expect("enzyme du résident");
+                self.list.remove(k);
+                self.keys.remove(k);
+            }
+            (None, Some(e)) => {
+                let k = self.keys.partition_point(|&x| x < key);
+                self.list.insert(k, e);
+                self.keys.insert(k, key);
+            }
+            (None, None) => {}
+        }
+    }
+
+    /// Décale de `by` les clés des gènes de l'hôte à partir de `from`.
+    fn shift(&mut self, from: usize, by: i64) {
+        for k in self.keys.iter_mut().filter(|k| **k < ORGANELLE_KEY && **k >= from as u64) {
+            *k = (*k as i64 + by) as u64;
+        }
+    }
+}
+
+/// Organisation, taille de la cellule, colonie et jeux de gènes exprimés
+/// d'un génome : la base sans ses sommes.
+type Layout = (Organisation, f64, Option<(Shape, f64, Vec<Zone>)>, Vec<Option<Vec<bool>>>);
 
 impl Basis {
     pub fn new(genome: &Genome, physio: &Physiology) -> Self {
+        let (org, cell_size, colony, masks) = Self::layout(genome, physio);
+        let sums = masks.iter().map(|m| CellSums::of(genome, m.as_deref(), cell_size, physio)).collect();
+        let enzymes = masks.iter().map(|m| TypeEnzymes::of(genome, m.as_deref())).collect();
+        Self { org, cell_size, colony, masks, sums, enzymes }
+    }
+
+    /// Base d'un génome issu de `resident` (de base `self`) par un
+    /// changement que `derive` ne suit pas (gène de structure ou de
+    /// régulation, bloc dupliqué) : organisation et développement sont
+    /// refaits, mais les sommes de chaque type partent de celles du type du
+    /// résident le plus proche, corrigées des seuls gènes dont l'expression
+    /// change. Les sommes sont entières : le résultat est celui de
+    /// `Basis::new` au bit près.
+    pub fn rebuild(&self, resident: &Genome, genome: &Genome, element: ChangedElement, physio: &Physiology) -> Self {
+        let (org, cell_size, colony, masks) = Self::layout(genome, physio);
+        let enzymes = masks.iter().map(|m| TypeEnzymes::of(genome, m.as_deref())).collect();
+        let (n_old, n_new) = (resident.genes.len(), genome.genes.len());
+        // Gène du résident aligné sur chaque gène du mutant (`None` : gène
+        // nouveau) ; les gènes du résident sans partenaire sont retirés.
+        let shift = |at: usize, by: usize| -> Vec<Option<usize>> {
+            (0..n_new)
+                .map(|i| {
+                    if i < at {
+                        Some(i)
+                    } else if i < at + by {
+                        None
+                    } else {
+                        Some(i - by)
+                    }
+                })
+                .collect()
+        };
+        let aligned: Option<Vec<Option<usize>>> = match element {
+            ChangedElement::Inserted { index, .. } if n_new == n_old + 1 => Some(shift(index as usize, 1)),
+            ChangedElement::Module { start, len } if n_new == n_old + len as usize => Some(shift(start as usize, len as usize)),
+            ChangedElement::Removed { index, .. } if n_new + 1 == n_old => {
+                let j = index as usize;
+                Some((0..n_new).map(|i| Some(if i < j { i } else { i + 1 })).collect())
+            }
+            _ if n_new == n_old => Some((0..n_new).map(Some).collect()),
+            _ => None,
+        };
+        let reusable = cell_size.to_bits() == self.cell_size.to_bits() && genome.organelles == resident.organelles;
+        let (Some(aligned), true) = (aligned, reusable) else {
+            let sums = masks.iter().map(|m| CellSums::of(genome, m.as_deref(), cell_size, physio)).collect();
+            return Self { org, cell_size, colony, masks, sums, enzymes };
+        };
+        let mut partnered = vec![false; n_old];
+        for o in aligned.iter().flatten() {
+            partnered[*o] = true;
+        }
+        let on = |g: &Genome, mask: Option<&[bool]>, i: usize| g.genes[i].functional && mask.is_none_or(|m| m[i]);
+        let membrane = 1.0 / cell_size;
+        let sums = masks
+            .iter()
+            .map(|m| {
+                let m = m.as_deref();
+                // Type du résident le plus proche : le moins de gènes dont
+                // l'expression diffère.
+                let differences = |k: usize| {
+                    let r = self.masks[k].as_deref();
+                    let moved =
+                        aligned.iter().enumerate().filter(|&(i, o)| on(genome, m, i) != o.is_some_and(|o| on(resident, r, o))).count();
+                    moved + (0..n_old).filter(|&o| !partnered[o] && on(resident, r, o)).count()
+                };
+                let (k, d) = (0..self.masks.len()).map(|k| (k, differences(k))).min_by_key(|&(_, d)| d).expect("au moins un type");
+                if 2 * d > n_new {
+                    return CellSums::of(genome, m, cell_size, physio);
+                }
+                let r = self.masks[k].as_deref();
+                let mut sums = self.sums[k].clone();
+                for (i, o) in aligned.iter().enumerate() {
+                    let new = on(genome, m, i).then_some(&genome.genes[i]);
+                    let old = o.filter(|&o| on(resident, r, o)).map(|o| &resident.genes[o]);
+                    if new.is_some() && new == old {
+                        continue;
+                    }
+                    if let Some(g) = old {
+                        sums.add(g, membrane, physio, -1);
+                    }
+                    if let Some(g) = new {
+                        sums.add(g, membrane, physio, 1);
+                    }
+                }
+                for o in (0..n_old).filter(|&o| !partnered[o] && on(resident, r, o)) {
+                    sums.add(&resident.genes[o], membrane, physio, -1);
+                }
+                sums
+            })
+            .collect();
+        Self { org, cell_size, colony, masks, sums, enzymes }
+    }
+
+    fn layout(genome: &Genome, physio: &Physiology) -> Layout {
         let org = organisation(genome);
         let cell_size = (1.0 + physio.cytoskeleton_size * org.cytoskeleton).min(physio.max_cell_size);
         let regulated_by = genome.regulated_by();
@@ -577,8 +769,7 @@ impl Basis {
             let mask = has_regulators.then(|| expression_mask(genome, &regulated_by, signal));
             (None, vec![mask])
         };
-        let sums = masks.iter().map(|m| CellSums::of(genome, m.as_deref(), cell_size, physio)).collect();
-        Self { org, cell_size, colony, masks, sums }
+        (org, cell_size, colony, masks)
     }
 
     /// Base du génome `genome`, issu de `resident` (de base `self`) par le
@@ -604,7 +795,7 @@ impl Basis {
                 if !plain(old) || !plain(new) {
                     return None;
                 }
-                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
+                for ((mask, sums), enzymes) in basis.masks.iter_mut().zip(basis.sums.iter_mut()).zip(basis.enzymes.iter_mut()) {
                     let active = mask.as_deref().is_none_or(|m| active_at(&resident.genes, m, i));
                     if old.functional && active {
                         sums.add(old, membrane, physio, -1);
@@ -612,6 +803,9 @@ impl Basis {
                     if new.functional && active {
                         sums.add(new, membrane, physio, 1);
                     }
+                    let was = mask.as_deref().is_none_or(|m| m[i]) && old.functional;
+                    let is = new.functional && active;
+                    enzymes.replace(i as u64, was.then(|| enzyme_of(old, false)).flatten(), is.then(|| enzyme_of(new, false)).flatten());
                     if let Some(m) = mask {
                         m[i] = new.functional && active;
                     }
@@ -623,10 +817,13 @@ impl Basis {
                     return None;
                 }
                 let old = &resident.genes[i];
-                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
-                    if old.functional && mask.as_deref().is_none_or(|m| m[i]) {
+                for ((mask, sums), enzymes) in basis.masks.iter_mut().zip(basis.sums.iter_mut()).zip(basis.enzymes.iter_mut()) {
+                    let was = old.functional && mask.as_deref().is_none_or(|m| m[i]);
+                    if was {
                         sums.add(old, membrane, physio, -1);
                     }
+                    enzymes.replace(i as u64, was.then(|| enzyme_of(old, false)).flatten(), None);
+                    enzymes.shift(i + 1, -1);
                     if let Some(m) = mask {
                         m.remove(i);
                     }
@@ -639,11 +836,13 @@ impl Basis {
                 }
                 // Le gène inséré rejoint le bloc du gène qui le précède.
                 let new = &genome.genes[j];
-                for (mask, sums) in basis.masks.iter_mut().zip(basis.sums.iter_mut()) {
+                for ((mask, sums), enzymes) in basis.masks.iter_mut().zip(basis.sums.iter_mut()).zip(basis.enzymes.iter_mut()) {
                     let active = j == 0 || mask.as_deref().is_none_or(|m| active_at(&resident.genes, m, j - 1));
                     if new.functional && active {
                         sums.add(new, membrane, physio, 1);
                     }
+                    enzymes.shift(j, 1);
+                    enzymes.replace(j as u64, None, (new.functional && active).then(|| enzyme_of(new, false)).flatten());
                     if let Some(m) = mask {
                         m.insert(j, new.functional && active);
                     }
@@ -659,13 +858,19 @@ impl Basis {
                 if !plain(old) || !plain(new) {
                     return None;
                 }
-                for sums in basis.sums.iter_mut() {
+                let key = ORGANELLE_KEY | (o as u64) << 16 | i as u64;
+                for (sums, enzymes) in basis.sums.iter_mut().zip(basis.enzymes.iter_mut()) {
                     if old.functional {
                         sums.add(old, membrane, physio, -1);
                     }
                     if new.functional {
                         sums.add(new, membrane, physio, 1);
                     }
+                    enzymes.replace(
+                        key,
+                        old.functional.then(|| enzyme_of(old, true)).flatten(),
+                        new.functional.then(|| enzyme_of(new, true)).flatten(),
+                    );
                 }
             }
             _ => return None,
@@ -790,7 +995,7 @@ impl Phenotype {
         let org = &basis.org;
         let cell_size = basis.cell_size;
         let Some((shape, cells, zones)) = &basis.colony else {
-            let mut p = Self::cell(genome, basis.masks[0].as_deref(), &basis.sums[0], org, cell_size, physio);
+            let mut p = Self::cell(genome, &basis.enzymes[0].list, &basis.sums[0], org, cell_size, physio);
             // Agrégats : l'adhésion sous le seuil de la colonie colle les
             // cellules en amas lâches, que les prédateurs avalent moins bien.
             p.body_size = cell_size * (1.0 + physio.aggregate_size * org.adhesion);
@@ -798,10 +1003,10 @@ impl Phenotype {
             return p;
         };
         let types: Vec<Arc<Phenotype>> = basis
-            .masks
+            .enzymes
             .iter()
             .zip(&basis.sums)
-            .map(|(m, sums)| Arc::new(Self::cell(genome, m.as_deref(), sums, org, cell_size, physio)))
+            .map(|(e, sums)| Arc::new(Self::cell(genome, &e.list, sums, org, cell_size, physio)))
             .collect();
         // Le phénotype de l'organisme : celui de la surface, avec la
         // signature de tous les types, l'entretien moyen et le corps.
@@ -827,26 +1032,10 @@ impl Phenotype {
         top
     }
 
-    /// Phénotype d'une cellule qui exprime les gènes de `mask` (tous les
-    /// gènes fonctionnels si `None`) et ceux de ses organites, de sommes
-    /// `sums`.
-    fn cell(genome: &Genome, mask: Option<&[bool]>, sums: &CellSums, org: &Organisation, cell_size: f64, physio: &Physiology) -> Self {
-        let enzymes: Vec<Enzyme> = expressed(genome, mask)
-            .filter_map(|(gene, internal)| {
-                let d = gene.domain;
-                match d.family {
-                    DomainFamily::Catalytic(r) if (r as usize) < REACTION_COUNT => Some(Enzyme {
-                        reaction: r,
-                        efficiency: d.efficiency,
-                        affinity: d.affinity,
-                        t_opt_k: d.t_opt_k,
-                        t_width_k: d.t_width_k,
-                        internal,
-                    }),
-                    _ => None,
-                }
-            })
-            .collect();
+    /// Phénotype d'une cellule d'enzymes `enzymes` et de sommes `sums` (sur
+    /// les gènes qu'elle exprime, organites compris).
+    fn cell(genome: &Genome, enzymes: &[Enzyme], sums: &CellSums, org: &Organisation, cell_size: f64, physio: &Physiology) -> Self {
+        let enzymes = enzymes.to_vec();
         let reaction_eff: [f64; REACTION_COUNT] = std::array::from_fn(|r| fl(sums.reaction_eff[r]));
         let (pigment, pigment_capture, pigment_nm_sum) = (fl(sums.pigment), fl(sums.pigment_capture), fl(sums.pigment_nm));
         let (cytochrome, rhodopsin, rhodopsin_capture) = (fl(sums.cytochrome), fl(sums.rhodopsin), fl(sums.rhodopsin_capture));
@@ -1031,6 +1220,12 @@ impl Phenotype {
         Capacities { cap, affinity, partner, digest_fermentation: ferment, digest_respiration: respire }
     }
 
+    /// Capacités de chaque type cellulaire d'un corps à la température `t`
+    /// (vide pour une cellule seule).
+    pub fn type_capacities(&self, t: f64, physio: &Physiology) -> Vec<Capacities> {
+        self.body.as_ref().map_or_else(Vec::new, |b| b.types.iter().map(|ty| ty.capacities(t, physio)).collect())
+    }
+
     /// Capacité et affinité moyenne d'une voie à la température `t`.
     pub fn capacity(&self, reaction: ReactionId, t: f64, physio: &Physiology) -> (f64, f64) {
         let c = self.capacities(t, physio);
@@ -1143,6 +1338,7 @@ mod tests {
         });
         let mut incremental = 0;
         let mut resized = 0;
+        let mut rebuilt = 0;
         for _ in 0..3000 {
             let basis = Basis::new(&genome, &physio);
             let kind =
@@ -1155,14 +1351,18 @@ mod tests {
                     resized += 1;
                 }
                 assert_eq!(Phenotype::assemble(&change.genome, &b, &physio), full, "{:?}", change.element);
+            } else {
+                rebuilt += 1;
+                let b = basis.rebuild(&genome, &change.genome, change.element, &physio);
+                assert_eq!(Phenotype::assemble(&change.genome, &b, &physio), full, "reconstruction {:?}", change.element);
             }
             if change.genome.genes.len() < 40 {
                 genome = change.genome;
             }
         }
         assert!(
-            incremental > 1500 && resized > 300,
-            "{incremental} constructions incrémentales, dont {resized} avec un gène en plus ou en moins"
+            incremental > 1500 && resized > 300 && rebuilt > 300,
+            "{incremental} constructions incrémentales, dont {resized} avec un gène en plus ou en moins ; {rebuilt} reconstructions"
         );
     }
 

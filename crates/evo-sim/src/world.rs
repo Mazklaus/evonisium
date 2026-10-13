@@ -28,7 +28,7 @@
 //! quel que soit le nombre de coeurs.
 
 use crate::disturbance::{self, Barrier, ClimateAnomaly, Disturbances};
-use crate::evolution::{evolve_deme, habitat_class, EvolutionParams, EvolutionStats, Fixation};
+use crate::evolution::{evolve_deme, habitat_class, BasisCache, EvolutionParams, EvolutionStats, Fixation};
 use crate::history::{CellView, ClimateMode, EventView, History, Publication, PublishedState, Sample, SpeciesView};
 use crate::influence::{InfluenceParams, InfluenceReserve, InfluenceView};
 use crate::observation::{Focus, FocusCell, InterestZone, PopulationView, MAX_FOCUS_CELLS};
@@ -460,6 +460,8 @@ pub struct World {
     /// et lignées déjà parcourues ; recalculé après une reprise.
     species_origin: BTreeMap<u32, u32>,
     origin_scanned: usize,
+    /// Bases phénotypiques des génotypes vivants (cache, hors histoire).
+    basis_cache: BasisCache,
 }
 
 impl World {
@@ -585,6 +587,7 @@ impl World {
             published_events: 0,
             species_origin: BTreeMap::new(),
             origin_scanned: 0,
+            basis_cache: BasisCache::default(),
             chemistry,
             communities,
             lineages: LineageRegistry::default(),
@@ -1392,15 +1395,24 @@ impl World {
         let cfg = &self.config;
         let accelerator = self.progress.accelerator_on;
         let complex = self.complexity_boost(years);
-        let (communities, chemistry, envs) = (&self.communities, &self.chemistry, &self.bio.env);
-        let results: Vec<(Vec<Fixation>, EvolutionStats)> = self
+        let (communities, chemistry, envs, cache) = (&self.communities, &self.chemistry, &self.bio.env, &self.basis_cache);
+        let results: Vec<_> = self
             .demes
             .par_iter()
             .enumerate()
-            .map(|(d, cells)| evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, years, step_index, round, accelerator, complex))
+            .map(|(d, cells)| {
+                evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, years, step_index, round, accelerator, complex, cache)
+            })
             .collect();
         let mut modified = Vec::new();
-        for (fixations, stats) in results {
+        let mut fixed = Vec::with_capacity(results.len());
+        for (fixations, stats, fresh) in results {
+            for (genome, basis) in fresh {
+                self.basis_cache.insert(genome, basis);
+            }
+            fixed.push((fixations, stats));
+        }
+        for (fixations, stats) in fixed {
             self.stats.add_evolution(&stats);
             for f in fixations {
                 if let Some(m) = self.apply_fixation(years, f) {
@@ -1408,6 +1420,7 @@ impl World {
                 }
             }
         }
+        self.basis_cache.retain_living(&self.communities);
         modified
     }
 
