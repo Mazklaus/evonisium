@@ -1413,12 +1413,12 @@ pub fn timbre(i: Instrument) -> Timbre {
 pub fn note_de_technique(i: Instrument, m: f32, d: f32, mk: &Make, rng: &mut Rng) -> Voice {
     let (kind, g, pan) = match i {
         Instrument::Lyre => (mk.pluck(rng, m, 0.5, 1.6), 0.18, 0.25),
-        Instrument::Trompe => (mk.additif(m, d * 0.9, timbre(i)), 0.028, -0.25),
-        Instrument::Vielle => (mk.additif(m, d * 0.98, timbre(i)), 0.045, 0.3),
-        Instrument::Orgue => (mk.additif(m, d * 0.98, timbre(i)), 0.04, 0.0),
-        Instrument::Piano => (mk.additif(m, d.max(0.4), timbre(i)), 0.04, 0.2),
-        Instrument::Guitare => (mk.additif(m, d.max(0.3), timbre(i)), 0.04, -0.3),
-        Instrument::Synthe => (mk.additif(m, d, timbre(i)), 0.02, 0.1),
+        Instrument::Trompe => (mk.additif(m, d * 0.9, timbre(i)), 0.014, -0.25),
+        Instrument::Vielle => (mk.additif(m, d * 0.98, timbre(i)), 0.03, 0.3),
+        Instrument::Orgue => (mk.additif(m, d * 0.98, timbre(i)), 0.025, 0.0),
+        Instrument::Piano => (mk.additif(m, d.max(0.4), timbre(i)), 0.02, 0.2),
+        Instrument::Guitare => (mk.additif(m, d.max(0.3), timbre(i)), 0.025, -0.3),
+        Instrument::Synthe => (mk.additif(m, d, timbre(i)), 0.01, 0.1),
         _ => (mk.pluck(rng, m, 0.3, 1.0), 0.15, 0.0),
     };
     Voice::new(kind, Bus::Ambiance, g).pan(pan).send(0.35)
