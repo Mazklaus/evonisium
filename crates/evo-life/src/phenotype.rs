@@ -34,7 +34,9 @@
 //! gènes métaboliques, de lumière et de défense dépendent des régulateurs.
 
 use crate::growth::Physiology;
-use crate::metabolism::{EnergySource, ANOXYGENIC_CENTRES, FERMENTATION, REACTIONS, REACTION_COUNT};
+use crate::metabolism::{
+    EnergySource, AEROBIC_RESPIRATION, ANOXYGENIC_CENTRES, FERMENTATION, OXYGENIC_PHOTOSYNTHESIS, REACTIONS, REACTION_COUNT,
+};
 use evo_core::math::Det;
 use evo_genetics::{ChangedElement, DomainFamily, Gene, Genome, ReactionId, REGULATOR_SENSE_NM};
 use std::sync::Arc;
@@ -1252,16 +1254,28 @@ impl Phenotype {
         best.map(|b| b.0 as ReactionId)
     }
 
-    /// Clé de guilde du plafond de populations : le grand plan
-    /// d'organisation (eucaryote, multicellulaire, terre ferme), `None` sans
-    /// voie utilisable. Le garde-fou garde la dernière population de chaque
-    /// guilde : chaque grande transition garde sa place dans une cellule
-    /// pleine, et les voies se départagent par la fitness d'invasion. Avec
-    /// la voie principale et chaque bit d'organisation, il y avait autant de
-    /// guildes que de populations (40 par cellule à 1,4 Ga) et le plafond ne
-    /// tenait plus (chantier vitesse, vague 2).
+    /// Clé de guilde du plafond de populations : la source d'énergie de la
+    /// voie principale (chimie sans oxygène, respiration aérobie, lumière
+    /// anoxygénique, photosynthèse oxygénique) et l'organisation
+    /// (phagotrophe, eucaryote, plaste, multicellulaire, terre ferme), `None`
+    /// sans voie utilisable. Le garde-fou garde la dernière population de
+    /// chaque guilde : une nouveauté (la première oxygénique, le premier
+    /// phagotrophe) garde sa place dans une cellule pleine, et les voies
+    /// d'une même source se départagent par la biomasse. Avec chaque voie, il
+    /// y avait autant de guildes que de populations (40 par cellule à
+    /// 1,4 Ga) ; avec l'organisation seule, les oxygéniques et les
+    /// phagotrophes naissants étaient évincés et la complexité retardée de
+    /// plus d'un milliard d'années (chantier vitesse, vague 2).
     pub fn guild_key(&self) -> Option<u32> {
-        self.main_pathway().map(|_| self.signature & (EUKARYOTE | MULTICELLULAR | TERRESTRIAL))
+        self.main_pathway().map(|r| {
+            let class = match r {
+                AEROBIC_RESPIRATION => 1,
+                OXYGENIC_PHOTOSYNTHESIS => 3,
+                r if REACTIONS[r as usize].is_light() => 2,
+                _ => 0,
+            };
+            class | (self.signature & !PATHWAY_MASK)
+        })
     }
 
     /// Température optimale moyenne des enzymes, pondérée par l'efficacité.
