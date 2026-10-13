@@ -168,7 +168,7 @@ impl WorldConfig {
             planet,
             step_years: 100_000.0,
             adaptive_step: Some(AdaptiveStep::default()),
-            eco_substeps: 30,
+            eco_substeps: 10,
             eco_dt_years: 1.0 / 3650.0,
             physiology: Physiology::default(),
             mutation: MutationParams { reaction_count: REACTION_COUNT as u8, relations: domain_relations(), ..Default::default() },

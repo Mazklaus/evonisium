@@ -1252,10 +1252,16 @@ impl Phenotype {
         best.map(|b| b.0 as ReactionId)
     }
 
-    /// Clé de guilde du plafond de populations : la voie principale et
-    /// l'organisation (phagotrophe, eucaryote, plaste, multicellulaire).
+    /// Clé de guilde du plafond de populations : le grand plan
+    /// d'organisation (eucaryote, multicellulaire, terre ferme), `None` sans
+    /// voie utilisable. Le garde-fou garde la dernière population de chaque
+    /// guilde : chaque grande transition garde sa place dans une cellule
+    /// pleine, et les voies se départagent par la fitness d'invasion. Avec
+    /// la voie principale et chaque bit d'organisation, il y avait autant de
+    /// guildes que de populations (40 par cellule à 1,4 Ga) et le plafond ne
+    /// tenait plus (chantier vitesse, vague 2).
     pub fn guild_key(&self) -> Option<u32> {
-        self.main_pathway().map(|r| r as u32 | (self.signature & !PATHWAY_MASK))
+        self.main_pathway().map(|_| self.signature & (EUKARYOTE | MULTICELLULAR | TERRESTRIAL))
     }
 
     /// Température optimale moyenne des enzymes, pondérée par l'efficacité.

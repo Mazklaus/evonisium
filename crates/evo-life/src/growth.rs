@@ -56,6 +56,10 @@ pub struct Physiology {
     pub thermal_reference_width_k: f64,
     /// Mortalité de fond, an⁻¹.
     pub background_mortality: f64,
+    /// Mortalité de famine au plus, an⁻¹ : une cellule affamée ralentit son
+    /// entretien et entre en dormance au lieu de se consumer (les bactéries
+    /// affamées survivent des semaines à des années).
+    pub max_starvation: f64,
     /// Mortalité maximale par stress oxydant sans défense, an⁻¹, et
     /// concentration de demi-effet de l'O₂, mol·m⁻³.
     pub oxygen_stress_mortality: f64,
@@ -246,6 +250,7 @@ impl Default for Physiology {
             gene_cost_kj: 2000.0,
             thermal_reference_width_k: 10.0,
             background_mortality: 20.0,
+            max_starvation: 20.0,
             oxygen_stress_mortality: 200.0,
             oxygen_stress_half: 1e-3,
             oxygen_inhibition_half: 1e-4,
@@ -820,7 +825,7 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
         0.0
     };
     // Un déficit d'énergie consomme la biomasse : mortalité de famine.
-    let starvation = (-surplus).max(0.0) / cost;
+    let starvation = ((-surplus).max(0.0) / cost).min(physio.max_starvation);
     let predation = cond.predation(p, physio);
     // Hors de l'eau : dessiccation, qui baisse avec la résistance et avec
     // l'humidité du sol ; pas de terre ferme, pas de vie terrestre. Dans
