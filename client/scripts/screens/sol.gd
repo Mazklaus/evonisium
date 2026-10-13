@@ -39,6 +39,8 @@ var impostor_frame := 0
 ## (un MultiMesh par objet).
 var camp := {}
 var prop_mms: Array = []
+## Ville ou village d'une société (étape 7) : bâtiments, rues, champs.
+var town := {}
 ## Le peuple du campement pour le son (langue et rites) ; dernier chant.
 var people := {}
 var rite_clock := 0.0
@@ -257,6 +259,7 @@ func _setup_scene() -> void:
 	imi.custom_aabb = AABB(Vector3(-3000, -3000, -3000), Vector3(6000, 6000, 6000))
 	world.add_child(imi)
 	_build_camp()
+	_build_town()
 	if not camp.is_empty():
 		_people_sound(true)
 	_fauna_sound(true)
@@ -266,7 +269,15 @@ func _setup_scene() -> void:
 	for a in ground.actions():
 		keys.append(a["key"])
 		actions_box.add_item(a["label"])
-	if camp.is_empty():
+	if not town.is_empty():
+		# En ville : la caméra survole la place, assez haut pour voir les rues.
+		followed = -1
+		free_target = town["centre"]
+		target_distance = clampf(float(town["radius"]) * 0.9, 60.0, 420.0)
+		distance = target_distance
+		pitch = 0.62
+		follow_button.text = App.t("ground_follow")
+	elif camp.is_empty():
 		follow_species(0)
 	else:
 		# Au campement : la caméra survole le foyer.
@@ -317,6 +328,65 @@ func _build_camp() -> void:
 			else:
 				prop_mms.append(mm)
 	notice_label.text = App.t("ground_extras") + "\n" + App.t("camp_notice") % camp["people"]
+
+## La ville : son sol (rues, place, champs) et un MultiMesh par modèle de
+## bâtiment, posés une fois.
+func _build_town() -> void:
+	town = ground.town_info()
+	if town.is_empty():
+		return
+	var g: Dictionary = ground.town_ground()
+	if not (g["indices"] as PackedInt32Array).is_empty():
+		var ga := []
+		ga.resize(Mesh.ARRAY_MAX)
+		ga[Mesh.ARRAY_VERTEX] = g["vertices"]
+		ga[Mesh.ARRAY_NORMAL] = g["normals"]
+		ga[Mesh.ARRAY_COLOR] = g["colors"]
+		ga[Mesh.ARRAY_INDEX] = g["indices"]
+		var gm := ArrayMesh.new()
+		gm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, ga)
+		var gmat := ShaderMaterial.new()
+		gmat.shader = TerrainShader
+		gmat.set_shader_parameter("sun_dir", sun_dir())
+		var gi := MeshInstance3D.new()
+		gi.mesh = gm
+		gi.material_override = gmat
+		world.add_child(gi)
+	var inst: Array = ground.town_instances()
+	for k in int(town["models"]):
+		var buf: PackedFloat32Array = inst[k]
+		if buf.is_empty():
+			continue
+		var md: Dictionary = ground.town_mesh(k)
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		a[Mesh.ARRAY_VERTEX] = md["vertices"]
+		a[Mesh.ARRAY_NORMAL] = md["normals"]
+		a[Mesh.ARRAY_COLOR] = md["colors"]
+		a[Mesh.ARRAY_INDEX] = md["indices"]
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+		var mat := ShaderMaterial.new()
+		mat.shader = TerrainShader
+		mat.set_shader_parameter("sun_dir", sun_dir())
+		mat.set_shader_parameter("hatch_spacing", 6.0)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = am
+		@warning_ignore("integer_division")
+		mm.instance_count = buf.size() / 12
+		mm.buffer = buf
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = mat
+		world.add_child(mi)
+	var what := App.t("town_city") if bool(town["city"]) else App.t("town_village")
+	var line := what % [town["name"], town["society"], town["era"]]
+	if bool(town["ruined"]):
+		line += " " + App.t("town_ruined") % [town["pop"], town["peak"]]
+	elif bool(town["city"]):
+		line += " " + App.t("town_pop") % town["pop"]
+	notice_label.text = App.t("ground_extras") + "\n" + line + "\n" + App.t("town_notice")
 
 ## Quand plusieurs gens dansent autour du feu, le chœur chante (au plus
 ## une fois par minute).

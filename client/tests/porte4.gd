@@ -544,6 +544,112 @@ func _societies_only() -> void:
 	await _shot("encyclopedie-techniques")
 	_finish(true)
 
+## Villes au sol (étape 7, palier 3b) : la plus grande ville des sociétés
+## d'essai à plusieurs années, vue de haut puis dans ses rues.
+func _town_only() -> void:
+	await _run_to(2.0e5)
+	var jeu = _screen()
+	jeu._toggle_societies(true)
+	var ok := await _until(func(): return App.globe.societies_ready, 180.0)
+	if not ok:
+		_finish(false)
+		return
+	var years: Array = []
+	for y in String(opts.get("ans", "-4000,800,1950")).split(","):
+		years.append(int(y))
+	var towns := []
+	for target in years:
+		await _until(func(): return App.session.society_year_value() >= target or App.session.society_status() == 3, 900.0)
+		var cities: Array = App.session.society_cities()
+		if cities.is_empty():
+			ok = false
+			continue
+		var cell := int(cities[0]["cell"])
+		jeu.descend(cell)
+		var down := await _until(func(): return jeu.sol != null and jeu.sol.ready_done, 180.0)
+		if not down:
+			ok = false
+			continue
+		var sol = jeu.sol
+		var info: Dictionary = sol.ground.town_info()
+		info.erase("centre")
+		info["annee"] = App.session.society_year_value()
+		towns.append(info)
+		await _wait(4.0)
+		var tag := ("m" + str(-target)) if target < 0 else str(target)
+		await _shot("ville-" + tag)
+		# Au bord de la place, à hauteur d'homme ou presque.
+		sol.target_distance = 18.0
+		sol.pitch = 0.12
+		sol.yaw += 0.8
+		await _wait(3.0)
+		await _shot("ville-" + tag + "-rue")
+		ok = ok and not info.is_empty() and int(info.get("buildings", 0)) >= 20
+		jeu.ascend()
+		await _wait(1.5)
+	report["villes_au_sol"] = towns
+	_finish(ok)
+
+## Galerie de rejeux : une partie sauvegardée et exportée en rejeu, le
+## rejeu rejoué depuis la graine jusqu'à la même date, puis les jalons des
+## deux histoires comparés dans la galerie (ils doivent être identiques).
+func _gallery_only() -> void:
+	var target := float(opts.get("ma", "6")) * 1.0e6
+	await _run_to(target)
+	var a_name := "Galerie, essai A"
+	App.session.save(App.save_path(a_name), a_name)
+	var replay := App.replay_path(a_name)
+	if FileAccess.file_exists(replay):
+		DirAccess.remove_absolute(replay)
+	App.session.export_replay(replay, a_name)
+	var written := await _until(func(): return FileAccess.file_exists(replay) and App.session.saves_pending() == 0, 120.0)
+	var described: Dictionary = App.session.describe_replay(replay)
+	report["rejeu_ecrit"] = written
+	report["rejeu"] = {"ordres": described.get("orders", 0), "jalons": (described.get("milestones", []) as Array).size(), "date": described.get("date", "")}
+	var jeu = _screen()
+	jeu.open_gallery()
+	await _wait(0.8)
+	await _shot("galerie")
+	var started: bool = App.session.start_replay(replay)
+	report["rejeu_lance"] = started
+	if not started:
+		_finish(false)
+		return
+	App.globe.reset()
+	App.goto("jeu", {"new": false})
+	await get_tree().process_frame
+	App.session.set_rules_profile("aucun")
+	App.session.set_speed(1.0e6)
+	App.session.resume()
+	var back := await _until(func(): return bool(App.session.frame_info().get("paused", false)) and _years() >= target - 1.0, 900.0)
+	report["rejeu_arrive"] = back
+	await _wait(1.0)
+	report["rejeu_bandeau"] = App.session.replay_info()
+	var b_name := "Galerie, essai B"
+	App.session.save(App.save_path(b_name), b_name)
+	await _until(func(): return App.session.saves_pending() == 0, 120.0)
+	var ma: Array = App.session.describe_save(App.save_path(a_name)).get("milestones", [])
+	var mb: Array = App.session.describe_save(App.save_path(b_name)).get("milestones", [])
+	report["jalons_a"] = ma.map(func(m): return "%s : %s" % [m["date"], m["title"]])
+	report["jalons_b"] = mb.map(func(m): return "%s : %s" % [m["date"], m["title"]])
+	var same := ma.size() == mb.size() and not ma.is_empty()
+	for k in mini(ma.size(), mb.size()):
+		same = same and str(ma[k]["title"]) == str(mb[k]["title"]) and absf(float(ma[k]["years"]) - float(mb[k]["years"])) < 1.0
+	report["jalons_identiques"] = same
+	jeu = _screen()
+	jeu.open_gallery()
+	await _wait(0.8)
+	var g = jeu.fiche
+	var ticked := 0
+	for en in g.entries:
+		if str(en["info"].get("name", "")) in [a_name, b_name] and ticked < 2 and en["kind"] == "save":
+			(en["check"] as CheckBox).button_pressed = true
+			ticked += 1
+	g._compare()
+	await _wait(0.6)
+	await _shot("galerie-comparaison")
+	_finish(written and started and back and same)
+
 func _scenario() -> void:
 	report["monde"] = opts["monde"]
 	report["niveau"] = int(opts["niveau"])
@@ -583,6 +689,12 @@ func _scenario() -> void:
 		return
 	if opts.get("seul", "") == "societes":
 		await _societies_only()
+		return
+	if opts.get("seul", "") == "galerie":
+		await _gallery_only()
+		return
+	if opts.get("seul", "") == "ville":
+		await _town_only()
 		return
 	if opts.get("seul", "") == "mesures":
 		await _perf_only()

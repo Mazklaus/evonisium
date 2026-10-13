@@ -25,8 +25,17 @@ func _ready() -> void:
 	var actions := HBoxContainer.new()
 	content.add_child(actions)
 	actions.add_child(Atlas.button(App.t("save"), _save))
+	actions.add_child(Atlas.button(App.t("export_replay"), _export))
 	actions.add_child(Atlas.button(App.t("cancel"), close))
 	name_edit.grab_focus.call_deferred()
+
+## Le rejeu : la planète et le registre des ordres, à partager.
+func _export() -> void:
+	var n := name_edit.text.strip_edges()
+	if n == "":
+		return
+	App.session.export_replay(App.replay_path(n), n)
+	close()
 
 func _save() -> void:
 	var n := name_edit.text.strip_edges()

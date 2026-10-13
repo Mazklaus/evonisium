@@ -106,6 +106,12 @@ jobs:
       - name: Étape 7 — sociétés d'essai sur le globe, fiches, comparaison, récit, encyclopédie
         timeout-minutes: 15
         run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=societes --niveau=4 --an=-6000 --sortie=$PWD/porte/societes
+      - name: Étape 7 — une ville au sol (bâtiments, rues, champs)
+        timeout-minutes: 15
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=ville --niveau=4 --ans=-6000 --sortie=$PWD/porte/ville
+      - name: Étape 7 — galerie de rejeux (export, rejeu depuis la graine, mêmes jalons)
+        timeout-minutes: 15
+        run: xvfb-run -a -s "-screen 0 1600x900x24" ./$GODOT --rendering-driver vulkan --path client --resolution 1600x900 -- --porte4 --seul=galerie --niveau=4 --ma=100 --sortie=$PWD/porte/galerie
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -16,6 +16,7 @@ const Arbre := preload("res://scripts/ui/arbre.gd")
 const Chronique := preload("res://scripts/ui/chronique.gd")
 const Interventions := preload("res://scripts/ui/interventions.gd")
 const Sauvegarde := preload("res://scripts/ui/sauvegarde.gd")
+const Galerie := preload("res://scripts/ui/galerie.gd")
 const Reglages := preload("res://scripts/ui/reglages.gd")
 const AvecSans := preload("res://scripts/ui/avec_sans.gd")
 const Reseau := preload("res://scripts/ui/reseau.gd")
@@ -104,7 +105,7 @@ func setup(params: Dictionary) -> void:
 	add_child(frise)
 	frise.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 10)
 	frise.event_clicked.connect(go_to_event)
-	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["peoples", "P", open_peoples], ["societies", "S", open_societies], ["encyclopedia", "E", open_encyclopedia], ["save", "F5", open_save], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
+	for m in [["chronicle", "C", open_chronicle], ["tree", "T", open_tree], ["interventions", "I", open_interventions], ["with_without", "A", open_with_without], ["peoples", "P", open_peoples], ["societies", "S", open_societies], ["encyclopedia", "E", open_encyclopedia], ["save", "F5", open_save], ["gallery", "G", open_gallery], ["settings", "", open_settings], ["menu", "", back_to_menu]]:
 		var b := Atlas.button(App.t(m[0]), m[2], App.t(m[0]) + ("" if m[1] == "" else " (%s)" % m[1]))
 		menu_buttons[m[0]] = b
 		b.add_theme_font_size_override("font_size", int(17 * App.text_scale()))
@@ -147,6 +148,9 @@ func setup(params: Dictionary) -> void:
 	add_child(overlay)
 
 	App.session.set_rules_profile(App.settings["stop_profile"])
+	var replay: Dictionary = App.session.replay_info()
+	if not replay.is_empty():
+		_flash.call_deferred(App.t("replay_banner") % [replay["name"], replay["date"]])
 	App.settings_changed.connect(_settings_changed)
 
 # ----------------------------------------------------------------------
@@ -276,7 +280,9 @@ func _process(delta: float) -> void:
 	_handle_events()
 	App.perf_add("evenements", t)
 	var n: String = App.session.take_notice()
-	if n.begins_with("ok"):
+	if n.begins_with("ok") and n.ends_with(".rejeu"):
+		_flash(App.t("replay_saved"))
+	elif n.begins_with("ok"):
 		_flash(App.t("saved"))
 	elif n != "":
 		_flash(n.replace("\t", " "))
@@ -572,6 +578,11 @@ func close_slide() -> void:
 func open_save() -> void:
 	_open(Sauvegarde.new())
 
+func open_gallery() -> void:
+	var g = Galerie.new()
+	g.autosave = true
+	_open(g)
+
 func open_settings() -> void:
 	_open(Reglages.new())
 
@@ -616,6 +627,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			open_encyclopedia()
 		KEY_F5:
 			open_save()
+		KEY_G:
+			open_gallery()
 		_:
 			return
 	get_viewport().set_input_as_handled()

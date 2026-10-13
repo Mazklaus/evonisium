@@ -15,7 +15,9 @@
 
 pub mod artefact;
 pub mod body;
+pub mod building;
 pub mod canvas;
+mod facet;
 pub mod microbe;
 
 pub use canvas::Canvas;

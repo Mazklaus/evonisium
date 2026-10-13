@@ -326,6 +326,31 @@ const TEXT := {
 	"people_species": ["Espèce", "Species"],
 	"people_born": ["Apparu", "Arose"],
 	"camp_notice": ["Campement des %s, un peuple d'essai : ses gens sont des figurants primates en attendant les vrais corps des espèces intelligentes.", "Camp of the %s, a test people: its folk are primate stand-ins until intelligent species get their real bodies."],
+	"gallery": ["Galerie", "Gallery"],
+	"gallery_title": ["Galerie de rejeux", "Replay gallery"],
+	"gallery_empty": ["Ni sauvegarde ni rejeu pour l'instant. Un rejeu s'exporte depuis la fenêtre « Sauvegarder ».", "No save or replay yet. A replay is exported from the Save window."],
+	"gallery_hint": ["Coche deux histoires pour comparer leurs jalons.", "Tick two histories to compare their milestones."],
+	"gallery_save": ["sauvegarde", "save"],
+	"gallery_replay": ["rejeu", "replay"],
+	"gallery_resume": ["Reprendre", "Resume"],
+	"gallery_play": ["Rejouer", "Replay"],
+	"gallery_copy": ["Copier le code", "Copy the code"],
+	"gallery_copied": ["Code de planète copié.", "Planet code copied."],
+	"gallery_compare": ["Comparer", "Compare"],
+	"gallery_reached": ["Date atteinte", "Date reached"],
+	"gallery_interventions": ["Interventions", "Interventions"],
+	"gallery_milestones": ["Jalons", "Milestones"],
+	"gallery_no_milestone": ["Pas encore de jalon (fiche d'une version précédente, ou histoire à peine commencée).", "No milestone yet (older save, or a history that has barely begun)."],
+	"gallery_not_reached": ["pas atteint", "not reached"],
+	"gallery_replay_note": ["Un rejeu refait l'histoire depuis la graine avec les mêmes ordres, puis se met en pause à la date où il s'arrêtait.", "A replay remakes the history from the seed with the same orders, then pauses at the date where it stopped."],
+	"export_replay": ["Exporter le rejeu", "Export the replay"],
+	"replay_saved": ["Rejeu exporté dans la galerie.", "Replay exported to the gallery."],
+	"replay_banner": ["Rejeu de « %s », jusqu'à %s.", "Replay of “%s”, up to %s."],
+	"town_city": ["Ville de %s, société des %s : %s.", "City of %s, of the %s society: %s."],
+	"town_village": ["Village de cultivateurs (%s, société des %s) : %s.", "Farming village (%s, of the %s society): %s."],
+	"town_pop": ["%s habitants.", "%s inhabitants."],
+	"town_ruined": ["Plus que %s habitants sur %s au plus fort : le reste est en ruine.", "Only %s inhabitants left of %s at its height: the rest lies in ruins."],
+	"town_notice": ["Société d'essai : ses gens sont des figurants primates, ses bâtiments disent l'époque (techniques connues) et la culture (son peuple). Une ville montre au plus quelques centaines de bâtiments.", "Test society: its folk are primate stand-ins, its buildings show the era (known techniques) and the culture (its people). A city shows at most a few hundred buildings."],
 	"notable_born": ["Né", "Born"],
 	"people_ended": ["disparu", "ended"],
 	"population": ["Effectif", "Population"],
@@ -452,10 +477,30 @@ func list_saves() -> Array:
 		return out
 	for f in dir.get_files():
 		if f.ends_with(".evo"):
-			var path := SAVE_DIR + "/" + f
+			# Chemin du système : le moteur ne lit pas les chemins « user:// ».
+			var path := ProjectSettings.globalize_path(SAVE_DIR + "/" + f)
 			out.append({"path": path, "file": f, "time": FileAccess.get_modified_time(path)})
 	out.sort_custom(func(a, b): return a["time"] > b["time"])
 	return out
+
+## Rejeux exportés, du plus récent au plus ancien.
+func list_replays() -> Array:
+	var out := []
+	var dir := DirAccess.open(SAVE_DIR)
+	if dir == null:
+		return out
+	for f in dir.get_files():
+		if f.ends_with(".rejeu"):
+			# Chemin du système : le moteur ne lit pas les chemins « user:// ».
+			var path := ProjectSettings.globalize_path(SAVE_DIR + "/" + f)
+			out.append({"path": path, "file": f, "time": FileAccess.get_modified_time(path)})
+	out.sort_custom(func(a, b): return a["time"] > b["time"])
+	return out
+
+func replay_path(replay_name: String) -> String:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
+	var clean := replay_name.to_lower().replace(" ", "-").validate_filename()
+	return ProjectSettings.globalize_path("%s/%s.rejeu" % [SAVE_DIR, clean])
 
 func save_path(save_name: String) -> String:
 	var clean := save_name.to_lower().replace(" ", "-").validate_filename()

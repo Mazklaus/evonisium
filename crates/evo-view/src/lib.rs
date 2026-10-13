@@ -37,6 +37,7 @@ pub mod society;
 pub mod species;
 pub mod story;
 pub mod terrain;
+pub mod town;
 pub mod tree;
 
 pub use format::Lang;

@@ -790,8 +790,8 @@ pub fn sheet(state: &SocietyState, id: u32, lang: Lang) -> Option<SocietySheet> 
         ((if fr { "Légitimité" } else { "Legitimacy" }).to_string(), percent(a.legitimacy.clamp(0.0, 1.0), lang)),
         ((if fr { "Tension" } else { "Stress" }).to_string(), number_in(lang, a.stress, 2)),
     ];
-    // Une dette publique n'a de sens qu'avec un trésor : à partir de l'État.
-    if s.label.rank() >= 3 {
+    // Pas de dette sans trésor (evo-society) : on ne la montre que si elle existe.
+    if a.debt > 0.0 {
         facts.push(((if fr { "Dette (rations)" } else { "Debt (rations)" }).to_string(), money(a.debt, lang)));
     }
     let dims = dims_rows(&s.dims, lang).into_iter().map(|(name, value)| Gauge { name, value }).collect();

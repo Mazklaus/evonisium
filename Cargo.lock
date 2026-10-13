@@ -244,6 +244,7 @@ dependencies = [
 name = "evo-view"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "evo-agents",
  "evo-core",
  "evo-culture",

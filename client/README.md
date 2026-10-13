@@ -32,8 +32,8 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | `shaders/corps_atlas.gdshader`, `corps_contour.gdshader`, `organe.gdshader` | Corps du vivant (palier 2) : lavis du pigment, hachures dans l'ombre, irisation, contour à la plume, voile de la vue anatomie, organes colorés par appareil. |
 | `shaders/microbe.gdshader` | Microbes de la lame en 3D : lavis translucide du pigment, cerne d'encre, hachures légères. |
 | `shaders/atmosphere.gdshader` | Limbe de l'atmosphère (couleur tirée de sa composition) et contour du globe en double filet. |
-| `scripts/screens/` | Accueil, création de la planète, ensemencement, partie, chargement ; descente au sol (`sol.gd`) et lame de microscope en 3D (`lame.gd`). |
-| `scripts/ui/` | Barre du temps, frise, calques et légende, inspecteur et loupe, fiche d'espèce, arbre du vivant, chronique (événements, récit en chapitres, règles d'arrêt), alertes, interventions, sauvegarde, réglages, narrateur (guide de la première partie, puis conseiller ; voir `docs/guide-et-recit.md`) ; à l'étape 4 : « avec et sans » (`avec_sans.gd`), réseau trophique (`reseau.gd`), colonne stratigraphique (`strates.gd`), portrait 3D (`portrait.gd`), anatomie (`anatomie.gd`), comparateur (`comparateur.gd`) ; à l'étape 6, sur peuples d'essai : fenêtre des peuples avec arbres des peuples et des langues et personnages (`peuples.gd`), fiches de peuple et de personnage (`fiche_peuple.gd`), onglet des mythes de la chronique, peuple de la cellule dans l'inspecteur, mode historique dans la barre du temps ; voir `docs/etape-6-client.md` ; à l'étape 7, sur sociétés d'essai : fenêtre des sociétés avec chronique, récit d'une période et bilan pour la planète (`societes.gd`), fiche de société (`fiche_societe.gd`), comparaison de civilisations (`comparaison_societes.gd`), courbes dans le temps (`courbes.gd`), encyclopédie (`encyclopedie.gd`), société de la cellule dans l'inspecteur ; voir `docs/etape-7-client.md`. |
+| `scripts/screens/` | Accueil, création de la planète, ensemencement, partie, chargement ; descente au sol (`sol.gd`, avec le campement d'un peuple ou la ville d'une société) et lame de microscope en 3D (`lame.gd`). |
+| `scripts/ui/` | Barre du temps, frise, calques et légende, inspecteur et loupe, fiche d'espèce, arbre du vivant, chronique (événements, récit en chapitres, règles d'arrêt), alertes, interventions, sauvegarde, réglages, narrateur (guide de la première partie, puis conseiller ; voir `docs/guide-et-recit.md`) ; à l'étape 4 : « avec et sans » (`avec_sans.gd`), réseau trophique (`reseau.gd`), colonne stratigraphique (`strates.gd`), portrait 3D (`portrait.gd`), anatomie (`anatomie.gd`), comparateur (`comparateur.gd`) ; à l'étape 6, sur peuples d'essai : fenêtre des peuples avec arbres des peuples et des langues et personnages (`peuples.gd`), fiches de peuple et de personnage (`fiche_peuple.gd`), onglet des mythes de la chronique, peuple de la cellule dans l'inspecteur, mode historique dans la barre du temps ; voir `docs/etape-6-client.md` ; à l'étape 7, sur sociétés d'essai : fenêtre des sociétés avec chronique, récit d'une période et bilan pour la planète (`societes.gd`), fiche de société (`fiche_societe.gd`), comparaison de civilisations (`comparaison_societes.gd`), courbes dans le temps (`courbes.gd`), encyclopédie (`encyclopedie.gd`), société de la cellule dans l'inspecteur, galerie de rejeux (`galerie.gd`) ; voir `docs/etape-7-client.md`. |
 | `tests/porte.gd`, `tests/porte4.gd` | Scénarios des portes des étapes 3 et 4 (voir plus bas). |
 
 ## Commandes
@@ -46,6 +46,7 @@ La première ouverture dans l'éditeur importe les polices et l'icône ; aucune 
 | Alt+1 à Alt+8, Alt+0 | Calques ; vue naturelle |
 | C, T, I, A, P | Chronique, arbre du vivant, interventions, « avec et sans », peuples (étape 6, peuples d'essai) |
 | S, E | Sociétés (étape 7, sociétés d'essai : liste, chronique, récit, planète), encyclopédie (simplifications assumées, techniques) |
+| G | Galerie de rejeux (sauvegardes et rejeux, jalons, comparaison) |
 | F5 | Sauvegarder |
 | F3 | Mesures de performance : images par seconde, pire image, vitesse tenue, postes les plus lourds ; tant que le cadre est ouvert, une ligne par seconde s'écrit dans `user://mesures/` (sous Windows `%APPDATA%\Godot\app_userdata\Evonisium\mesures`), que le bouton du cadre ouvre |
 | Glisser, molette, flèches, + et − | Tourner et zoomer le globe ; double clic : s'approcher d'un lieu |
@@ -100,6 +101,14 @@ godot --path client --resolution 1600x900 -- --porte4 --seul=peuples --sortie=/t
 # lumières de nuit sur le globe, fenêtre des sociétés, fiche, comparaison,
 # récit, encyclopédie (--an : année de l'histoire d'essai à attendre)
 godot --path client --resolution 1600x900 -- --porte4 --seul=societes --an=1000 --sortie=/tmp/societes
+
+# Étape 7, villes au sol : la plus grande ville à chaque année donnée, vue
+# de haut puis depuis la place
+godot --path client --resolution 1600x900 -- --porte4 --seul=ville --ans=-4000,800 --sortie=/tmp/ville
+
+# Galerie de rejeux : sauvegarde, export du rejeu, rejeu depuis la graine,
+# mêmes jalons dans les deux histoires
+godot --path client --resolution 1600x900 -- --porte4 --seul=galerie --ma=100 --sortie=/tmp/galerie
 
 # Lame de microscope en 3D : la cellule la plus peuplée d'un échantillon,
 # vue d'ensemble, vue proche, puis une fiche d'espèce par-dessus
