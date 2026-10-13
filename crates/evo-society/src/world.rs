@@ -40,6 +40,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Taux d'invention de base, par habitant connecté et par an.
 pub const INVENTION_RATE: f64 = 1.5e-10;
+/// Années qu'il faut, après la méthode expérimentale, pour qu'une société
+/// monte d'une marche au-dessus de son savoir le plus haut : il faut une
+/// génération d'ingénieurs pour tirer parti d'une découverte (trente ans de
+/// Maxwell à Marconi, de la radio au transistor ; Mokyr, 1990).
+pub const MATURATION_YEARS: i64 = 45;
 /// Coût de chaque marche de prérequis pour l'invention.
 pub const DEPTH_COST: f64 = 0.6;
 /// Plafond des morts par maladies endémiques, par an.
@@ -56,6 +61,36 @@ pub const DOMESTICATION_RATE: f64 = 3.0e-4;
 /// Probabilité annuelle qu'un voisin transmette une technique, à contact
 /// ordinaire.
 pub const DIFFUSION_RATE: f64 = 0.004;
+/// Facteur de la diffusion par l'écrit dans un pays, sur la part des
+/// lettrés : un pays tout lettré apprend en quelques décennies.
+pub const WRITTEN_DIFFUSION: f64 = 10.0;
+/// Chance annuelle qu'un pays qui sait extraire le charbon ouvre une mine
+/// sur un de ses gisements.
+pub const MINES_OPENED: f64 = 0.05;
+/// Facteur de la diffusion par l'écrit entre partenaires de commerce.
+pub const PARTNER_DIFFUSION: f64 = 3.0;
+/// Rythme des sous-systèmes lents (inventions, pertes, sciences, choix de
+/// paix ou de guerre), en années : chaque société, chaque paire de
+/// voisins y passe une fois tous les `SLOW_EVERY` ans, à son tour, avec
+/// les chances de ces années cumulées. Le tour ne dépend que du temps
+/// simulé et de l'identifiant.
+pub const SLOW_EVERY: i64 = 5;
+
+/// Est-ce le tour de cet identifiant cette année ?
+fn due(year: i64, id: u64) -> bool {
+    (year + (id % SLOW_EVERY as u64) as i64).rem_euclid(SLOW_EVERY) == 0
+}
+
+/// Chance qu'un événement de probabilité annuelle `p` arrive au moins une
+/// fois en `SLOW_EVERY` ans.
+fn over_slow(p: f64) -> f64 {
+    let q = 1.0 - p.clamp(0.0, 1.0);
+    let mut k = 1.0;
+    for _ in 0..SLOW_EVERY {
+        k *= q;
+    }
+    1.0 - k
+}
 const NEEDS: [Need; 10] = [
     Need::Food,
     Need::Fuel,
@@ -191,6 +226,9 @@ pub struct Totals {
     pub ch4_burden_c: f64,
     pub cum_deforestation_c: f64,
     pub cum_erosion_t: f64,
+    /// Part fossile du CO₂ cumulé (charbon et pétrole brûlés), t C.
+    #[serde(default)]
+    pub cum_fossil_c: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -343,6 +381,7 @@ impl SocietyWorld {
             soil: 1.0,
             forest_c: land.forest_c_km2 * land.area_km2,
             deposits: land.deposits,
+            engine_short: [0.0; 3],
         };
         self.carbon_initial += economy::carbon_stock(&eco);
         self.cells.push(Cell { id, land, links: Vec::new(), eco, settlement: None, year: None, trade: 0.0 });
@@ -361,9 +400,9 @@ impl SocietyWorld {
         }
     }
 
-    fn wild_of(&self, cell: u32) -> Vec<WildSpecies> {
+    fn wild_of(&self, cell: u32) -> Vec<&WildSpecies> {
         let ids = &self.cells[cell as usize].land.wild;
-        self.wild.iter().filter(|w| ids.contains(&w.id)).cloned().collect()
+        self.wild.iter().filter(|w| ids.contains(&w.id)).collect()
     }
 
     fn new_society(&mut self, species: u32, people: u32, cell: u32, parent: Option<u32>, phonology: Option<Phonology>) -> u32 {
@@ -416,6 +455,7 @@ impl SocietyWorld {
             victories: 0,
             defeats: 0,
             peak: Label::Bands,
+            frontier: (0, self.year),
         });
         id
     }
@@ -598,7 +638,7 @@ impl SocietyWorld {
         if b.sky && (!land.sky || sp.milieu == Milieu::Underground) {
             return false;
         }
-        if b.sedentary && !s.known.has(catalog().id("village").unwrap_or(0)) && sp.milieu == Milieu::Land {
+        if b.sedentary && !s.known.has(catalog().keys.village) && sp.milieu == Milieu::Land {
             return false;
         }
         let dom = self.domesticates(cell, s);
@@ -615,6 +655,18 @@ impl SocietyWorld {
             Resource::RootPlant => Some(Good::Roots),
             Resource::Abundance => return [Resource::SeedPlant, Resource::RootPlant].iter().any(|&x| self.borrowed(x, cell)),
             Resource::Animal | Resource::MilkAnimal => None,
+            // Le charbon voyage aussi : une mine voisine ou du même pays
+            // suffit (la Hollande et la Prusse rhénane brûlaient celui des
+            // autres, Pomeranz, 2000).
+            Resource::Coal => {
+                let t = catalog().keys.extraction_charbon;
+                let mine = |c: u32| {
+                    let c = &self.cells[c as usize];
+                    c.eco.deposits.coal_c > 1.0 && c.settlement.as_ref().is_some_and(|s| s.known.has(t))
+                };
+                let society = cell.settlement.as_ref().and_then(|s| self.societies.get(s.society as usize));
+                return cell.links.iter().any(|l| mine(l.to)) || society.is_some_and(|s| s.cells.iter().any(|&c| mine(c)));
+            }
             _ => return false,
         };
         let land = &cell.land;
@@ -631,8 +683,8 @@ impl SocietyWorld {
     fn domesticates(&self, cell: &Cell, s: &Settlement) -> Domesticates {
         let land = &cell.land;
         let suit = |d: &Domestic| self.wild.iter().find(|w| w.id == d.species).map(|w| w.suits(land.temp_c, land.rain_mm)).unwrap_or(0.0);
-        let farming = s.known.iter().any(|t| catalog().get(t).flags.agriculture);
-        let herding = s.known.iter().any(|t| catalog().get(t).flags.herding);
+        let farming = s.known.intersects(&catalog().flagged.agriculture);
+        let herding = s.known.intersects(&catalog().flagged.herding);
         let (crop, crop_good) = match (&s.crop, farming) {
             (Some(c), true) => (c.quality * suit(c), c.good),
             _ => (0.0, Good::Grain),
@@ -650,6 +702,141 @@ impl SocietyWorld {
                 (crop, crop_good)
             };
         Domesticates { crop, crop_good, herd, milk }
+    }
+
+    /// Inventions d'une société dans l'année : (société, technique, cellule).
+    fn invent_in(&self, soc: &Society, year: i64, seed: u64, half_steps: &[f64]) -> Vec<(u32, u16, u32)> {
+        let cat = catalog();
+        let mut found: Vec<(u32, u16, u32)> = Vec::new();
+        let Some(sp) = self.species(soc.species) else { return found };
+        let pop = soc.agg.population;
+        if pop < 50.0 || !due(year, soc.id as u64) {
+            return found;
+        }
+        let mut candidates: Vec<(u16, f64)> = Vec::new();
+        {
+            let mut r = rng(seed, year, 5, soc.id as u64);
+            let eff = cat.effects(&soc.known);
+            // Population qui échange vraiment des idées : la densité compte
+            // (Henrich, 2004 ; Powell, Shennan et Thomas, 2009) ; des
+            // chasseurs épars inventent peu.
+            let mut dense = 0.0;
+            for &c in &soc.cells {
+                let cell = &self.cells[c as usize];
+                if let Some(s) = &cell.settlement {
+                    // Densité sur les terres qui nourrissent.
+                    let density = s.pop / (cell.land.area_km2 * cell.land.arable.max(0.05)).max(1.0);
+                    dense += s.pop * ((density / DENSE_KM2).min(1.0) * (1.0 - s.urban) + s.urban);
+                }
+            }
+            let connected = dense + 0.25 * self.partners_dense(soc.id);
+            let rank = soc.label.rank();
+            // Après la méthode expérimentale, le savoir appelle le savoir
+            // (Mokyr, 2002) : chaque marche déjà gravie efface le tiers du
+            // coût d'une marche. Avant, chaque marche coûte plein tarif.
+            let method = soc.known.intersects(&cat.flagged.method);
+            let frontier = if method { soc.known.iter().map(|t| cat.depth[t as usize]).max().unwrap_or(0) as usize } else { 0 };
+            let needs: [f64; 10] = std::array::from_fn(|i| self.need_factor(soc, Some(NEEDS[i])));
+            let need = |n: Option<Need>| n.map(|n| needs[n as usize]).unwrap_or(1.0);
+            // Le rythme des inventions suit la population qui échange
+            // (Kremer, 1993) : à population égale, le monde invente autant
+            // qu'il soit morcelé ou uni. Des chasseurs épars comptent pour
+            // quelques centièmes.
+            let connected = connected + 0.03 * pop;
+            // Lire et la méthode expérimentale aident à inventer (Mokyr,
+            // 2002 : les Lumières industrielles).
+            let lettered = (1.0 + 3.0 * soc.agg.literacy) * if method { 2.0 } else { 1.0 };
+            // Au-delà de la machine à vapeur, on n'invente qu'avec des
+            // moteurs qui tournent : l'électricité, la chimie et
+            // l'électronique sont nées dans des économies industrielles
+            // (Mokyr, 1990).
+            let steam_depth = cat.keys.machine_vapeur.map(|t| cat.depth[t as usize]).unwrap_or(u16::MAX);
+            let method_depth = cat.keys.methode_scientifique.map(|t| cat.depth[t as usize]).unwrap_or(u16::MAX);
+            let industrial = (soc.agg.modern_energy / 0.3).clamp(0.0, 1.0);
+            let base = INVENTION_RATE
+                * lettered
+                * connected
+                * (0.3 + sp.learning.inventiveness)
+                * eff.science.min(400.0).sqrt()
+                * (0.6 + soc.agg.gdp / pop.max(1.0) / 2.0).clamp(0.5, 3.0);
+            candidates.clear();
+            let mut total = 0.0;
+            for t in 0..cat.len() as u16 {
+                if soc.known.has(t) || !cat.ready(t, &soc.known) {
+                    continue;
+                }
+                let tech = cat.get(t);
+                if tech.science.iter().any(|&(d, lvl)| soc.sciences[d.index()].precision < lvl) {
+                    continue;
+                }
+                // Une marche de plus que le savoir le plus haut attend que
+                // celui-ci ait mûri.
+                let depth = cat.depth[t as usize];
+                if depth > method_depth && depth > soc.frontier.0 && year - soc.frontier.1 < MATURATION_YEARS {
+                    continue;
+                }
+                // Écrire, juger, battre monnaie : il faut un pouvoir central.
+                let f = &tech.flags;
+                if rank < 2 && (tech.need == Some(Need::Administration) || f.writing || f.law || f.money || f.market || f.school) {
+                    continue;
+                }
+                let ease = 30.0 / tech.difficulty.max(5.0);
+                let rate = if f.agriculture || f.herding {
+                    // Domestiquer est une occasion du milieu plus qu'une
+                    // idée : là où poussent de bonnes plantes, où vivent de
+                    // bons animaux, des chasseurs fixés s'y mettent en
+                    // quelques siècles (Diamond, 1997).
+                    let q = self.opportunity(soc, f.herding);
+                    DOMESTICATION_RATE * q * q * need(tech.need) * tech.inventiveness
+                } else {
+                    // Chaque marche de la chaîne des prérequis coûte : une
+                    // idée lointaine demande tout un savoir autour d'elle
+                    // (Kremer, 1993 ; Mokyr, 2002).
+                    base * tech.inventiveness
+                        * if cat.depth[t as usize] > steam_depth { industrial } else { 1.0 }
+                        * need(tech.need)
+                        * ease
+                        * ease
+                        * half_steps[(2 * cat.depth[t as usize] as usize).saturating_sub(2 * frontier / 3).min(95)]
+                };
+                let rate = rate * SLOW_EVERY as f64;
+                if rate > 0.0 {
+                    candidates.push((t, rate));
+                    total += rate;
+                }
+            }
+            // Autant de tirages que d'inventions attendues, au poids de
+            // chaque taux : un seul nombre au hasard dans l'année calme.
+            let mut tries = total as usize + usize::from(r.random::<f64>() < total.fract());
+            while tries > 0 && total > 0.0 && !candidates.is_empty() {
+                tries -= 1;
+                let mut x = r.random::<f64>() * total;
+                let mut k = candidates.len() - 1;
+                for (j, &(_, w)) in candidates.iter().enumerate() {
+                    if x < w {
+                        k = j;
+                        break;
+                    }
+                    x -= w;
+                }
+                let (t, w) = candidates.swap_remove(k);
+                total -= w;
+                let tech = cat.get(t);
+                // Où ? La plus grande cellule où elle se pratique.
+                let mut best: Option<(f64, u32)> = None;
+                for &c in &soc.cells {
+                    let cell = &self.cells[c as usize];
+                    let Some(s) = &cell.settlement else { continue };
+                    if cat.ready(t, &s.known) && self.feasible(tech, cell, s) && best.is_none_or(|b| s.pop > b.0) {
+                        best = Some((s.pop, c));
+                    }
+                }
+                if let Some((_, c)) = best {
+                    found.push((soc.id, t, c));
+                }
+            }
+        }
+        found
     }
 
     /// Meilleure espèce sauvage à domestiquer dans la cellule.
@@ -683,8 +870,15 @@ impl SocietyWorld {
     /// Recalcule qui est en guerre (relu tout au long de l'année).
     fn refresh_wars(&mut self) {
         let n = self.societies.len();
-        let mut war = vec![false; n];
-        let mut adj: Vec<Vec<(u32, Relation)>> = vec![Vec::new(); n];
+        // On garde les tampons d'une année sur l'autre.
+        let mut war = std::mem::take(&mut self.war);
+        war.clear();
+        war.resize(n, false);
+        let mut adj = std::mem::take(&mut self.adj);
+        adj.resize_with(n, Vec::new);
+        for v in &mut adj {
+            v.clear();
+        }
         for (k, r) in &self.relations {
             if matches!(r.kind, RelationKind::War { .. }) {
                 war[k.0 as usize] = true;
@@ -701,11 +895,10 @@ impl SocietyWorld {
     fn policy(&self, soc: &Society) -> Policy {
         let i = |x: Institution| soc.institution(x);
         let cat = catalog();
-        let flags = |f: fn(&crate::catalog::Flags) -> bool| soc.known.iter().any(|t| f(&cat.get(t).flags));
-        let writing = flags(|f| f.writing);
-        let printing = flags(|f| f.printing);
-        let school = flags(|f| f.school);
-        let compulsory = soc.known.has(cat.id("ecole_obligatoire").unwrap_or(0));
+        let writing = soc.known.intersects(&cat.flagged.writing);
+        let printing = soc.known.intersects(&cat.flagged.printing);
+        let school = soc.known.intersects(&cat.flagged.school);
+        let compulsory = soc.known.has(cat.keys.ecole_obligatoire);
         let literacy = if writing {
             (0.004 + 0.03 * i(Institution::School) + if printing { 0.12 } else { 0.0 } + if compulsory { 0.75 } else { 0.0 }).min(0.98)
         } else {
@@ -713,7 +906,7 @@ impl SocietyWorld {
         };
         let at_war = self.at_war(soc.id);
         let market = i(Institution::Market) > 0.3;
-        let industry = flags(|f| f.industry);
+        let industry = soc.known.intersects(&cat.flagged.industry);
         Policy {
             elites: soc.agg.elites,
             army: (0.01 + 0.05 * i(Institution::Army) + if at_war { 0.05 } else { 0.0 }) * soc.dims.centralisation.max(0.2),
@@ -735,12 +928,14 @@ impl SocietyWorld {
         self.year += 1;
         let year = self.year;
         let seed = self.seed;
-        let policies: Vec<Policy> = self.societies.iter().map(|s| self.policy(s)).collect();
+        // Les sociétés éteintes n'ont plus de cellules : pas de politique à tirer.
+        let policies: Vec<Policy> = self.societies.iter().map(|s| if s.alive() { self.policy(s) } else { Policy::default() }).collect();
 
         // Mines de charbon en activité.
-        let coal_t = catalog().id("extraction_charbon").unwrap_or(0);
+        let coal_t = catalog().keys.extraction_charbon;
         let mines: Vec<bool> =
             self.cells.iter().map(|c| c.eco.deposits.coal_c > 1.0 && c.settlement.as_ref().is_some_and(|s| s.known.has(coal_t))).collect();
+        let market = self.national_markets(&mines);
 
         // 1. Économie et démographie, en parallèle.
         let this = &*self;
@@ -753,7 +948,7 @@ impl SocietyWorld {
                 let dom = this.domesticates(cell, s);
                 let wild = this.wild_of(cell.id);
                 let land = &cell.land;
-                let village = s.known.has(catalog().id("village").unwrap_or(0));
+                let village = s.known.has(catalog().keys.village);
                 // Chasseurs-cueilleurs sédentaires : là seulement où l'eau
                 // nourrit toute l'année (Natoufiens, Jomon, côte Nord-Ouest).
                 let rich = (land.coast || land.river > 0.25) && land.npp() > 0.45;
@@ -770,10 +965,13 @@ impl SocietyWorld {
                     policy,
                     fire: land.fire(),
                     coal_nearby: mines[cell.id as usize]
+                        || market.coal[s.society as usize]
                         || cell.links.iter().any(|l| {
                             mines[l.to as usize]
                                 && this.cells[l.to as usize].settlement.as_ref().is_some_and(|o| this.trades(o.society, s.society))
                         }),
+                    oil_nearby: market.oil[s.society as usize],
+                    export: market.export(cell.id as usize, s.society as usize),
                 };
                 let (eco, y) = economy::run(&inp, &cell.eco);
                 let mut s2 = s.clone();
@@ -844,6 +1042,7 @@ impl SocietyWorld {
             })
             .collect();
         let mut flux = Flux::default();
+        let mut fossil = 0.0;
         for (cell, r) in self.cells.iter_mut().zip(results) {
             if let Some((eco, y, s)) = r {
                 let f = y.flux;
@@ -856,11 +1055,13 @@ impl SocietyWorld {
                 flux.deforestation_c += f.deforestation_c;
                 flux.erosion_t += f.erosion_t;
                 flux.carbonate_c += f.carbonate_c;
+                fossil += y.consumed[Good::Coal.index()] * Good::Coal.carbon() + y.consumed[Good::Oil.index()] * Good::Oil.carbon();
                 cell.eco = eco;
                 cell.year = Some(y);
                 cell.settlement = if s.pop >= 20.0 { Some(s) } else { None };
             }
         }
+        self.pool_fuels(&market);
         let t = &mut self.totals;
         t.year = flux;
         t.cum_co2_c += flux.co2_c;
@@ -869,6 +1070,7 @@ impl SocietyWorld {
         t.ch4_burden_c = t.ch4_burden_c * (1.0 - 1.0 / 12.0) + flux.ch4_c;
         t.cum_deforestation_c += flux.deforestation_c;
         t.cum_erosion_t += flux.erosion_t;
+        t.cum_fossil_c += fossil;
 
         // 2 à 4.
         self.migrate();
@@ -890,14 +1092,163 @@ impl SocietyWorld {
         let _ = (year, seed);
     }
 
+    // ------------------------------------------------------------------ Marché national
+    /// Les canaux, puis le rail et les oléoducs, font un marché national du
+    /// charbon et du pétrole : une société industrielle, qui a une mine ou un puits
+    /// chez elle ou chez un partenaire du rail, en livre toutes ses
+    /// cellules (Wrigley, 2010 : le charbon britannique voyage par canal
+    /// puis par rail). Les mines et les puits extraient pour tout le pays
+    /// ce qui y a manqué l'an passé.
+    fn national_markets(&self, mines: &[bool]) -> Market {
+        let cat = catalog();
+        let n = self.societies.len();
+        let industrial =
+            |s: &Society| s.alive() && (s.known.intersects(&cat.flagged.industry) || cat.keys.locomotive.is_some_and(|t| s.known.has(t)));
+        let mut has = vec![[false; 2]; n];
+        let mut short = vec![[0.0f64; 2]; n];
+        let mut sources = vec![[0u32; 2]; n];
+        for c in &self.cells {
+            let Some(s) = &c.settlement else { continue };
+            let k = s.society as usize;
+            if k >= n {
+                continue;
+            }
+            let well = c.year.as_ref().is_some_and(|y| y.produced[Good::Oil.index()] > 0.0);
+            if mines[c.id as usize] {
+                has[k][0] = true;
+                sources[k][0] += 1;
+            }
+            if well {
+                has[k][1] = true;
+                sources[k][1] += 1;
+            }
+            if let Some(y) = &c.year {
+                short[k][0] += y.shortage[Good::Coal.index()];
+                short[k][1] += y.shortage[Good::Oil.index()];
+            }
+        }
+        // Marchés : les sociétés industrielles et les pays miniers qui
+        // commercent avec elles, réunis par leurs traités de commerce.
+        let ind: Vec<bool> = self.societies.iter().map(industrial).collect();
+        let mut member = ind.clone();
+        let mut root: Vec<u32> = (0..n as u32).collect();
+        fn find(root: &mut [u32], x: u32) -> u32 {
+            let mut x = x;
+            while root[x as usize] != x {
+                root[x as usize] = root[root[x as usize] as usize];
+                x = root[x as usize];
+            }
+            x
+        }
+        for (k, r) in &self.relations {
+            let (a, b) = (k.0 as usize, k.1 as usize);
+            if a >= n || b >= n || matches!(r.kind, RelationKind::War { .. }) {
+                continue;
+            }
+            // Les traités de commerce lient deux pays industriels ; un pays
+            // minier en paix vend son charbon à l'industriel voisin sans
+            // traité (le charbon gallois en France).
+            let trade = matches!(r.kind, RelationKind::Trade | RelationKind::Alliance);
+            let ok = |x: usize, y: usize| ind[x] && self.societies[y].alive() && (trade && ind[y] || has[y][0] || has[y][1]);
+            if ok(a, b) || ok(b, a) {
+                member[a] = true;
+                member[b] = true;
+                let (ra, rb) = (find(&mut root, k.0), find(&mut root, k.1));
+                if ra != rb {
+                    root[ra.max(rb) as usize] = ra.min(rb);
+                }
+            }
+        }
+        // Les navires à vapeur font un seul marché de tous les ports
+        // industriels et de leurs fournisseurs (le charbon de Cardiff
+        // chauffe Buenos Aires).
+        let steam = cat.keys.bateau_vapeur;
+        let mut world_root: Option<u32> = None;
+        for (k, soc) in self.societies.iter().enumerate() {
+            if !member[k] || !soc.alive() {
+                continue;
+            }
+            if steam.is_some_and(|t| soc.known.has(t)) {
+                let rk = find(&mut root, k as u32);
+                match world_root {
+                    None => world_root = Some(rk),
+                    Some(w) => {
+                        let w = find(&mut root, w);
+                        if w != rk {
+                            root[w.max(rk) as usize] = w.min(rk);
+                        }
+                    }
+                }
+            }
+        }
+        let group: Vec<u32> = (0..n as u32).map(|k| find(&mut root, k)).collect();
+        let mut g_has = vec![[false; 2]; n];
+        let mut g_short = vec![[0.0f64; 2]; n];
+        let mut g_sources = vec![[0u32; 2]; n];
+        for k in (0..n).filter(|&k| member[k]) {
+            let g = group[k] as usize;
+            for j in 0..2 {
+                g_has[g][j] |= has[k][j];
+                g_short[g][j] += short[k][j];
+                g_sources[g][j] += sources[k][j];
+            }
+        }
+        let coal = (0..n).map(|k| ind[k] && g_has[group[k] as usize][0]).collect();
+        let oil = (0..n).map(|k| ind[k] && g_has[group[k] as usize][1]).collect();
+        Market { coal, oil, short: g_short, sources: g_sources, member, group, mines: mines.to_vec() }
+    }
+
+    /// Le marché national répartit les stocks de charbon et de pétrole
+    /// entre les cellules d'une société du rail, au prorata du manque ;
+    /// 5 % se perdent en route (leur carbone part à l'air).
+    fn pool_fuels(&mut self, market: &Market) {
+        let n = self.societies.len();
+        let goods = [Good::Coal, Good::Oil];
+        let mut stock = vec![[0.0f64; 2]; n];
+        let mut want = vec![[0.0f64; 2]; n];
+        let group_of = |soc: u32| -> Option<usize> {
+            let k = soc as usize;
+            (k < n && market.member[k]).then(|| market.group[k] as usize)
+        };
+        for c in &self.cells {
+            let (Some(s), Some(y)) = (&c.settlement, &c.year) else { continue };
+            let Some(g) = group_of(s.society) else { continue };
+            for (j, good) in goods.iter().enumerate() {
+                stock[g][j] += c.eco.stocks[good.index()];
+                want[g][j] += y.shortage[good.index()];
+            }
+        }
+        for c in self.cells.iter_mut() {
+            let (Some(s), Some(y)) = (&c.settlement, &c.year) else { continue };
+            let Some(g) = group_of(s.society) else { continue };
+            for (j, good) in goods.iter().enumerate() {
+                let (st, w) = (stock[g][j], want[g][j]);
+                if st <= 0.0 || w <= 0.0 {
+                    continue;
+                }
+                // Chaque stock donne sa part de ce qui est livré ; chaque
+                // manque en reçoit sa part.
+                let delivered = st.min(w);
+                let i = good.index();
+                let out = c.eco.stocks[i] / st * delivered;
+                let into = y.shortage[i] / w * delivered;
+                c.eco.stocks[i] += into * 0.95 - out;
+                let lost = into * 0.05 * good.carbon();
+                self.totals.year.co2_c += lost;
+                self.totals.cum_co2_c += lost;
+                self.totals.cum_fossil_c += lost;
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Migrations
     fn can_cross(&self, s: &Settlement, l: &Link) -> bool {
         if !l.sea {
             return true;
         }
         let cat = catalog();
-        let nav = s.known.iter().any(|t| cat.get(t).flags.navigation);
-        let raft = cat.id("radeau").map(|r| s.known.has(r)).unwrap_or(false);
+        let nav = s.known.intersects(&cat.flagged.navigation);
+        let raft = cat.keys.radeau.map(|r| s.known.has(r)).unwrap_or(false);
         nav || raft && l.cost <= 2.0
     }
 
@@ -1113,6 +1464,9 @@ impl SocietyWorld {
                     let lost = q * (1.0 - eff);
                     self.totals.year.co2_c += lost * g.carbon();
                     self.totals.cum_co2_c += lost * g.carbon();
+                    if matches!(g, Good::Coal | Good::Oil) {
+                        self.totals.cum_fossil_c += lost * g.carbon();
+                    }
                     value += q * g.value();
                 }
                 self.cells[a].trade += value;
@@ -1162,6 +1516,17 @@ impl SocietyWorld {
         let year = self.year;
         let seed = self.seed;
         let cat = catalog();
+        // Partenaires de commerce et alliés, par société.
+        let mut partners: Vec<Vec<u32>> = vec![Vec::new(); self.societies.len()];
+        for (k, r) in &self.relations {
+            if matches!(r.kind, RelationKind::Trade | RelationKind::Alliance) {
+                let (a, b) = (k.0 as usize, k.1 as usize);
+                if a < partners.len() && b < partners.len() && self.societies[a].alive() && self.societies[b].alive() {
+                    partners[a].push(k.1);
+                    partners[b].push(k.0);
+                }
+            }
+        }
         let this = &*self;
         let plans: Vec<Vec<(u16, u32)>> = this
             .cells
@@ -1202,6 +1567,49 @@ impl SocietyWorld {
                         }
                     }
                 }
+                // Sur un gisement, le pays qui sait extraire ouvre des puits
+                // et y envoie ses mineurs, même loin de ses villes (les
+                // compagnies du Nord et de la Ruhr).
+                if cell.eco.deposits.coal_c > 1.0 {
+                    if let Some(soc) = this.societies.get(s.society as usize) {
+                        for t in [Some(cat.keys.extraction_charbon), cat.keys.pompe_vapeur].into_iter().flatten() {
+                            if soc.known.has(t) && !s.known.has(t) && r.random::<f64>() < MINES_OPENED {
+                                out.push((t, cell.id));
+                            }
+                        }
+                    }
+                }
+                // Le savoir écrit voyage dans tout le pays, pas seulement de
+                // proche en proche : livres, ingénieurs, brevets (Mokyr,
+                // 2002). Il va d'autant plus vite que l'on sait lire.
+                if s.literacy > 0.0 {
+                    if let Some(soc) = this.societies.get(s.society as usize) {
+                        let p = DIFFUSION_RATE * WRITTEN_DIFFUSION * s.literacy;
+                        for t in soc.known.and_not(&s.known).iter() {
+                            if r.random::<f64>() < p {
+                                let tech = cat.get(t);
+                                if cat.ready(t, &s.known) && this.feasible(tech, cell, s) {
+                                    out.push((t, cell.id));
+                                }
+                            }
+                        }
+                    }
+                    // Et chez les partenaires de commerce, plus lentement :
+                    // traductions, ingénieurs venus d'ailleurs (le Japon de
+                    // Meiji, la Russie de Pierre le Grand).
+                    for &o in partners.get(s.society as usize).map(Vec::as_slice).unwrap_or(&[]) {
+                        let other = &this.societies[o as usize];
+                        let p = DIFFUSION_RATE * PARTNER_DIFFUSION * s.literacy * this.compatible(s.species, other.species);
+                        for t in other.known.and_not(&s.known).iter() {
+                            if r.random::<f64>() < p {
+                                let tech = cat.get(t);
+                                if cat.ready(t, &s.known) && this.feasible(tech, cell, s) {
+                                    out.push((t, cell.id));
+                                }
+                            }
+                        }
+                    }
+                }
                 out
             })
             .collect();
@@ -1222,8 +1630,8 @@ impl SocietyWorld {
         let n = self.cells.len();
         for i in 0..n {
             let Some(s) = self.cells[i].settlement.clone() else { continue };
-            let farming = s.known.iter().any(|t| cat.get(t).flags.agriculture);
-            let herding = s.known.iter().any(|t| cat.get(t).flags.herding);
+            let farming = s.known.intersects(&cat.flagged.agriculture);
+            let herding = s.known.intersects(&cat.flagged.herding);
             if farming && s.crop.is_none() || herding && s.herd.is_none() {
                 let local_crop = if farming && s.crop.is_none() { self.best_wild(&self.cells[i], false, None) } else { None };
                 let local_herd = if herding && s.herd.is_none() { self.best_wild(&self.cells[i], true, None) } else { None };
@@ -1415,7 +1823,7 @@ impl SocietyWorld {
             let mut r = rng(seed, year, 4, i as u64);
             if r.random::<f64>() < 3e-6 * (urban / 1e5).min(10.0) {
                 let id = self.diseases.len() as u32;
-                let plague = s.known.iter().any(|t| catalog().get(t).flags.navigation) && r.random_bool(0.3);
+                let plague = s.known.intersects(&catalog().flagged.navigation) && r.random_bool(0.3);
                 let (r0, lethality, lasting) = if plague {
                     (r.random_range(1.8..3.5), r.random_range(0.15..0.4), false)
                 } else {
@@ -1491,8 +1899,6 @@ impl SocietyWorld {
         let year = self.year;
         let seed = self.seed;
         let cat = catalog();
-        let mut found: Vec<(u32, u16, u32)> = Vec::new();
-        let mut candidates: Vec<(u16, f64)> = Vec::new();
         // Coût par demi-marche : DEPTH_COST^(k/2).
         let half = DEPTH_COST.sqrt();
         let half_steps: Vec<f64> = (0..96)
@@ -1502,121 +1908,14 @@ impl SocietyWorld {
                 Some(v)
             })
             .collect();
-        for soc in self.societies.iter().filter(|s| s.alive()) {
-            let Some(sp) = self.species(soc.species) else { continue };
-            let pop = soc.agg.population;
-            if pop < 50.0 {
-                continue;
-            }
-            let mut r = rng(seed, year, 5, soc.id as u64);
-            let eff = cat.effects(&soc.known);
-            // Population qui échange vraiment des idées : la densité compte
-            // (Henrich, 2004 ; Powell, Shennan et Thomas, 2009) ; des
-            // chasseurs épars inventent peu.
-            let mut dense = 0.0;
-            for &c in &soc.cells {
-                let cell = &self.cells[c as usize];
-                if let Some(s) = &cell.settlement {
-                    // Densité sur les terres qui nourrissent.
-                    let density = s.pop / (cell.land.area_km2 * cell.land.arable.max(0.05)).max(1.0);
-                    dense += s.pop * ((density / DENSE_KM2).min(1.0) * (1.0 - s.urban) + s.urban);
-                }
-            }
-            let connected = dense + 0.25 * self.partners_dense(soc.id);
-            let rank = soc.label.rank();
-            // Après la méthode expérimentale, le savoir appelle le savoir
-            // (Mokyr, 2002) : chaque marche déjà gravie efface le tiers du
-            // coût d'une marche. Avant, chaque marche coûte plein tarif.
-            let method = soc.known.iter().any(|t| cat.get(t).flags.method);
-            let frontier = if method { soc.known.iter().map(|t| cat.depth[t as usize]).max().unwrap_or(0) as usize } else { 0 };
-            let needs: [f64; 10] = std::array::from_fn(|i| self.need_factor(soc, Some(NEEDS[i])));
-            let need = |n: Option<Need>| n.map(|n| needs[n as usize]).unwrap_or(1.0);
-            // Le rythme des inventions suit la population qui échange
-            // (Kremer, 1993) : à population égale, le monde invente autant
-            // qu'il soit morcelé ou uni. Des chasseurs épars comptent pour
-            // quelques centièmes.
-            let connected = connected + 0.03 * pop;
-            // Lire et la méthode expérimentale aident à inventer (Mokyr,
-            // 2002 : les Lumières industrielles).
-            let lettered = (1.0 + 3.0 * soc.agg.literacy) * if method { 2.0 } else { 1.0 };
-            let base = INVENTION_RATE
-                * lettered
-                * connected
-                * (0.3 + sp.learning.inventiveness)
-                * eff.science.min(400.0).sqrt()
-                * (0.6 + soc.agg.gdp / pop.max(1.0) / 2.0).clamp(0.5, 3.0);
-            candidates.clear();
-            let mut total = 0.0;
-            for t in 0..cat.len() as u16 {
-                if soc.known.has(t) || !cat.ready(t, &soc.known) {
-                    continue;
-                }
-                let tech = cat.get(t);
-                if tech.science.iter().any(|&(d, lvl)| soc.sciences[d.index()].precision < lvl) {
-                    continue;
-                }
-                // Écrire, juger, battre monnaie : il faut un pouvoir central.
-                let f = &tech.flags;
-                if rank < 2 && (tech.need == Some(Need::Administration) || f.writing || f.law || f.money || f.market || f.school) {
-                    continue;
-                }
-                let ease = 30.0 / tech.difficulty.max(5.0);
-                let rate = if f.agriculture || f.herding {
-                    // Domestiquer est une occasion du milieu plus qu'une
-                    // idée : là où poussent de bonnes plantes, où vivent de
-                    // bons animaux, des chasseurs fixés s'y mettent en
-                    // quelques siècles (Diamond, 1997).
-                    let q = self.opportunity(soc, f.herding);
-                    DOMESTICATION_RATE * q * q * need(tech.need) * tech.inventiveness
-                } else {
-                    // Chaque marche de la chaîne des prérequis coûte : une
-                    // idée lointaine demande tout un savoir autour d'elle
-                    // (Kremer, 1993 ; Mokyr, 2002).
-                    base * tech.inventiveness
-                        * need(tech.need)
-                        * ease
-                        * ease
-                        * half_steps[(2 * cat.depth[t as usize] as usize).saturating_sub(2 * frontier / 3).min(95)]
-                };
-                if rate > 0.0 {
-                    candidates.push((t, rate));
-                    total += rate;
-                }
-            }
-            // Autant de tirages que d'inventions attendues, au poids de
-            // chaque taux : un seul nombre au hasard dans l'année calme.
-            let mut tries = total as usize + usize::from(r.random::<f64>() < total.fract());
-            while tries > 0 && total > 0.0 && !candidates.is_empty() {
-                tries -= 1;
-                let mut x = r.random::<f64>() * total;
-                let mut k = candidates.len() - 1;
-                for (j, &(_, w)) in candidates.iter().enumerate() {
-                    if x < w {
-                        k = j;
-                        break;
-                    }
-                    x -= w;
-                }
-                let (t, w) = candidates.swap_remove(k);
-                total -= w;
-                let tech = cat.get(t);
-                // Où ? La plus grande cellule où elle se pratique.
-                let mut best: Option<(f64, u32)> = None;
-                for &c in &soc.cells {
-                    let cell = &self.cells[c as usize];
-                    let Some(s) = &cell.settlement else { continue };
-                    if cat.ready(t, &s.known) && self.feasible(tech, cell, s) && best.is_none_or(|b| s.pop > b.0) {
-                        best = Some((s.pop, c));
-                    }
-                }
-                if let Some((_, c)) = best {
-                    found.push((soc.id, t, c));
-                }
-            }
-        }
+        // Chaque société tire ses inventions de son propre flux : les
+        // plans se calculent en parallèle et s'appliquent dans l'ordre.
+        let this = &*self;
+        let found: Vec<(u32, u16, u32)> =
+            this.societies.iter().filter(|s| s.alive()).flat_map(|soc| this.invent_in(soc, year, seed, &half_steps)).collect();
         for (soc, t, c) in found {
             let tech = cat.get(t);
-            let first_agri = tech.flags.agriculture && !self.societies[soc as usize].known.iter().any(|k| cat.get(k).flags.agriculture);
+            let first_agri = tech.flags.agriculture && !self.societies[soc as usize].known.intersects(&cat.flagged.agriculture);
             if let Some(s) = self.cells[c as usize].settlement.as_mut() {
                 s.known.set(t);
                 s.effects = cat.effects(&s.known);
@@ -1671,7 +1970,7 @@ impl SocietyWorld {
                     Some(c),
                     Some(t),
                     None,
-                    format!("Un foyer agricole naît chez les {name} : {wild} domestiqué."),
+                    format!("Un foyer agricole naît chez les {name}, qui domestiquent {wild}."),
                     0.9,
                 );
             }
@@ -1724,33 +2023,43 @@ impl SocietyWorld {
         let seed = self.seed;
         let cat = catalog();
         let n = cat.len();
-        let mut lost: Vec<(usize, u16)> = Vec::new();
-        for soc in self.societies.iter().filter(|s| s.alive()) {
-            let Some(sp) = self.species(soc.species) else { continue };
-            let mut practitioners = vec![0.0f64; n];
-            for &c in &soc.cells {
-                if let Some(s) = &self.cells[c as usize].settlement {
-                    for t in s.known.iter() {
-                        practitioners[t as usize] += s.pop;
+        let this = &*self;
+        let lost: Vec<(usize, u16)> = this
+            .societies
+            .iter()
+            .filter(|s| s.alive())
+            .flat_map(|soc| {
+                let mut lost: Vec<(usize, u16)> = Vec::new();
+                let Some(sp) = this.species(soc.species) else { return lost };
+                if !due(year, soc.id as u64) {
+                    return lost;
+                }
+                let mut practitioners = vec![0.0f64; n];
+                for &c in &soc.cells {
+                    if let Some(s) = &this.cells[c as usize].settlement {
+                        for t in s.known.iter() {
+                            practitioners[t as usize] += s.pop;
+                        }
                     }
                 }
-            }
-            let eff = cat.effects(&soc.known);
-            let mut learning = sp.learning;
-            learning.fidelity = (learning.fidelity + eff.fidelity).min(0.995);
-            let mut r = rng(seed, year, 6, soc.id as u64);
-            for t in soc.known.iter() {
-                let tech = cat.get(t);
-                // Les techniques savantes n'ont qu'un praticien sur cent.
-                let share = if tech.difficulty > 30.0 { 0.01 } else { 0.2 };
-                let gain = learning.skill_gain(tech.difficulty * 3.0, practitioners[t as usize] * share + 1.0);
-                if gain < 0.0 && r.random::<f64>() < 0.02 {
-                    for &c in &soc.cells {
-                        lost.push((c as usize, t));
+                let eff = cat.effects(&soc.known);
+                let mut learning = sp.learning;
+                learning.fidelity = (learning.fidelity + eff.fidelity).min(0.995);
+                let mut r = rng(seed, year, 6, soc.id as u64);
+                for t in soc.known.iter() {
+                    let tech = cat.get(t);
+                    // Les techniques savantes n'ont qu'un praticien sur cent.
+                    let share = if tech.difficulty > 30.0 { 0.01 } else { 0.2 };
+                    let gain = learning.skill_gain(tech.difficulty * 3.0, practitioners[t as usize] * share + 1.0);
+                    if gain < 0.0 && r.random::<f64>() < over_slow(0.02) {
+                        for &c in &soc.cells {
+                            lost.push((c as usize, t));
+                        }
                     }
                 }
-            }
-        }
+                lost
+            })
+            .collect();
         for (c, t) in lost {
             if let Some(s) = self.cells[c].settlement.as_mut() {
                 if s.known.has(t) {
@@ -1779,7 +2088,11 @@ impl SocietyWorld {
             }
         }
         let ids: Vec<u32> = self.societies.iter().filter(|s| s.alive()).map(|s| s.id).collect();
-        for id in ids {
+        // Chaque société ne lit que ses propres cellules, que les autres
+        // sociétés ne touchent pas pendant la boucle : agrégats d'avance.
+        let this = &*self;
+        let mut gathers: Vec<Option<Gather>> = ids.par_iter().map(|&id| Some(this.gather(&this.societies[id as usize]))).collect();
+        for (k, id) in ids.into_iter().enumerate() {
             let i = id as usize;
             if self.societies[i].cells.is_empty() {
                 self.societies[i].ended = Some(year);
@@ -1787,52 +2100,28 @@ impl SocietyWorld {
             }
             // Agrégats.
             let mut agg = self.societies[i].agg;
-            let mut known = Known::default();
-            let (mut pop, mut gdp, mut surplus, mut public, mut food, mut urban, mut lit, mut modern, mut sedentary, mut storable) =
-                (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-            let mut peoples: BTreeMap<u32, f64> = BTreeMap::new();
-            let mut military = 0.0;
             let policy = self.policy(&self.societies[i]);
-            let mut circumscribed = 0.0;
-            let mut biggest = (0.0, self.societies[i].capital);
-            for &c in &self.societies[i].cells {
-                let cell = &self.cells[c as usize];
-                let Some(s) = &cell.settlement else { continue };
-                known = known.or(&s.known);
-                pop += s.pop;
-                *peoples.entry(s.people).or_default() += s.pop;
-                urban += s.pop * s.urban;
-                lit += s.pop * s.literacy;
-                modern += s.pop * s.modern;
-                if s.sedentary {
-                    sedentary += s.pop;
-                }
-                if s.pop > biggest.0 {
-                    biggest = (s.pop, c);
-                }
-                if let Some(y) = &cell.year {
-                    gdp += y.gdp;
-                    surplus += y.surplus;
-                    public += y.public;
-                    food += y.food_pc * s.pop;
-                    storable += cell.eco.stocks[Good::Grain.index()] + cell.eco.stocks[Good::Roots.index()];
-                }
-                military += s.pop
-                    * economy::WORK_SHARE
-                    * policy.army.max(0.02)
-                    * s.effects.military
-                    * (0.5 + self.societies[i].dims.centralisation);
-                // Circonscription : voisins pauvres (désert, mer, montagne).
-                let poor = cell
-                    .links
-                    .iter()
-                    .filter(|l| {
-                        let o = &self.cells[l.to as usize];
-                        o.land.ocean || o.land.npp() < 0.15 || l.cost >= 2.0
-                    })
-                    .count();
-                circumscribed += s.pop * poor as f64 / cell.links.len().max(1) as f64;
-            }
+            let Some(Gather {
+                known,
+                eff,
+                pop,
+                gdp,
+                surplus,
+                public,
+                food,
+                urban,
+                lit,
+                modern,
+                sedentary,
+                storable,
+                peoples,
+                military,
+                circumscribed,
+                biggest,
+            }) = gathers[k].take()
+            else {
+                continue;
+            };
             if pop <= 0.0 {
                 self.societies[i].ended = Some(year);
                 continue;
@@ -1848,11 +2137,10 @@ impl SocietyWorld {
             let threat = self.threat(id);
             let circ = circumscribed / pop;
             let dominant = peoples.values().cloned().fold(0.0, f64::max) / pop;
-            let eff = cat.effects(&known);
-            let writing = known.iter().any(|t| cat.get(t).flags.writing);
-            let market_known = known.iter().any(|t| cat.get(t).flags.market) && known.iter().any(|t| cat.get(t).flags.money);
-            let school_known = known.iter().any(|t| cat.get(t).flags.school);
-            let law = known.iter().any(|t| cat.get(t).flags.law);
+            let writing = known.intersects(&cat.flagged.writing);
+            let market_known = known.intersects(&cat.flagged.market) && known.intersects(&cat.flagged.money);
+            let school_known = known.intersects(&cat.flagged.school);
+            let law = known.intersects(&cat.flagged.law);
             let sym = self.species(soc.species).map(|s| s.learning.symbolic).unwrap_or(0.0);
             let chief_skill = soc.chief.and_then(|c| self.notables.get(c as usize)).map(|n| n.skill).unwrap_or(0.5);
 
@@ -1924,8 +2212,11 @@ impl SocietyWorld {
             elites = elites.clamp(0.0005, 0.25).min(e_target * 2.5).max(e_target * 0.3);
             let revenue = surplus * policy.tax * (0.4 + 0.6 * d.admin) / (1.0 + 0.3 * cells_pen);
             let expenses = public + elites * pop * 0.5 * d.centralisation;
+            // Sans trésor (bandes, tribus), pas de dette ; au-delà de vingt
+            // ans de recettes, le souverain fait défaut et la dette s'efface
+            // jusque-là (Reinhart et Rogoff, 2009).
             let mut debt = agg.debt * 1.03 + expenses - revenue;
-            debt = debt.max(0.0);
+            debt = if soc.label.rank() < 2 { 0.0 } else { debt.clamp(0.0, 20.0 * (revenue + 1.0)) };
             let mmp = ((1.05 - fpc) / 0.3).clamp(0.0, 1.0) * (0.5 + urban / pop);
             let emp = (elites / e_target.max(1e-4) - 1.0).max(0.0);
             let sfd = (debt / (revenue + 1.0) / 10.0).min(2.0);
@@ -1943,7 +2234,7 @@ impl SocietyWorld {
             .clamp(0.05, 1.0);
             let legitimacy = toward(agg.legitimacy, if in_crisis { l_t * 0.6 } else { l_t }, 0.05);
 
-            let modern_known = known.iter().any(|t| cat.get(t).flags.industry);
+            let modern_known = known.intersects(&cat.flagged.industry);
             let lbl = society::label(
                 &d,
                 &Aggregates { population: pop, cells: soc.cells.len() as u32, ..agg },
@@ -1973,13 +2264,16 @@ impl SocietyWorld {
             let old_label = soc.label;
             let crisis = soc.crisis;
             let before = soc.before_crisis;
-            let name = soc.name();
             let capital_ok = soc.cells.contains(&soc.capital);
             {
                 let s = &mut self.societies[i];
                 s.agg = agg;
                 s.dims = d;
                 s.institutions = it;
+                let top = known.iter().map(|t| cat.depth[t as usize]).max().unwrap_or(0);
+                if top > s.frontier.0 {
+                    s.frontier = (top, year);
+                }
                 s.known = known;
                 s.label = lbl;
                 if !capital_ok || biggest.0 > 3.0 * self.cells[s.capital as usize].settlement.as_ref().map(|x| x.pop).unwrap_or(0.0) {
@@ -1993,6 +2287,7 @@ impl SocietyWorld {
             }
             if lbl != old_label && lbl.rank() > old_label.rank() {
                 let interest = 0.4 + 0.1 * f64::from(lbl.rank());
+                let name = self.societies[i].name();
                 self.event(
                     EventKind::Label,
                     Some(id),
@@ -2005,15 +2300,18 @@ impl SocietyWorld {
                 );
             }
             // Crises.
-            let mut r = rng(seed, year, 7, id as u64);
+            // Le flux de l'année ne se tire que s'il sert : mêmes nombres.
+            let mut lazy: Option<SimRng> = None;
+            let mut r = || lazy.get_or_insert_with(|| rng(seed, year, 7, id as u64)).random::<f64>();
             if crisis == 0 {
                 let p = ((stress - 1.6) * 0.03).clamp(0.0, 0.08);
-                if lbl.rank() >= 2 && r.random::<f64>() < p {
+                if lbl.rank() >= 2 && r() < p {
                     let s = &mut self.societies[i];
                     s.crisis = 1;
                     s.before_crisis = Some((lbl, pop, s.cells.len() as u32));
                     s.agg.debt = 0.0;
                     self.counters.crises += 1;
+                    let name = self.societies[i].name();
                     self.event(
                         EventKind::CrisisStart,
                         Some(id),
@@ -2050,6 +2348,8 @@ impl SocietyWorld {
                     s.before_crisis = None;
                     if collapsed {
                         self.counters.collapses += 1;
+                        let name = self.societies[i].name();
+                        let now_cells = self.societies[i].cells.len();
                         self.event(
                             EventKind::Collapse,
                             Some(id),
@@ -2057,15 +2357,26 @@ impl SocietyWorld {
                             None,
                             None,
                             None,
-                            format!(
-                                "Effondrement des {name} : de {} à {}, {:.0} % de la population perdue.",
-                                blabel.label(),
-                                lbl.label(),
-                                100.0 * (1.0 - pop / bpop.max(1.0)).max(0.0)
-                            ),
+                            {
+                                let pct = 100.0 * (1.0 - pop / bpop.max(1.0)).max(0.0);
+                                if lbl.rank() < blabel.rank() {
+                                    format!(
+                                        "Effondrement des {name} : {} à {}, {pct:.0} % de la population perdue.",
+                                        de(blabel),
+                                        lbl.label()
+                                    )
+                                } else {
+                                    let land = 100.0 * (1.0 - now_cells as f64 / f64::from(bcells.max(1))).max(0.0);
+                                    format!(
+                                        "Effondrement des {name} : {} perd {pct:.0} % de sa population et {land:.0} % de ses terres.",
+                                        the(lbl)
+                                    )
+                                }
+                            },
                             0.85,
                         );
                     } else {
+                        let name = self.societies[i].name();
                         self.event(EventKind::CrisisEnd, Some(id), None, None, None, None, format!("Les {name} sortent de la crise."), 0.3);
                     }
                 }
@@ -2073,7 +2384,7 @@ impl SocietyWorld {
             // Scission.
             let s = &self.societies[i];
             let over = s.cells.len() > max_cells(s) + 1;
-            if (s.dims.cohesion < 0.32 || over) && s.cells.len() >= 2 && r.random::<f64>() < if over { 0.02 } else { 0.05 } {
+            if (s.dims.cohesion < 0.32 || over) && s.cells.len() >= 2 && r() < if over { 0.02 } else { 0.05 } {
                 self.split(id);
             }
         }
@@ -2090,6 +2401,71 @@ impl SocietyWorld {
                     s.people = p;
                 }
             }
+        }
+    }
+
+    /// Agrégats d'une société sur ses cellules (lecture seule, en parallèle).
+    fn gather(&self, soc: &Society) -> Gather {
+        let mut known = Known::default();
+        let (mut pop, mut gdp, mut surplus, mut public, mut food, mut urban, mut lit, mut modern, mut sedentary, mut storable) =
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        let mut peoples: BTreeMap<u32, f64> = BTreeMap::new();
+        let mut military = 0.0;
+        let policy = self.policy(soc);
+        let mut circumscribed = 0.0;
+        let mut biggest = (0.0, soc.capital);
+        for &c in &soc.cells {
+            let cell = &self.cells[c as usize];
+            let Some(s) = &cell.settlement else { continue };
+            known = known.or(&s.known);
+            pop += s.pop;
+            *peoples.entry(s.people).or_default() += s.pop;
+            urban += s.pop * s.urban;
+            lit += s.pop * s.literacy;
+            modern += s.pop * s.modern;
+            if s.sedentary {
+                sedentary += s.pop;
+            }
+            if s.pop > biggest.0 {
+                biggest = (s.pop, c);
+            }
+            if let Some(y) = &cell.year {
+                gdp += y.gdp;
+                surplus += y.surplus;
+                public += y.public;
+                food += y.food_pc * s.pop;
+                storable += cell.eco.stocks[Good::Grain.index()] + cell.eco.stocks[Good::Roots.index()];
+            }
+            military += s.pop * economy::WORK_SHARE * policy.army.max(0.02) * s.effects.military * (0.5 + soc.dims.centralisation);
+            // Circonscription : voisins pauvres (désert, mer, montagne).
+            let poor = cell
+                .links
+                .iter()
+                .filter(|l| {
+                    let o = &self.cells[l.to as usize];
+                    o.land.ocean || o.land.npp() < 0.15 || l.cost >= 2.0
+                })
+                .count();
+            circumscribed += s.pop * poor as f64 / cell.links.len().max(1) as f64;
+        }
+        let eff = catalog().effects(&known);
+        Gather {
+            eff,
+            known,
+            pop,
+            gdp,
+            surplus,
+            public,
+            food,
+            urban,
+            lit,
+            modern,
+            sedentary,
+            storable,
+            peoples,
+            military,
+            circumscribed,
+            biggest,
         }
     }
 
@@ -2175,18 +2551,21 @@ impl SocietyWorld {
     }
 
     // ------------------------------------------------------------------ Guerre et diplomatie
-    fn neighbours(&self) -> BTreeSet<(u32, u32)> {
-        let mut out = BTreeSet::new();
+    /// Paires de sociétés voisines, triées, sans doublon.
+    fn neighbours(&self) -> Vec<(u32, u32)> {
+        let mut out = Vec::new();
         for c in &self.cells {
             let Some(s) = &c.settlement else { continue };
             for l in &c.links {
                 if let Some(o) = &self.cells[l.to as usize].settlement {
                     if o.society != s.society && (!l.sea || self.can_cross(s, l) || self.can_cross(o, l)) {
-                        out.insert(key(s.society, o.society));
+                        out.push(key(s.society, o.society));
                     }
                 }
             }
         }
+        out.sort_unstable();
+        out.dedup();
         out
     }
 
@@ -2199,11 +2578,21 @@ impl SocietyWorld {
             .relations
             .keys()
             .copied()
-            .filter(|k| !pairs.contains(k) || !self.societies[k.0 as usize].alive() || !self.societies[k.1 as usize].alive())
+            .filter(|k| pairs.binary_search(k).is_err() || !self.societies[k.0 as usize].alive() || !self.societies[k.1 as usize].alive())
             .collect();
         for k in gone {
             self.relations.remove(&k);
         }
+        // Qui est en guerre avec qui, tenu à jour pendant la boucle : un
+        // ennemi commun se lit sans parcourir toutes les relations.
+        let mut war_with: Vec<Vec<u32>> = vec![Vec::new(); self.societies.len()];
+        for (k, r) in &self.relations {
+            if matches!(r.kind, RelationKind::War { .. }) {
+                war_with[k.0 as usize].push(k.1);
+                war_with[k.1 as usize].push(k.0);
+            }
+        }
+        let is_war = |r: Option<&Relation>| r.is_some_and(|r| matches!(r.kind, RelationKind::War { .. }));
         for (a, b) in pairs {
             let (sa, sb) = (&self.societies[a as usize], &self.societies[b as usize]);
             if !sa.alive() || !sb.alive() {
@@ -2220,135 +2609,161 @@ impl SocietyWorld {
                     self.event(EventKind::FirstContact, Some(a), Some(b), Some(sa.capital), None, None, txt, 1.0);
                 }
             }
-            let mut r = rng(seed, year, 9, ((a as u64) << 32) | b as u64);
-            let rel = self.relations.get(&(a, b)).copied().unwrap_or(Relation { kind: RelationKind::Peace, since: year, weariness: 0.0 });
-            let (sa, sb) = (&self.societies[a as usize], &self.societies[b as usize]);
-            let (pa, pb) = (sa.agg.military.max(1.0), sb.agg.military.max(1.0));
-            let species_gap = sa.species != sb.species;
-            let compat = self.compatible(sa.species, sb.species);
-            match rel.kind {
-                RelationKind::War { attacker } => {
-                    let defender = if attacker == a { b } else { a };
-                    self.battle(attacker, defender, &mut r);
-                    let mut rel = rel;
-                    rel.weariness += 0.02 + 0.05 * f64::from(u8::from(self.societies[attacker as usize].crisis > 0));
-                    let still = self.societies[defender as usize].alive() && self.societies[attacker as usize].alive();
-                    if !still {
-                        self.relations.remove(&(a, b));
-                    } else if r.random::<f64>() < rel.weariness * 0.1 {
-                        // Paix : le vaincu paie tribut si l'écart est grand.
-                        let (pa2, pd2) = (self.societies[attacker as usize].agg.military, self.societies[defender as usize].agg.military);
-                        let kind = if pa2 > 2.0 * pd2 && self.societies[attacker as usize].dims.centralisation > 0.4 {
-                            RelationKind::Tribute { payer: defender }
-                        } else {
-                            RelationKind::Peace
-                        };
-                        self.relations.insert((a, b), Relation { kind, since: year, weariness: 0.0 });
-                        let (na, nd) = (self.societies[attacker as usize].name(), self.societies[defender as usize].name());
-                        if rel.since < year - 1 && self.societies[attacker as usize].dims.centralisation > 0.3 {
-                            self.event(
-                                EventKind::WarEnd,
-                                Some(attacker),
-                                Some(defender),
-                                None,
-                                None,
-                                None,
-                                format!("Paix entre les {na} et les {nd}."),
-                                0.4,
-                            );
-                        }
-                        if matches!(kind, RelationKind::Tribute { .. }) {
-                            self.event(
-                                EventKind::Tribute,
-                                Some(defender),
-                                Some(attacker),
-                                None,
-                                None,
-                                None,
-                                format!("Les {nd} paient tribut aux {na}."),
-                                0.4,
-                            );
-                        }
-                    } else {
-                        self.relations.insert((a, b), rel);
-                    }
+            let was_war = is_war(self.relations.get(&(a, b)));
+            'pair: {
+                let rel =
+                    self.relations.get(&(a, b)).copied().unwrap_or(Relation { kind: RelationKind::Peace, since: year, weariness: 0.0 });
+                // La guerre se mène chaque année ; la paix se décide à son tour.
+                if !matches!(rel.kind, RelationKind::War { .. }) && !due(year, a as u64 * 7 + b as u64) {
+                    break 'pair;
                 }
-                _ => {
-                    // Guerre ? Dans les deux sens.
-                    let mut declared = false;
-                    for (att, def, patt, pdef) in [(a, b, pa, pb), (b, a, pb, pa)] {
-                        let s = &self.societies[att as usize];
-                        let d = &self.societies[def as usize];
-                        let ambition = s.chief.and_then(|c| self.notables.get(c as usize)).map(|n| n.ambition).unwrap_or(0.3);
-                        let hunger = ((1.0 - s.agg.food_pc) * 3.0).clamp(0.0, 1.0);
-                        let elites = (s.agg.stress / 2.0).min(1.0);
-                        let distance = if s.people != d.people { 1.4 } else { 0.8 } * if species_gap { 1.5 } else { 1.0 };
-                        let peaceful = match rel.kind {
-                            RelationKind::Alliance => 0.1,
-                            RelationKind::Trade => 0.4,
-                            RelationKind::Tribute { payer } if payer == def => 0.3,
-                            _ => 1.0,
-                        };
-                        let organised = if s.dims.centralisation > 0.3 { 1.0 } else { 0.03 };
-                        let ratio = (patt / pdef / d.dims.cohesion.max(0.3)).min(4.0);
-                        let p = 0.004 * ratio * ratio * (1.0 + 3.0 * ambition) * (1.0 + hunger + elites) * distance * peaceful * organised;
-                        if r.random::<f64>() < p.min(0.3) {
-                            self.relations
-                                .insert((a, b), Relation { kind: RelationKind::War { attacker: att }, since: year, weariness: 0.0 });
-                            // Les razzias entre bandes ne font pas la chronique.
-                            if organised == 1.0 {
-                                self.counters.wars += 1;
-                                let (na, nd) = (s.name(), d.name());
-                                self.event(
-                                    EventKind::WarStart,
-                                    Some(att),
-                                    Some(def),
-                                    Some(d.capital),
-                                    None,
-                                    s.chief,
-                                    format!("Les {na} entrent en guerre contre les {nd}."),
-                                    0.5,
-                                );
+                let mut r = rng(seed, year, 9, ((a as u64) << 32) | b as u64);
+                let (sa, sb) = (&self.societies[a as usize], &self.societies[b as usize]);
+                let (pa, pb) = (sa.agg.military.max(1.0), sb.agg.military.max(1.0));
+                let species_gap = sa.species != sb.species;
+                let compat = self.compatible(sa.species, sb.species);
+                match rel.kind {
+                    RelationKind::War { attacker } => {
+                        let defender = if attacker == a { b } else { a };
+                        self.battle(attacker, defender, &mut r);
+                        let mut rel = rel;
+                        rel.weariness += 0.02 + 0.05 * f64::from(u8::from(self.societies[attacker as usize].crisis > 0));
+                        let still = self.societies[defender as usize].alive() && self.societies[attacker as usize].alive();
+                        if !still {
+                            self.relations.remove(&(a, b));
+                        } else if r.random::<f64>() < rel.weariness * 0.1 {
+                            // Paix : le vaincu paie tribut si l'écart est grand.
+                            let (pa2, pd2) =
+                                (self.societies[attacker as usize].agg.military, self.societies[defender as usize].agg.military);
+                            let kind = if pa2 > 2.0 * pd2 && self.societies[attacker as usize].dims.centralisation > 0.4 {
+                                RelationKind::Tribute { payer: defender }
                             } else {
-                                self.counters.raids += 1;
+                                RelationKind::Peace
+                            };
+                            self.relations.insert((a, b), Relation { kind, since: year, weariness: 0.0 });
+                            let (na, nd) = (self.societies[attacker as usize].name(), self.societies[defender as usize].name());
+                            if rel.since < year - 1 && self.societies[attacker as usize].dims.centralisation > 0.3 {
+                                self.event(
+                                    EventKind::WarEnd,
+                                    Some(attacker),
+                                    Some(defender),
+                                    None,
+                                    None,
+                                    None,
+                                    format!("Paix entre les {na} et les {nd}."),
+                                    0.4,
+                                );
                             }
-                            declared = true;
-                            break;
+                            if matches!(kind, RelationKind::Tribute { .. }) {
+                                self.event(
+                                    EventKind::Tribute,
+                                    Some(defender),
+                                    Some(attacker),
+                                    None,
+                                    None,
+                                    None,
+                                    format!("Les {nd} paient tribut aux {na}."),
+                                    0.4,
+                                );
+                            }
+                        } else {
+                            self.relations.insert((a, b), rel);
                         }
                     }
-                    if declared {
-                        continue;
-                    }
-                    // Commerce et alliances.
-                    let (sa, sb) = (&self.societies[a as usize], &self.societies[b as usize]);
-                    let market = sa.institution(Institution::Market).max(sb.institution(Institution::Market));
-                    match rel.kind {
-                        RelationKind::Peace => {
+                    _ => {
+                        // Guerre ? Dans les deux sens.
+                        let mut declared = false;
+                        for (att, def, patt, pdef) in [(a, b, pa, pb), (b, a, pb, pa)] {
+                            let s = &self.societies[att as usize];
+                            let d = &self.societies[def as usize];
+                            let ambition = s.chief.and_then(|c| self.notables.get(c as usize)).map(|n| n.ambition).unwrap_or(0.3);
+                            let hunger = ((1.0 - s.agg.food_pc) * 3.0).clamp(0.0, 1.0);
+                            let elites = (s.agg.stress / 2.0).min(1.0);
+                            let distance = if s.people != d.people { 1.4 } else { 0.8 } * if species_gap { 1.5 } else { 1.0 };
+                            let peaceful = match rel.kind {
+                                RelationKind::Alliance => 0.1,
+                                RelationKind::Trade => 0.4,
+                                RelationKind::Tribute { payer } if payer == def => 0.3,
+                                _ => 1.0,
+                            };
+                            let organised = if s.dims.centralisation > 0.3 { 1.0 } else { 0.03 };
+                            let ratio = (patt / pdef / d.dims.cohesion.max(0.3)).min(4.0);
                             let p =
-                                (0.002 + 0.03 * market + 0.01 * f64::from(u8::from(sa.agg.surplus > 1e4 && sb.agg.surplus > 1e4))) * compat;
-                            if r.random::<f64>() < p {
-                                self.relations.insert((a, b), Relation { kind: RelationKind::Trade, since: year, weariness: 0.0 });
-                                let txt = format!("Les {} et les {} commercent.", sa.name(), sb.name());
-                                self.event(EventKind::Trade, Some(a), Some(b), None, None, None, txt, if species_gap { 0.8 } else { 0.2 });
-                            }
-                        }
-                        RelationKind::Trade => {
-                            // Un ennemi commun fait une alliance.
-                            let common = self.relations.iter().any(|(k2, r2)| {
-                                matches!(r2.kind, RelationKind::War { .. }) && (k2.0 == a || k2.1 == a) && {
-                                    let e = if k2.0 == a { k2.1 } else { k2.0 };
-                                    self.relations.get(&key(b, e)).map(|r3| matches!(r3.kind, RelationKind::War { .. })).unwrap_or(false)
+                                0.004 * ratio * ratio * (1.0 + 3.0 * ambition) * (1.0 + hunger + elites) * distance * peaceful * organised;
+                            if r.random::<f64>() < over_slow(p.min(0.3)) {
+                                self.relations
+                                    .insert((a, b), Relation { kind: RelationKind::War { attacker: att }, since: year, weariness: 0.0 });
+                                // Les razzias entre bandes ne font pas la chronique.
+                                // Une guerre qui reprend après moins d'une génération
+                                // de paix ne refait pas la chronique.
+                                if organised == 1.0 {
+                                    self.counters.wars += 1;
                                 }
-                            });
-                            if common && r.random::<f64>() < 0.1 * compat.max(0.3) {
-                                self.relations.insert((a, b), Relation { kind: RelationKind::Alliance, since: year, weariness: 0.0 });
-                                let txt = format!("Alliance des {} et des {}.", sa.name(), sb.name());
-                                self.event(EventKind::Alliance, Some(a), Some(b), None, None, None, txt, 0.4);
+                                if organised == 1.0 && year - rel.since >= 25 {
+                                    let (na, nd) = (s.name(), d.name());
+                                    self.event(
+                                        EventKind::WarStart,
+                                        Some(att),
+                                        Some(def),
+                                        Some(d.capital),
+                                        None,
+                                        s.chief,
+                                        format!("Les {na} entrent en guerre contre les {nd}."),
+                                        0.5,
+                                    );
+                                } else if organised < 1.0 {
+                                    self.counters.raids += 1;
+                                }
+                                declared = true;
+                                break;
                             }
                         }
-                        _ => {}
+                        if declared {
+                            break 'pair;
+                        }
+                        // Commerce et alliances.
+                        let (sa, sb) = (&self.societies[a as usize], &self.societies[b as usize]);
+                        let market = sa.institution(Institution::Market).max(sb.institution(Institution::Market));
+                        match rel.kind {
+                            RelationKind::Peace => {
+                                let p = (0.002 + 0.03 * market + 0.01 * f64::from(u8::from(sa.agg.surplus > 1e4 && sb.agg.surplus > 1e4)))
+                                    * compat;
+                                if r.random::<f64>() < over_slow(p) {
+                                    self.relations.insert((a, b), Relation { kind: RelationKind::Trade, since: year, weariness: 0.0 });
+                                    let txt = format!("Les {} et les {} commercent.", sa.name(), sb.name());
+                                    self.event(
+                                        EventKind::Trade,
+                                        Some(a),
+                                        Some(b),
+                                        None,
+                                        None,
+                                        None,
+                                        txt,
+                                        if species_gap { 0.8 } else { 0.2 },
+                                    );
+                                }
+                            }
+                            RelationKind::Trade => {
+                                // Un ennemi commun fait une alliance.
+                                let common = war_with[a as usize].iter().any(|e| war_with[b as usize].contains(e));
+                                if common && r.random::<f64>() < over_slow(0.1 * compat.max(0.3)) {
+                                    self.relations.insert((a, b), Relation { kind: RelationKind::Alliance, since: year, weariness: 0.0 });
+                                    let txt = format!("Alliance des {} et des {}.", sa.name(), sb.name());
+                                    self.event(EventKind::Alliance, Some(a), Some(b), None, None, None, txt, 0.4);
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
+            }
+            let now_war = is_war(self.relations.get(&(a, b)));
+            if was_war && !now_war {
+                war_with[a as usize].retain(|&e| e != b);
+                war_with[b as usize].retain(|&e| e != a);
+            } else if now_war && !was_war {
+                war_with[a as usize].push(b);
+                war_with[b as usize].push(a);
             }
         }
     }
@@ -2444,54 +2859,65 @@ impl SocietyWorld {
                 savants.entry(n.society).or_default().push(n.subject as usize);
             }
         }
-        // Échanges savants : les partenaires partagent leurs modèles.
-        let ids: Vec<u32> = self.societies.iter().filter(|s| s.alive()).map(|s| s.id).collect();
-        for id in ids {
-            let soc = &self.societies[id as usize];
-            let literates = soc.agg.population * soc.agg.literacy;
-            if literates < 1.0 && soc.agg.population < 1000.0 {
-                continue;
-            }
-            let eff = cat.effects(&soc.known);
-            let method = soc.known.iter().any(|t| cat.get(t).flags.method);
-            let freedom = (1.0 - 0.6 * soc.dims.coercion * (1.0 - soc.dims.participation)).clamp(0.2, 1.0);
-            let funding = (0.3 + soc.institution(Institution::School) + 0.3 * soc.institution(Institution::Temple)).min(1.5);
-            let base = 2.5e-6
-                * (literates + 0.001 * soc.agg.population).sqrt()
-                * eff.science
-                * freedom
-                * funding
-                * if method { 3.0 } else { PRE_METHOD_SCIENCE };
-            let temple = soc.institution(Institution::Temple);
-            let mut r = rng(seed, year, 10, id as u64);
-            let mut shifts = Vec::new();
-            let mut conflict = false;
-            let s = &mut self.societies[id as usize];
-            for d in Domain::ALL {
-                let k = d.index();
-                let cap = if cat.instrument_of[k].intersects(&s.known) { 1.0 } else { d.naked_eye() };
-                let boost = if savants.get(&id).map(|v| v.contains(&k)).unwrap_or(false) { 2.0 } else { 1.0 };
-                let m = &mut s.sciences[k];
-                let room = (cap - m.precision).max(0.0);
-                m.anomalies += base * boost * room * r.random_range(0.5..1.5);
-                // Le modèle dominant résiste aux anomalies, d'autant plus
-                // que le temple est fort ; puis il bascule.
-                let resistance = 0.01 + 0.03 * temple * (1.0 - m.precision);
-                if m.anomalies > resistance {
-                    let before = m.precision;
-                    m.precision = (m.precision + m.anomalies).min(cap);
-                    m.anomalies = 0.0;
-                    m.paradigm += 1;
-                    if before < 0.5 && m.precision >= 0.5 {
-                        shifts.push(d);
-                        if matches!(d, Domain::Biology | Domain::Astronomy | Domain::Geology) && temple > 0.4 {
-                            conflict = true;
+        // Chaque société avance ses modèles de son propre flux : calcul en
+        // parallèle, application dans l'ordre.
+        let this = &*self;
+        let plans: Vec<(u32, [Model; DOMAINS], Vec<Domain>, bool)> = this
+            .societies
+            .iter()
+            .filter(|s| s.alive())
+            .filter_map(|soc| {
+                let id = soc.id;
+                let literates = soc.agg.population * soc.agg.literacy;
+                if literates < 1.0 && soc.agg.population < 1000.0 || !due(year, id as u64) {
+                    return None;
+                }
+                let eff = cat.effects(&soc.known);
+                let method = soc.known.intersects(&cat.flagged.method);
+                let freedom = (1.0 - 0.6 * soc.dims.coercion * (1.0 - soc.dims.participation)).clamp(0.2, 1.0);
+                let funding = (0.3 + soc.institution(Institution::School) + 0.3 * soc.institution(Institution::Temple)).min(1.5);
+                let base = 2.5e-6
+                    * (literates + 0.001 * soc.agg.population).sqrt()
+                    * eff.science
+                    * freedom
+                    * funding
+                    * if method { 3.0 } else { PRE_METHOD_SCIENCE };
+                let temple = soc.institution(Institution::Temple);
+                let mut r = rng(seed, year, 10, id as u64);
+                let mut shifts = Vec::new();
+                let mut conflict = false;
+                let mut sciences = soc.sciences;
+                for d in Domain::ALL {
+                    let k = d.index();
+                    let cap = if cat.instrument_of[k].intersects(&soc.known) { 1.0 } else { d.naked_eye() };
+                    let boost = if savants.get(&id).map(|v| v.contains(&k)).unwrap_or(false) { 2.0 } else { 1.0 };
+                    let m = &mut sciences[k];
+                    let room = (cap - m.precision).max(0.0);
+                    m.anomalies += SLOW_EVERY as f64 * base * boost * room * r.random_range(0.5..1.5);
+                    // Le modèle dominant résiste aux anomalies, d'autant plus
+                    // que le temple est fort ; puis il bascule.
+                    let resistance = 0.01 + 0.03 * temple * (1.0 - m.precision);
+                    if m.anomalies > resistance {
+                        let before = m.precision;
+                        m.precision = (m.precision + m.anomalies).min(cap);
+                        m.anomalies = 0.0;
+                        m.paradigm += 1;
+                        if before < 0.5 && m.precision >= 0.5 {
+                            shifts.push(d);
+                            if matches!(d, Domain::Biology | Domain::Astronomy | Domain::Geology) && temple > 0.4 {
+                                conflict = true;
+                            }
                         }
                     }
                 }
-            }
-            let name = s.name();
+                Some((id, sciences, shifts, conflict))
+            })
+            .collect();
+        for (id, sciences, shifts, conflict) in plans {
+            let s = &mut self.societies[id as usize];
+            s.sciences = sciences;
             for d in shifts {
+                let name = self.societies[id as usize].name();
                 self.event(
                     EventKind::Paradigm,
                     Some(id),
@@ -2508,6 +2934,7 @@ impl SocietyWorld {
                 s.agg.legitimacy = (s.agg.legitimacy - 0.08).max(0.05);
                 s.dims.cohesion = (s.dims.cohesion - 0.05).max(0.0);
                 s.institutions[Institution::Temple as usize] *= 0.9;
+                let name = self.societies[id as usize].name();
                 self.event(
                     EventKind::ScienceConflict,
                     Some(id),
@@ -2743,6 +3170,25 @@ impl SocietyWorld {
         co2 + ch4 + aerosol
     }
 
+    /// Le forçage par source, W/m² : CO₂ fossile, CO₂ des terres (feu,
+    /// défrichement, sols), méthane, aérosols. Le CO₂ fossile est ce que le
+    /// seul carbone fossile brûlé aurait donné ; les terres, le reste.
+    pub fn forcing_parts(&self) -> ForcingParts {
+        let t = &self.totals;
+        let ppm = self.co2_ppm0 + 0.45 * (t.cum_co2_c + t.cum_ch4_c) / 2.13e9;
+        let co2 = 5.35 * (ppm / self.co2_ppm0).dln();
+        // Le fossile seul, et le reste du CO₂ pour les terres.
+        let fossil = 5.35 * ((self.co2_ppm0 + 0.45 * t.cum_fossil_c / 2.13e9) / self.co2_ppm0).dln();
+        let m0 = 700.0;
+        let m = m0 + t.ch4_burden_c / 0.75 / 2.78e6;
+        ForcingParts {
+            fossil_co2: fossil,
+            land_co2: co2 - fossil,
+            methane: 0.036 * (m.sqrt() - m0.sqrt()),
+            aerosol: -0.5 * t.year.aerosol_t / 1e8,
+        }
+    }
+
     /// Pas du climat demandé à Planète : 10 ans dès que le forçage humain
     /// dépasse 0,1 W/m², 100 sinon (règle de Vision).
     pub fn climate_step_years(&self) -> u32 {
@@ -2773,7 +3219,7 @@ impl SocietyWorld {
                         continue;
                     }
                     pop += s.pop;
-                    if s.known.iter().any(|t| cat.get(t).flags.network) {
+                    if s.known.intersects(&cat.flagged.network) {
                         networked += s.pop;
                     }
                 }
@@ -2782,15 +3228,38 @@ impl SocietyWorld {
                 continue;
             }
             let name = self.species(sp).map(|s| s.name.clone()).unwrap_or_default();
-            // La sortie industrielle : une première société d'un million
-            // d'habitants au moins tire de ses moteurs plus d'un sixième de
-            // son travail (l'Angleterre vers 1800, selon Wrigley, 2010).
-            let first = self
-                .societies
-                .iter()
-                .filter(|s| s.alive() && s.species == sp && s.agg.population >= 1e6 && s.agg.modern_energy > 0.15)
-                .map(|s| s.id)
-                .next();
+            // La sortie industrielle : une première société de cinq millions
+            // d'habitants au moins tire de ses moteurs à charbon ou à pétrole
+            // plus d'un sixième de son travail (l'Angleterre vers 1800,
+            // selon Wrigley, 2010) ; l'eau et le vent n'y suffisent pas, ni
+            // les pompes de Newcomen sans la machine de Watt.
+            let fossil = |s: &Society| {
+                let f: f64 = s
+                    .cells
+                    .iter()
+                    .filter_map(|&c| {
+                        let c = &self.cells[c as usize];
+                        Some(c.settlement.as_ref()?.pop * c.year.as_ref()?.fossil_energy)
+                    })
+                    .sum();
+                f / s.agg.population.max(1.0)
+            };
+            let first = if self.takeoff.contains_key(&sp) {
+                None
+            } else {
+                self.societies
+                    .iter()
+                    .filter(|s| {
+                        s.alive()
+                            && s.species == sp
+                            && s.agg.population >= 5e6
+                            && cat.keys.machine_vapeur.is_some_and(|t| s.known.has(t))
+                            && s.agg.modern_energy > 0.15
+                            && fossil(s) > 0.15
+                    })
+                    .map(|s| s.id)
+                    .next()
+            };
             if let (false, Some(id)) = (self.takeoff.contains_key(&sp), first) {
                 self.takeoff.insert(sp, year);
                 let soc = self.societies[id as usize].name();
@@ -2805,7 +3274,14 @@ impl SocietyWorld {
                 for (best, m) in sciences.iter_mut().zip(&s.sciences) {
                     *best = best.max(m.precision);
                 }
-                if s.known.iter().any(|t| cat.get(t).flags.network) && leader.is_none_or(|l| s.agg.population > l.0) {
+                // La tête : la plus peuplée des sociétés reliées au réseau et
+                // industrielles (un pays qui a reçu le réseau sans moteurs ne
+                // compte pas).
+                if s.known.intersects(&cat.flagged.network)
+                    && s.agg.population >= 1e6
+                    && s.agg.modern_energy > 0.2
+                    && leader.is_none_or(|l| s.agg.population > l.0)
+                {
                     leader = Some((s.agg.population, s.id));
                 }
             }
@@ -2902,5 +3378,100 @@ impl SocietyWorld {
     /// Bruit déterministe pour les bancs.
     pub fn noise(&self, a: u64, b: u64) -> f64 {
         noise(self.seed, a, b)
+    }
+}
+
+/// Ce qu'une société tire de ses cellules dans l'année.
+struct Gather {
+    known: Known,
+    eff: Effects,
+    pop: f64,
+    gdp: f64,
+    surplus: f64,
+    public: f64,
+    food: f64,
+    urban: f64,
+    lit: f64,
+    modern: f64,
+    sedentary: f64,
+    storable: f64,
+    peoples: BTreeMap<u32, f64>,
+    military: f64,
+    circumscribed: f64,
+    biggest: (f64, u32),
+}
+
+/// Forçage humain par source, W/m².
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ForcingParts {
+    pub fossil_co2: f64,
+    pub land_co2: f64,
+    pub methane: f64,
+    pub aerosol: f64,
+}
+
+impl ForcingParts {
+    /// Le CO₂ fossile est-il la première source de forçage (les aérosols,
+    /// qui refroidissent, à part) ?
+    pub fn fossil_leads(&self) -> bool {
+        self.fossil_co2 > self.land_co2 && self.fossil_co2 > self.methane
+    }
+}
+
+/// Les marchés du charbon et du pétrole dans l'année.
+struct Market {
+    /// Par société : le charbon, le pétrole arrivent-ils par le marché ?
+    coal: Vec<bool>,
+    oil: Vec<bool>,
+    /// Manque de l'an passé, par marché (charbon, pétrole), t.
+    short: Vec<[f64; 2]>,
+    /// Mines et puits de chaque marché.
+    sources: Vec<[u32; 2]>,
+    /// La société est-elle d'un marché, et duquel ?
+    member: Vec<bool>,
+    group: Vec<u32>,
+    mines: Vec<bool>,
+}
+
+impl Market {
+    /// Ce qu'une cellule extrait en plus pour son marché.
+    fn export(&self, cell: usize, society: usize) -> [f64; 2] {
+        if !self.member.get(society).copied().unwrap_or(false) {
+            return [0.0; 2];
+        }
+        let g = self.group[society] as usize;
+        let mut e = [0.0; 2];
+        // Chaque mine vend tout ce qu'elle peut, jusqu'au manque du marché
+        // entier : les grandes compensent les petites, et le surplus reste
+        // au stock du marché.
+        if self.mines[cell] && self.sources[g][0] > 0 {
+            e[0] = self.short[g][0];
+        }
+        if self.sources[g][1] > 0 {
+            e[1] = self.short[g][1] / f64::from(self.sources[g][1]);
+        }
+        e
+    }
+}
+
+/// « de l'empire » : « d'empire », « de chefferie ».
+fn de(l: Label) -> String {
+    let w = l.label();
+    if w.starts_with(['a', 'e', 'é', 'É', 'i', 'o', 'u']) {
+        format!("d'{w}")
+    } else {
+        format!("de {w}")
+    }
+}
+
+/// L'étiquette avec son article : « l'empire », « la chefferie ».
+fn the(l: Label) -> String {
+    match l {
+        Label::Bands => "les bandes".into(),
+        Label::Tribe => "la tribu".into(),
+        Label::Chiefdom => "la chefferie".into(),
+        Label::State => "l'État".into(),
+        Label::Empire => "l'empire".into(),
+        Label::ModernState => "l'État moderne".into(),
     }
 }
