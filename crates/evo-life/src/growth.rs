@@ -56,6 +56,22 @@ pub struct Physiology {
     pub thermal_reference_width_k: f64,
     /// Mortalité de fond, an⁻¹.
     pub background_mortality: f64,
+    /// Feux des terres : part de l'O₂ de l'air au-dessus de laquelle la
+    /// végétation brûle, part de référence, et force du feu à cette
+    /// référence : la production de la végétation des terres est divisée par
+    /// 1 + force × excès² (×2,6 à 25 %, ×21 à 35 % pour une force de 20).
+    /// [Simplification] Le feu est le frein de l'O₂ de l'air au-delà de 25 à
+    /// 35 % (charbons fossiles, Lenton et Watson ; modèle COPSE) : il rend
+    /// aux terres émergées un plafond que la mer seule n'a pas. Il freine la
+    /// production plutôt qu'il ne tue : une mortalité forte brûlait toute la
+    /// végétation d'un coup, et sa décomposition vidait l'air de son O₂.
+    pub fire_onset_o2: f64,
+    pub fire_full_o2: f64,
+    pub fire_strength: f64,
+    /// Mortalité de famine au plus, an⁻¹ : une cellule affamée ralentit son
+    /// entretien et entre en dormance au lieu de se consumer (les bactéries
+    /// affamées survivent des semaines à des années).
+    pub max_starvation: f64,
     /// Mortalité maximale par stress oxydant sans défense, an⁻¹, et
     /// concentration de demi-effet de l'O₂, mol·m⁻³.
     pub oxygen_stress_mortality: f64,
@@ -246,6 +262,10 @@ impl Default for Physiology {
             gene_cost_kj: 2000.0,
             thermal_reference_width_k: 10.0,
             background_mortality: 20.0,
+            max_starvation: 20.0,
+            fire_onset_o2: 0.21,
+            fire_full_o2: 0.35,
+            fire_strength: 20.0,
             oxygen_stress_mortality: 200.0,
             oxygen_stress_half: 1e-3,
             oxygen_inhibition_half: 1e-4,
@@ -412,6 +432,8 @@ pub struct Conditions {
     pub soil_po4: f64,
     /// Pression partielle du CO₂ de l'air, Pa.
     pub co2_pa: f64,
+    /// Part de l'O₂ dans l'air, de 0 à 1.
+    pub o2_mixing: f64,
     /// Vrai une fois les conditions tournées vers la terre ferme
     /// ([`Conditions::for_habitat`]).
     pub on_land: bool,
@@ -433,6 +455,7 @@ impl Conditions {
             has_land: false,
             soil_po4: 0.0,
             co2_pa: 40.0,
+            o2_mixing: 0.0,
             on_land: false,
         }
     }
@@ -820,7 +843,7 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
         0.0
     };
     // Un déficit d'énergie consomme la biomasse : mortalité de famine.
-    let starvation = (-surplus).max(0.0) / cost;
+    let starvation = ((-surplus).max(0.0) / cost).min(physio.max_starvation);
     let predation = cond.predation(p, physio);
     // Hors de l'eau : dessiccation, qui baisse avec la résistance et avec
     // l'humidité du sol ; pas de terre ferme, pas de vie terrestre. Dans
@@ -832,7 +855,11 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
             // suit l'humidité du sol.
             let wet = cond.moisture.clamp(0.0, 1.0);
             let co2 = if p.phototroph { physio.land_co2_factor(cond.co2_pa) } else { 1.0 };
-            (birth * wet * co2, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
+            // Le feu freine la végétation (les phototrophes) ; les animaux le
+            // fuient.
+            let excess = ((cond.o2_mixing - physio.fire_onset_o2) / (physio.fire_full_o2 - physio.fire_onset_o2)).max(0.0);
+            let fire = if p.phototroph { 1.0 / (1.0 + physio.fire_strength * excess * excess * (1.0 - 0.5 * wet)) } else { 1.0 };
+            (birth * wet * co2 * fire, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet))
         } else {
             // Plus de terre ferme libre (glace) : spores et formes de
             // dormance attendent son retour, sans croître ni mourir.

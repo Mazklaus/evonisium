@@ -99,6 +99,7 @@ impl BioGrid {
                     phosphorus_supply: all.iter().map(|e| e.phosphorus_supply).sum(),
                     soil_phosphate: weighted(&all, |e| e.dry_area_m2, |e| e.soil_phosphate),
                     co2_pa: mean(|e| e.co2_pa),
+                    o2_mixing: mean(|e| e.o2_mixing),
                     flushing_per_year: mean(|e| e.flushing_per_year),
                     rain_mm_yr: mean(|e| e.rain_mm_yr),
                 }
