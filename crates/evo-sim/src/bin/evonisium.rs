@@ -263,6 +263,13 @@ fn complexity(args: &[String]) {
         (y, args.get(i + 2).cloned().expect("chemin manquant"))
     });
     let mut next = (world.years() / every).floor() * every + every;
+    // `--sauver-tous Y CHEMIN` : sauvegarde toutes les Y années de jeu (pour
+    // reprendre une longue partie interrompue).
+    let periodic = args.iter().position(|a| a == "--sauver-tous").map(|i| {
+        let y: f64 = args.get(i + 1).and_then(|v| v.parse().ok()).expect("durée invalide");
+        (y, args.get(i + 2).cloned().expect("chemin manquant"))
+    });
+    let mut next_periodic = periodic.as_ref().map(|(y, _)| (world.years() / y).floor() * y + y);
     let (mut previous_budget, mut previous_years) = (evo_planet::geochem::OxygenBudget::default(), 0.0);
     let mut seen = [false; COMPLEXITY_STAGE_COUNT];
     let mut seen_animal = [false; evo_sim::world::ANIMAL_STAGE_COUNT];
@@ -355,6 +362,12 @@ fn complexity(args: &[String]) {
             }
         }
         seen_events = world.events.total();
+        if let (Some((every_save, path)), Some(at)) = (periodic.as_ref(), next_periodic) {
+            if world.years() >= at && !world.cultures.world.historical() {
+                world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
+                next_periodic = Some(at + every_save);
+            }
+        }
         if let Some((y, path)) = save_at.as_ref().filter(|(y, _)| world.years() >= *y) {
             world.save_file(std::path::Path::new(path)).expect("écriture de la sauvegarde");
             eprintln!("sauvegarde à {} (demandée à {})", format_years(world.years()), format_years(*y));

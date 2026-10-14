@@ -27,7 +27,7 @@
 //! La même graine et le même registre d'ordres donnent donc la même histoire,
 //! quel que soit le nombre de coeurs.
 
-use crate::culture::{Cultures, HISTORICAL_CLIMATE_YEARS, HISTORICAL_ECOLOGY_YEARS, HISTORICAL_STEP_YEARS};
+use crate::culture::{Cultures, HISTORICAL_CLIMATE_YEARS, HISTORICAL_ECOLOGY_YEARS, HISTORICAL_MIGRATION_YEARS, HISTORICAL_STEP_YEARS};
 use crate::disturbance::{self, Barrier, ClimateAnomaly, Disturbances};
 use crate::evolution::{evolve_deme, habitat_class, BasisCache, EvolutionParams, EvolutionStats, Fixation};
 use crate::history::{CellView, ClimateMode, EventView, History, Publication, PublishedState, Sample, SpeciesView};
@@ -360,6 +360,7 @@ pub struct Progress {
     /// mode historique, années.
     pub ecology_clock: f64,
     pub climate_clock: f64,
+    pub migration_clock: f64,
 }
 
 /// Extinctions de masse et radiations : fenêtres de mesure du nombre de
@@ -1018,10 +1019,11 @@ impl World {
         // autres phases ; la vitesse demandée n'y change rien.
         let historical = self.cultures.world.historical();
         let dt = if historical { HISTORICAL_STEP_YEARS } else { self.next_step_years() };
-        let (climate_span, ecology_span) = if historical {
+        let (climate_span, ecology_span, migration_span) = if historical {
             let p = &mut self.progress;
             p.climate_clock += dt;
             p.ecology_clock += dt;
+            p.migration_clock += dt;
             let take = |clock: &mut f64, period: f64| {
                 if *clock >= period - 1e-9 {
                     std::mem::take(clock)
@@ -1029,9 +1031,13 @@ impl World {
                     0.0
                 }
             };
-            (take(&mut p.climate_clock, HISTORICAL_CLIMATE_YEARS), take(&mut p.ecology_clock, HISTORICAL_ECOLOGY_YEARS))
+            (
+                take(&mut p.climate_clock, HISTORICAL_CLIMATE_YEARS),
+                take(&mut p.ecology_clock, HISTORICAL_ECOLOGY_YEARS),
+                take(&mut p.migration_clock, HISTORICAL_MIGRATION_YEARS),
+            )
         } else {
-            (dt, dt)
+            (dt, dt, dt)
         };
         let step_index = self.stats.steps;
         let years = self.years;
@@ -1091,9 +1097,11 @@ impl World {
         // 4. Migration.
         let t3 = Instant::now();
         land_trace.push(("évolution", self.land_populations()));
-        if ecology_span > 0.0 {
-            self.migrate(ecology_span, step_index);
+        if migration_span > 0.0 {
+            self.migrate(migration_span, step_index);
             land_trace.push(("migration", self.land_populations()));
+        }
+        if ecology_span > 0.0 {
             self.trim_communities();
         }
         land_trace.push(("plafond", self.land_populations()));
@@ -2148,6 +2156,7 @@ impl World {
             }
             self.progress.climate_clock = 0.0;
             self.progress.ecology_clock = 0.0;
+            self.progress.migration_clock = 0.0;
         }
         // Accélérateur cognitif : 800 Ma après le premier animal mobile sans
         // espèce en mode historique.

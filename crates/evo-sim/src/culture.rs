@@ -29,6 +29,10 @@ pub const NEIGHBOUR_LINK: f64 = 0.05;
 pub const HISTORICAL_STEP_YEARS: f64 = 1.0;
 pub const HISTORICAL_ECOLOGY_YEARS: f64 = 10.0;
 pub const HISTORICAL_CLIMATE_YEARS: f64 = 100.0;
+/// [Simplification] Les migrations entre cellules (de l'ordre de 100 km)
+/// suivent le rythme du climat : sur dix ans, elles ne déplacent presque
+/// rien, et elles coûtaient 42 % du pas annuel.
+pub const HISTORICAL_MIGRATION_YEARS: f64 = 100.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cultures {
