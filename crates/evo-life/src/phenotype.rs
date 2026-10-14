@@ -167,16 +167,79 @@ pub struct AnimalTraits {
     pub limb_pairs: u8,
     pub sound: Option<crate::body::SoundOrgan>,
     pub non_viable: Option<NonViable>,
+    /// Lectures cognitives du corps (étape 6).
+    pub cognition: CognitiveReadings,
+    /// Ruse : gain de l'attaque et de la fuite que donnent les capacités de
+    /// fourragement.
+    pub wits: f64,
+}
+
+/// Organe de manipulation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ManipulationOrgan {
+    #[default]
+    None,
+    Hand,
+    Mouth,
+    Tentacle,
+}
+
+/// Les quatre lectures cognitives du plan de construction (étape 6,
+/// document Organismes, « Lectures cognitives du corps »), plus la
+/// socialité. Le moteur y ajoute le temps de génération pour en faire la
+/// cognition d'une espèce (`evo_culture::Cognition`).
+///
+/// [Simplification] Ce sont des fonctions des gènes de module existants,
+/// sans mécanisme génétique nouveau :
+/// - chaque gène nerveux sert une capacité, désignée par son paramètre libre ;
+/// - le budget cérébral vient du tissu nerveux en sus de ce que demande la
+///   coordination du corps ;
+/// - l'organe de manipulation se lit sur les appendices et la bouche ;
+/// - les canaux de communication se lisent sur l'organe sonore et les sens ;
+/// - la période juvénile croît avec le budget cérébral.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CognitiveReadings {
+    /// Capacités entre 0 et 1 (mémoire de travail, mémoire à long terme,
+    /// catégorisation, causalité physique, planification, théorie de
+    /// l'esprit, conscience de soi, pensée symbolique), avant le budget.
+    pub capacities: [f64; 8],
+    /// Budget cérébral, entre 0 et 8 : la somme des capacités qu'il permet.
+    pub brain_budget: f64,
+    pub organ: ManipulationOrgan,
+    pub manipulation_quality: f64,
+    /// Débits du son, de la vue, de la chimie, du toucher et de
+    /// l'électricité, entre 0 et 1.
+    pub channels: [f64; 5],
+    /// Part de la génération passée en période juvénile.
+    pub juvenile_share: f64,
+    /// Socialité, entre 0 (solitaire) et 1 (groupes stables et soudés).
+    pub sociality: f64,
+}
+
+impl CognitiveReadings {
+    /// Capacités ramenées sous le budget.
+    pub fn bounded(&self) -> [f64; 8] {
+        let sum: f64 = self.capacities.iter().sum();
+        let k = if sum > self.brain_budget && sum > 0.0 { self.brain_budget / sum } else { 1.0 };
+        self.capacities.map(|c| c * k)
+    }
+
+    /// Capacités de fourragement (mémoire de travail, catégorisation,
+    /// causalité physique, planification), en moyenne, sous le budget.
+    pub fn foraging(&self) -> f64 {
+        let b = self.bounded();
+        (b[0] + b[2] + b[3] + b[4]) / 4.0
+    }
 }
 
 impl AnimalTraits {
     /// Attaque d'un prédateur et fuite d'une proie, sans dimension.
     pub fn attack(&self) -> f64 {
-        self.motility + self.sensing
+        self.motility + self.sensing + self.wits
     }
 
     pub fn escape(&self, physio: &Physiology) -> f64 {
-        self.motility + self.sensing + physio.defense_weight * self.defense
+        self.motility + self.sensing + self.wits + physio.defense_weight * self.defense
     }
 
     /// Parade perçue par les partenaires (sélection sexuelle).
@@ -259,6 +322,8 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
         limb_pairs,
         sound: None,
         non_viable: None,
+        cognition: CognitiveReadings::default(),
+        wits: 0.0,
     };
     if multicellular {
         let soft = if p.is_terrestrial() { physio.soft_length_land_m } else { physio.soft_length_water_m };
@@ -276,8 +341,45 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
     if organised {
         a.sound =
             crate::body::sound_organ(org.motor, support, org.neural, org.cuticle, org.sensor_nm, length, p.is_terrestrial(), p.sexual);
+        a.cognition = cognitive_readings(&a, org, cells, p.is_terrestrial(), physio);
+        a.wits = physio.wits_weight * a.cognition.foraging() * coord;
     }
     p.animal = a;
+}
+
+/// Lectures cognitives d'un corps organisé de `cells` cellules (voir
+/// [`CognitiveReadings`]).
+fn cognitive_readings(a: &AnimalTraits, org: &Organisation, cells: f64, terrestrial: bool, physio: &Physiology) -> CognitiveReadings {
+    // Le tissu nerveux que demande la coordination du corps ne pense pas.
+    let need = physio.neural_half * cells.dln() / (12.0 * std::f64::consts::LN_2);
+    let spare = (org.neural - need).max(0.0);
+    let brain_budget = 8.0 * -(-spare / physio.brain_scale).dexp_m1();
+    let capacities = org.neural_bins.map(|n| -(-n / physio.capacity_scale).dexp_m1());
+    let grip = a.coordination * (org.motor / 2.0).min(1.0) * (0.5 + 0.5 * org.sensor.min(1.0));
+    let (organ, quality) = if a.limb_pairs >= 2 && terrestrial {
+        // Des membres de devant libres de la marche.
+        (ManipulationOrgan::Hand, grip)
+    } else if a.limb_pairs >= 1 && !terrestrial && a.support < 1.0 {
+        // Des appendices souples dans l'eau.
+        (ManipulationOrgan::Tentacle, 0.8 * grip)
+    } else if a.gape > 0.0 && org.motor > 0.0 {
+        (ManipulationOrgan::Mouth, 0.4 * grip)
+    } else {
+        (ManipulationOrgan::None, 0.0)
+    };
+    let sound = a.sound.map_or(0.0, |s| (s.power * (0.5 + s.complexity)).min(1.0));
+    let visual = if (380.0..=750.0).contains(&org.sensor_nm) { (a.sensing / 2.0).min(1.0) } else { 0.0 };
+    let channels = [sound, visual, 0.5 * org.sensor.min(1.0), 0.3 * org.motor.min(1.0), 0.0];
+    let nervous = -(-a.neural).dexp_m1() * a.coordination;
+    CognitiveReadings {
+        capacities,
+        brain_budget,
+        organ,
+        manipulation_quality: quality.clamp(0.0, 1.0),
+        channels,
+        juvenile_share: 0.1 + 0.4 * brain_budget / 8.0,
+        sociality: (nervous * (0.3 + 0.7 * org.signalling.min(1.0))).clamp(0.0, 1.0),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -415,12 +517,21 @@ struct Organisation {
     sensor: f64,
     sensor_nm: f64,
     neural: f64,
+    /// Tissu nerveux par capacité cognitive : chaque gène nerveux sert la
+    /// capacité que désigne son paramètre libre (`absorption_nm`, par tranches
+    /// de 50 nm à partir de 380 nm).
+    neural_bins: [f64; 8],
     matrix: f64,
     /// Régulateurs fonctionnels (gènes maîtres des segments).
     regulators: u32,
     /// Porte des organites : seul un eucaryote a l'énergie d'un grand corps
     /// organisé (Lane et Martin, 2010).
     eukaryote: bool,
+}
+
+/// Capacité cognitive servie par un gène nerveux de paramètre libre `nm`.
+fn neural_bin(nm: f64) -> usize {
+    (((nm - 380.0) / 50.0).floor().max(0.0) as usize).min(7)
 }
 
 fn organisation(genome: &Genome) -> Organisation {
@@ -444,7 +555,10 @@ fn organisation(genome: &Genome) -> Organisation {
                 o.sensor += d.efficiency;
                 o.sensor_nm += d.efficiency * d.absorption_nm;
             }
-            DomainFamily::Neural => o.neural += d.efficiency,
+            DomainFamily::Neural => {
+                o.neural += d.efficiency;
+                o.neural_bins[neural_bin(d.absorption_nm)] += d.efficiency;
+            }
             DomainFamily::Matrix => o.matrix += d.efficiency,
             DomainFamily::Regulator => o.regulators += 1,
             _ => {}

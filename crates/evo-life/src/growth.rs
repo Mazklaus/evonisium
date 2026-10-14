@@ -215,6 +215,15 @@ pub struct Physiology {
     /// Sélection sexuelle : avantage relatif de la parade (organe sonore)
     /// chez un sexué qui la perçoit.
     pub sexual_selection: f64,
+    /// Lectures cognitives (étape 6) : tissu nerveux d'une capacité qui la
+    /// porte aux deux tiers de son maximum, tissu nerveux en sus de la
+    /// coordination qui porte le budget cérébral aux deux tiers du sien (8),
+    /// et gain de l'attaque et de la fuite par unité de capacité de
+    /// fourragement (mémoire de travail, catégorisation, causalité,
+    /// planification).
+    pub capacity_scale: f64,
+    pub brain_scale: f64,
+    pub wits_weight: f64,
 }
 
 impl Physiology {
@@ -327,6 +336,9 @@ impl Default for Physiology {
             grazing_share: 0.2,
             defense_weight: 3.0,
             sexual_selection: 0.05,
+            capacity_scale: 0.5,
+            brain_scale: 4.0,
+            wits_weight: 1.0,
         }
     }
 }

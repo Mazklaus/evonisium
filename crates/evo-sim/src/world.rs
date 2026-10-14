@@ -307,6 +307,10 @@ pub struct Progress {
     pub stage_events: [Option<u64>; 5],
     pub rhodopsin_event: Option<u64>,
     pub accelerator_on: bool,
+    /// Date depuis laquelle plus aucune population vivante n'a la
+    /// photosynthèse oxygénique, alors qu'elle était apparue : la lignée
+    /// s'est éteinte, et l'accélérateur peut de nouveau agir.
+    pub oxygenic_lost_since: Option<f64>,
     /// Seuils d'oxygène franchis.
     pub oxygen_level: usize,
     pub snowball: bool,
@@ -1798,13 +1802,37 @@ impl World {
         }
         self.complexity_bookkeeping(&modified);
         self.animal_bookkeeping(&modified);
+        // Une lignée oxygénique peut s'éteindre après son apparition : la
+        // meilleure étape jamais atteinte ne dit plus rien de la vie présente.
+        // On suit l'étape vivante, et l'attente repart de la disparition.
+        let live_stage = if self.progress.best_stage >= 4 {
+            let pops = || self.communities.iter().flatten();
+            if pops().any(|p| photosynthesis_stage(&p.phenotype) >= 4) {
+                4
+            } else {
+                pops().map(|p| photosynthesis_stage(&p.phenotype)).max().unwrap_or(0)
+            }
+        } else {
+            self.progress.best_stage
+        };
+        if self.progress.best_stage >= 4 {
+            if live_stage >= 4 {
+                self.progress.oxygenic_lost_since = None;
+                if self.progress.accelerator_on {
+                    self.progress.accelerator_on = false;
+                    self.events.push(years, None, EventKind::AcceleratorOff { pathway: PHOTOSYNTHESIS_PATHWAY.into() });
+                }
+            } else if self.progress.oxygenic_lost_since.is_none() {
+                self.progress.oxygenic_lost_since = Some(years);
+            }
+        }
         // Détecteur de stagnation : l'accélérateur n'agit qu'en dernier recours.
         let acc = &self.config.evolution.accelerator;
-        if acc.enabled && !self.progress.accelerator_on && self.progress.best_stage < 4 {
-            if let Some(since) = self.progress.stage_since_years {
+        if acc.enabled && !self.progress.accelerator_on && live_stage < 4 {
+            if let Some(since) = self.progress.oxygenic_lost_since.or(self.progress.stage_since_years) {
                 if years - since >= acc.patience_years && self.communities.iter().any(|v| !v.is_empty()) {
                     self.progress.accelerator_on = true;
-                    let stage = self.progress.best_stage;
+                    let stage = live_stage;
                     self.events.push_with(
                         years,
                         None,
