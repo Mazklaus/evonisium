@@ -50,7 +50,7 @@ Un pas demande 1,33 fois moins d'instructions. Les sauvegardes restent identique
 
 Toutes les parties vont jusqu'à 3,5 Ga, au niveau 4 (vie au niveau 3, puis à la résolution de la planète quand les plantes gagnent les terres), avec un pas de 100 ka.
 
-La graine 2026 de la porte de l'étape 5 garde la Terre sans O₂ jusqu'à 3,2 Ga : l'oxygénique apparaît à 0,9 Ga mais l'O₂ ne monte pas. Comme pour les portes précédentes, les graines sont donc essayées dans l'ordre.
+La graine 2026 de la porte de l'étape 5 garde la Terre sans O₂ jusqu'à 3,2 Ga. Ce ne sont pas les puits d'O₂ : l'oxygénique apparaît à 0,9 Ga puis sa lignée s'éteint. À 1,2 Ga, aucune population n'a l'oxygénique pour voie principale, et la vie ne libère plus d'O₂. Or l'accélérateur de la photosynthèse ne regarde que la meilleure étape jamais atteinte : il ne se rallume pas. C'est une panne du modèle, à corriger pendant l'intégration de l'étape 6. Vision accepte cette histoire comme possible. Comme pour les portes précédentes, les graines sont essayées dans l'ordre.
 
 Sur quatre autres graines (7, 42, 99, 414299), la Terre se comporte de façon régulière :
 
@@ -70,7 +70,7 @@ Le tableau donne les résultats avec la graine 7. ⚑ : eucaryote venu de l'acc�
 
 - **Conditions de Vision pour la vague 2 :**
   - Aucun monde ne perd toute sa vie.
-  - Le désert et la petite planète ont des eucaryotes viables, et le désert a des animaux.
+  - Le désert et la petite planète ont des eucaryotes viables, et le désert a des animaux. Sur la petite planète, les eucaryotes tiennent de leur arrivée à 2,77 Ga jusqu'à 3,5 Ga, entre 0,6 et 3,2 % de la biomasse.
   - L'O₂ reste sous 35 % sur les petits mondes.
 - **Bilans** de carbone, de phosphore et d'électrons à 10⁻¹⁰ près sur toutes les parties.
 - **Rejeu identique** : même sauvegarde octet pour octet à 0,3 Ga sur 1 et 4 cœurs.
@@ -91,7 +91,9 @@ Les deux cibles sont atteintes au niveau 4.
 
 ### Reste à faire
 
-- **Populations par cellule.** Il y en a 9,7 en moyenne à 2,0 Ga et 19 à 3,2 Ga, pour une cible sous 8. Les guildes de l'ère complexe (organisation × source d'énergie) sont nombreuses. La vitesse tient malgré tout.
+- **Populations par cellule.** Il y en a 9,7 en moyenne à 2,0 Ga et 19 à 3,2 Ga. Les guildes de l'ère complexe (organisation × source d'énergie) sont nombreuses.
+  - Règle acceptée par Vision : la dernière population de chaque guilde est exemptée, et les autres sont évincées par biomasse au-delà de 8 populations dans la cellule.
+  - Une moyenne jusqu'à 20 par cellule est tolérée tant que les planchers de vitesse et les 5 Go tiennent.
 - **Fin des parties.** Vers 3,2 Ga, la Terre retombe parfois dans le cycle limite déjà noté à l'étape 5 : l'O₂ s'effondre, le CO₂ bondit, puis vient une glaciation.
 - **Sans lune et petite planète** n'ont pas d'animaux sur la graine 7.
-- La vague 3 : grille fine du vivant limitée aux terres et aux côtes.
+- La vague 3 (grille fine du vivant limitée aux terres et aux côtes) passe en réserve : les cibles sont atteintes avec de la marge. Elle reviendra si une mesure chez le joueur tombe sous un plancher, ou si les étapes 6 et 7 coûtent trop.

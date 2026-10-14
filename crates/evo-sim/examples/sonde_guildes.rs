@@ -12,6 +12,7 @@ fn main() {
     let (mut cells, mut pops, mut over, mut guilds_total) = (0, 0, 0, 0);
     let mut hist: BTreeMap<usize, usize> = BTreeMap::new();
     let mut keys: BTreeMap<String, usize> = BTreeMap::new();
+    let mut pathways: BTreeMap<String, (usize, f64)> = BTreeMap::new();
     for c in &w.communities {
         if c.is_empty() {
             continue;
@@ -38,9 +39,16 @@ fn main() {
             );
             let _ = s;
             *keys.entry(k).or_default() += 1;
+            let main = p.phenotype.main_pathway().map_or("aucune", |r| evo_life::metabolism::REACTIONS[r as usize].name);
+            let e = pathways.entry(main.to_string()).or_default();
+            e.0 += 1;
+            e.1 += p.biomass;
         }
     }
     println!("{:.0} Ma : {cells} cellules occupées, {pops} populations ({:.1} par cellule), {:.1} guildes par cellule, {over} au-dessus du plafond {max}", w.years / 1e6, pops as f64 / cells as f64, guilds_total as f64 / cells as f64);
     println!("populations par cellule : {hist:?}");
     println!("organisation (M E T P L) : {keys:?}");
+    for (name, (n, b)) in &pathways {
+        println!("voie principale {name} : {n} populations, {b:.3e} mol C");
+    }
 }
