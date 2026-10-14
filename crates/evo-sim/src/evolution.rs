@@ -156,7 +156,7 @@ impl Default for EvolutionParams {
             hgt_candidates: 1,
             ne_per_m2: 2e-3,
             accelerator: AcceleratorParams::default(),
-            round_years: Some(300_000.0),
+            round_years: Some(1_000_000.0),
             multiple_fixations: true,
         }
     }

@@ -88,6 +88,7 @@ impl CellContext<'_> {
         cond.has_land = self.env.dry_area_m2 > 0.0;
         cond.soil_po4 = self.env.soil_phosphate;
         cond.co2_pa = self.env.co2_pa;
+        cond.o2_mixing = self.env.o2_mixing;
         cond
     }
 
@@ -565,6 +566,7 @@ mod tests {
             phosphorus_supply: 0.0,
             soil_phosphate: 0.0,
             co2_pa: 40.0,
+            o2_mixing: 0.0,
         }
     }
 

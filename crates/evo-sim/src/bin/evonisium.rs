@@ -207,6 +207,21 @@ fn complexity(args: &[String]) {
     if args.iter().any(|a| a == "--sans-accelerateur") {
         cfg.evolution.accelerator.enabled = false;
     }
+    if let Some(r) = opt(args, "--round-years") {
+        cfg.evolution.round_years = Some(r.parse().expect("durée invalide"));
+    }
+    if let Some(n) = opt(args, "--substeps") {
+        cfg.eco_substeps = n.parse().expect("nombre invalide");
+    }
+    if let Some(p) = opt(args, "--innovation") {
+        cfg.evolution.innovation_probability = p.parse().expect("probabilité invalide");
+    }
+    if let Some(m) = opt(args, "--feu") {
+        cfg.physiology.fire_strength = m.parse().expect("force invalide");
+    }
+    if let Some(m) = opt(args, "--famine") {
+        cfg.physiology.max_starvation = m.parse().expect("mortalité invalide");
+    }
     let max_years: f64 = arg(args, "--max-years", 3e9);
     let every: f64 = arg(args, "--every-years", 50e6);
     let start = Instant::now();

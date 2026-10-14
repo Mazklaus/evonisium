@@ -71,6 +71,8 @@ pub struct CellEnvironment {
     pub soil_phosphate: f64,
     /// Pression partielle du CO₂ de l'air, Pa (photosynthèse des terres).
     pub co2_pa: f64,
+    /// Part de l'O₂ dans l'air, de 0 à 1 (feux des terres).
+    pub o2_mixing: f64,
 }
 
 /// Concentrations de la couche d'eau, mol·m⁻³, indexées par [`WaterPool`].
@@ -219,6 +221,7 @@ impl Planet {
         let gravity = p.gravity();
         let surface_pressure = self.reservoirs.pressure_pa(gravity, p.surface_area());
         let co2_pa = self.partial_pressure(Gas::Co2);
+        let o2_mixing = self.reservoirs.mixing_ratio(Gas::O2);
         let mut changes = Vec::new();
         let mut surface_volume = 0.0;
         for c in 0..n {
@@ -269,6 +272,7 @@ impl Planet {
                 phosphorus_supply: 0.0,
                 soil_phosphate: 0.0,
                 co2_pa,
+                o2_mixing,
             };
             if let Some(old) = self.cells.get(c) {
                 if old.is_ocean != ocean || old.water_volume_m3 != volume {

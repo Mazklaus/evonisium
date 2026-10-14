@@ -88,7 +88,7 @@ La coordination d'un corps est n / (n + 0,3 × doublements / 12), où n est le t
 - Ses naissances et extinctions sortent du journal au même âge. La base SQLite de la partie garde tout le journal.
 - Les identifiants restent uniques et croissants : registre et journal deviennent creux, et leurs lecteurs suivent un curseur d'identifiant (`total`, `since`).
 
-Sauvegardes au format 11.
+Sauvegardes au format 12.
 
 ## Résultats
 
@@ -115,8 +115,8 @@ Résultats de la porte (graine 2026, niveau 4, pas de 100 ka, un tour d'évoluti
 ## Reste à faire
 
 - Désert : l'eucaryote de l'accélérateur ne vit que de matière dissoute (sa photosynthèse ne fixe pas de carbone) et s'éteint. La chimie de ses lacs est aussi extrême : 200 mol/m³ d'O₂, 5 × 10⁵ mol/m³ de sulfate.
-- Océan : la vie s'éteint (déjà fragile à l'étape 4, 324 K).
-- Petite planète et désert : l'O₂ monte de 50 à 86 % de l'atmosphère.
+- Océan : la vie s'éteint (déjà fragile à l'étape 4, 324 K). Réglé à la vague 2 du chantier vitesse (famine plafonnée).
+- Petite planète et désert : l'O₂ monte de 50 à 86 % de l'atmosphère. Réglé à la vague 2 (feux des terres).
 - Les animaux restent une petite part de la biomasse. La Terre finit en glaciation globale vers 3,5 Ga (cycle limite déjà noté).
 - Les lectures cognitives du fil Cognition (`evo_culture::cognition::Cognition`).
-- Le chantier vitesse, après cette PR.
+- Le chantier vitesse, après cette PR : [chantier-vitesse.md](chantier-vitesse.md).
