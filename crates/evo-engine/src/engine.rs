@@ -277,7 +277,11 @@ fn guarded(world: World, pool: rayon::ThreadPool, store: Store, rx: Receiver<Com
 /// Boucle du fil de simulation.
 fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver<Command>, shared: Arc<Shared>) {
     let mut throttle: Option<f64> = None;
-    let mut speed = 0.0f64;
+    // Vitesse de calcul : années et secondes lissées séparément, puis leur
+    // rapport. La moyenne lissée des vitesses de chaque pas surestimait la
+    // vitesse quand des pas rapides alternent avec des pas lents (un tour
+    // d'évolution tous les dix pas) : 19,6 Ma/s affichés pour 7,1 tenus.
+    let (mut years_avg, mut seconds_avg) = (0.0f64, 0.0f64);
     let set_error = |e: String| shared.status.lock().unwrap_or_else(|p| p.into_inner()).error = Some(e);
     'outer: loop {
         // Commandes reçues : en pause, on attend ; sinon on ne fait que vider.
@@ -317,9 +321,14 @@ fn run(mut world: World, pool: rayon::ThreadPool, mut store: Store, rx: Receiver
         let elapsed = t0.elapsed().as_secs_f64();
         let advanced = if world.stats.steps > steps { world.years() - before } else { 0.0 };
         if advanced > 0.0 {
-            let inst = advanced / elapsed.max(1e-6);
-            speed = if speed == 0.0 || was_paused { inst } else { 0.8 * speed + 0.2 * inst };
+            if seconds_avg == 0.0 || was_paused {
+                (years_avg, seconds_avg) = (advanced, elapsed.max(1e-6));
+            } else {
+                years_avg = 0.9 * years_avg + 0.1 * advanced;
+                seconds_avg = 0.9 * seconds_avg + 0.1 * elapsed.max(1e-6);
+            }
         }
+        let speed = years_avg / seconds_avg.max(1e-9);
         {
             let mut st = shared.status.lock().unwrap_or_else(|e| e.into_inner());
             st.years = world.years();
