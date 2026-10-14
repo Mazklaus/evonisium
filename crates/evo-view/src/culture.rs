@@ -198,7 +198,8 @@ pub fn bench_world(grid: &GeodesicGrid, cells: &[CellView], spec: BenchSpec) -> 
 }
 
 /// Couleurs des peuples : des lavis de l'Atlas, assez distincts côte à côte.
-pub const PEOPLE_COLOURS: [[f32; 3]; 10] = [
+/// Neuf couleurs au plus : le globe porte dix rangs (0 : aucun) par sommet.
+pub const PEOPLE_COLOURS: [[f32; 3]; 9] = [
     [0.69, 0.36, 0.22],
     [0.27, 0.43, 0.58],
     [0.42, 0.53, 0.27],
@@ -208,10 +209,9 @@ pub const PEOPLE_COLOURS: [[f32; 3]; 10] = [
     [0.5, 0.36, 0.25],
     [0.33, 0.33, 0.6],
     [0.63, 0.45, 0.4],
-    [0.4, 0.4, 0.33],
 ];
 
-/// Rang de couleur d'un peuple (1 à 10 ; 0 : aucun).
+/// Rang de couleur d'un peuple (1 à 9 ; 0 : aucun).
 pub fn people_colour_index(state: &CulturalState, people: u32) -> u32 {
     // Rang dans l'ordre des identifiants : un peuple garde sa couleur.
     let rank = state.peoples.iter().position(|p| p.id == people).unwrap_or(0);
@@ -240,7 +240,7 @@ pub fn main_groups(state: &CulturalState) -> BTreeMap<u32, &GroupView> {
 /// [`crate::layers::texture_size`]) : rang de couleur du peuple, log₁₀ de
 /// l'effectif, frontière (1 si une voisine a un autre peuple ou aucun),
 /// espèce en mode historique (1) ou non (0).
-pub fn territory_texture(state: &CulturalState, grid: &GeodesicGrid, cells: usize) -> Vec<f32> {
+pub fn territory_texture(state: &CulturalState, cells: usize) -> Vec<f32> {
     let (w, h) = crate::layers::texture_size(cells);
     let mut t = vec![0.0f32; w * h * 4];
     let main = main_groups(state);
@@ -253,8 +253,8 @@ pub fn territory_texture(state: &CulturalState, grid: &GeodesicGrid, cells: usiz
         let i = c * 4;
         t[i] = people_colour_index(state, g.people) as f32;
         t[i + 1] = (g.population.max(1.0)).log10();
-        let border = grid.neighbours_of(c).any(|nb| main.get(&(nb as u32)).is_none_or(|o| o.people != g.people));
-        t[i + 2] = if border { 1.0 } else { 0.0 };
+        // Le bleu porte la part des champs des sociétés (étape 7) : aucun
+        // ici ; le globe trace les frontières lui-même.
         t[i + 3] = if historical.contains(&g.species) { 1.0 } else { 0.0 };
     }
     t
@@ -666,10 +666,9 @@ mod tests {
         assert!(st.peoples.len() >= 2, "{} peuples", st.peoples.len());
         assert!(!st.languages.is_empty());
         assert!(!st.myths.is_empty(), "le phénomène vu fait un mythe");
-        let t = territory_texture(&st, &grid, grid.len());
+        let t = territory_texture(&st, grid.len());
         let painted = t.chunks(4).filter(|p| p[0] > 0.0).count();
         assert!(painted >= 80, "{painted} cellules peintes");
-        assert!(t.chunks(4).any(|p| p[2] > 0.5), "des frontières");
         let p = &st.peoples[0];
         let sheet = people_sheet(&st, p.id, Lang::Fr).unwrap();
         assert!(!sheet.techniques.is_empty(), "{sheet:?}");

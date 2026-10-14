@@ -120,6 +120,9 @@ impl EvoSession {
             let name = st.peoples.iter().find(|p| p.id == v.people).map(|p| p.name.clone()).unwrap_or_default();
             Some((v, name))
         });
+        // Étape 7 : la ville ou le village d'une société (d'essai) passe
+        // devant le campement.
+        let town = self.society_state().and_then(|st| evo_view::town::view(&st, cell as u32));
         let mut ground = Gd::<crate::ground::EvoGround>::default();
         let fr = self.lang == Lang::Fr;
         ground.bind_mut().start(fr, move || {
@@ -142,7 +145,7 @@ impl EvoSession {
                 Ok(Answer::Individuals(i)) => i.samples,
                 _ => Vec::new(),
             };
-            crate::ground::build(site, real, samples, total, seed, camp)
+            crate::ground::build(site, real, samples, total, seed, camp, town)
         });
         Some(ground)
     }

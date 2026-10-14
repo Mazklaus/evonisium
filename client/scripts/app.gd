@@ -326,6 +326,31 @@ const TEXT := {
 	"people_species": ["Espèce", "Species"],
 	"people_born": ["Apparu", "Arose"],
 	"camp_notice": ["Campement des %s, un peuple d'essai : ses gens sont des figurants primates en attendant les vrais corps des espèces intelligentes.", "Camp of the %s, a test people: its folk are primate stand-ins until intelligent species get their real bodies."],
+	"gallery": ["Galerie", "Gallery"],
+	"gallery_title": ["Galerie de rejeux", "Replay gallery"],
+	"gallery_empty": ["Ni sauvegarde ni rejeu pour l'instant. Un rejeu s'exporte depuis la fenêtre « Sauvegarder ».", "No save or replay yet. A replay is exported from the Save window."],
+	"gallery_hint": ["Coche deux histoires pour comparer leurs jalons.", "Tick two histories to compare their milestones."],
+	"gallery_save": ["sauvegarde", "save"],
+	"gallery_replay": ["rejeu", "replay"],
+	"gallery_resume": ["Reprendre", "Resume"],
+	"gallery_play": ["Rejouer", "Replay"],
+	"gallery_copy": ["Copier le code", "Copy the code"],
+	"gallery_copied": ["Code de planète copié.", "Planet code copied."],
+	"gallery_compare": ["Comparer", "Compare"],
+	"gallery_reached": ["Date atteinte", "Date reached"],
+	"gallery_interventions": ["Interventions", "Interventions"],
+	"gallery_milestones": ["Jalons", "Milestones"],
+	"gallery_no_milestone": ["Pas encore de jalon (fiche d'une version précédente, ou histoire à peine commencée).", "No milestone yet (older save, or a history that has barely begun)."],
+	"gallery_not_reached": ["pas atteint", "not reached"],
+	"gallery_replay_note": ["Un rejeu refait l'histoire depuis la graine avec les mêmes ordres, puis se met en pause à la date où il s'arrêtait.", "A replay remakes the history from the seed with the same orders, then pauses at the date where it stopped."],
+	"export_replay": ["Exporter le rejeu", "Export the replay"],
+	"replay_saved": ["Rejeu exporté dans la galerie.", "Replay exported to the gallery."],
+	"replay_banner": ["Rejeu de « %s », jusqu'à %s.", "Replay of “%s”, up to %s."],
+	"town_city": ["Ville de %s, société des %s : %s.", "City of %s, of the %s society: %s."],
+	"town_village": ["Village de cultivateurs (%s, société des %s) : %s.", "Farming village (%s, of the %s society): %s."],
+	"town_pop": ["%s habitants.", "%s inhabitants."],
+	"town_ruined": ["Plus que %s habitants sur %s au plus fort : le reste est en ruine.", "Only %s inhabitants left of %s at its height: the rest lies in ruins."],
+	"town_notice": ["Société d'essai : ses gens sont des figurants primates, ses bâtiments disent l'époque (techniques connues) et la culture (son peuple). Une ville montre au plus quelques centaines de bâtiments.", "Test society: its folk are primate stand-ins, its buildings show the era (known techniques) and the culture (its people). A city shows at most a few hundred buildings."],
 	"notable_born": ["Né", "Born"],
 	"people_ended": ["disparu", "ended"],
 	"population": ["Effectif", "Population"],
@@ -346,6 +371,57 @@ const TEXT := {
 	"people_tree": ["Arbre des peuples", "Tree of peoples"],
 	"language_tree": ["Arbre des langues", "Tree of languages"],
 	"today": ["aujourd'hui", "today"],
+	# Étape 7 : sociétés, chronique, comparaison, encyclopédie.
+	"societies": ["Sociétés", "Societies"],
+	"societies_layer": ["Sociétés (essai)", "Societies (test)"],
+	"societies_bench": ["Sociétés d'essai : le moteur ne fait pas encore naître de sociétés. En attendant, des chasseurs-cueilleurs sont posés sur les terres de votre planète et vivent quatorze mille ans d'histoire (agriculture, villes, États, empires, sciences) pour montrer l'affichage. Ils ne changent rien à l'histoire de la partie.", "Test societies: the engine does not raise societies yet. Meanwhile hunter-gatherers are placed on your planet's land and live fourteen thousand years of history (farming, cities, states, empires, sciences) to show the display. They change nothing in the game's history."],
+	"societies_bench_short": ["Sociétés d'essai, sans effet sur l'histoire", "Test societies, no effect on the history"],
+	"societies_waiting": ["Les sociétés d'essai se posent…", "Test societies are being placed…"],
+	"societies_none": ["Pas assez de terres habitables pour poser des sociétés sur cette planète.", "Not enough habitable land to place societies on this planet."],
+	"societies_none_yet": ["Aucune société pour l'instant.", "No societies yet."],
+	"societies_year": ["%s, %s", "%s, %s"],
+	"societies_running": ["l'histoire avance", "history unfolding"],
+	"societies_done": ["fin de l'histoire d'essai", "end of the test history"],
+	"societies_compare_hint": ["Cochez deux sociétés pour les comparer.", "Tick two societies to compare them."],
+	"society_row": ["%s · %s âmes · %d cellules · %d techniques", "%s · %s souls · %d cells · %d techniques"],
+	"society_sheet": ["Fiche de la société", "Society sheet"],
+	"society_chronicle": ["Chronique", "Chronicle"],
+	"society_big_only": ["Grands moments seulement", "Major moments only"],
+	"society_from": ["De l'an", "From year"],
+	"society_to": ["à l'an", "to year"],
+	"society_tell": ["Raconter cette période", "Tell this period"],
+	"society_planet": ["La planète", "The planet"],
+	"society_gone": ["Cette société n'existe plus.", "This society no longer exists."],
+	"society_parent": ["Issue de", "Descended from"],
+	"society_form": ["Forme", "Form"],
+	"society_peak": ["au plus haut :", "at its peak:"],
+	"society_capital": ["Capitale", "Capital"],
+	"society_curves": ["Dans le temps", "Over time"],
+	"society_dims": ["Ce qui la caractérise", "What defines it"],
+	"society_institutions": ["Institutions", "Institutions"],
+	"society_sciences": ["Ce qu'elle sait du monde", "What it knows of the world"],
+	"society_sciences_hint": ["Chaque science mesure une vraie grandeur de la planète ; la société en a une estimation, plus ou moins juste.", "Each science measures a real quantity of the planet; the society holds an estimate, more or less accurate."],
+	"society_estimate": ["%s (vrai : %s)", "%s (true: %s)"],
+	"society_precision": ["Justesse de l'estimation", "Accuracy of the estimate"],
+	"society_relations": ["Relations", "Relations"],
+	"society_cities": ["Villes", "Cities"],
+	"society_gdp": ["Richesse par tête", "Wealth per head"],
+	"society_cells": ["Cellules tenues", "Cells held"],
+	"society_urban": ["Part urbaine", "Urban share"],
+	"techniques_known": ["Techniques connues", "Known techniques"],
+	"literacy": ["Lecture", "Literacy"],
+	"compare_societies": ["Comparaison de civilisations", "Civilisation comparison"],
+	"compare_hint": ["Les différences sont en vermillon.", "Differences are in vermilion."],
+	"on_earth": ["Sur Terre : %s", "On Earth: %s"],
+	"requires": ["demande %s", "requires %s"],
+	"and_more": ["et %d autres", "and %d more"],
+	"encyclopedia": ["Encyclopédie", "Encyclopedia"],
+	"full_screen": ["Plein écran", "Full screen"],
+	"simplifications": ["Simplifications assumées", "Deliberate simplifications"],
+	"simplifications_intro": ["Le jeu prend la science réelle pour référence et dit où il simplifie : ce que fait la nature, ce que le jeu perd, ce qu'il garde.", "The game takes real science as its reference and says where it simplifies: what nature does, what the game loses, what it keeps."],
+	"simpl_reality": ["En vrai", "In reality"],
+	"simpl_lost": ["Ce qui se perd", "What is lost"],
+	"simpl_kept": ["Ce qui reste", "What is kept"],
 }
 
 const VISION_MODES := [["Standard", "Standard"], ["Protanopie", "Protanopia"], ["Deutéranopie", "Deuteranopia"], ["Tritanopie", "Tritanopia"], ["Contraste élevé", "High contrast"]]
@@ -401,10 +477,30 @@ func list_saves() -> Array:
 		return out
 	for f in dir.get_files():
 		if f.ends_with(".evo"):
-			var path := SAVE_DIR + "/" + f
+			# Chemin du système : le moteur ne lit pas les chemins « user:// ».
+			var path := ProjectSettings.globalize_path(SAVE_DIR + "/" + f)
 			out.append({"path": path, "file": f, "time": FileAccess.get_modified_time(path)})
 	out.sort_custom(func(a, b): return a["time"] > b["time"])
 	return out
+
+## Rejeux exportés, du plus récent au plus ancien.
+func list_replays() -> Array:
+	var out := []
+	var dir := DirAccess.open(SAVE_DIR)
+	if dir == null:
+		return out
+	for f in dir.get_files():
+		if f.ends_with(".rejeu"):
+			# Chemin du système : le moteur ne lit pas les chemins « user:// ».
+			var path := ProjectSettings.globalize_path(SAVE_DIR + "/" + f)
+			out.append({"path": path, "file": f, "time": FileAccess.get_modified_time(path)})
+	out.sort_custom(func(a, b): return a["time"] > b["time"])
+	return out
+
+func replay_path(replay_name: String) -> String:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
+	var clean := replay_name.to_lower().replace(" ", "-").validate_filename()
+	return ProjectSettings.globalize_path("%s/%s.rejeu" % [SAVE_DIR, clean])
 
 func save_path(save_name: String) -> String:
 	var clean := save_name.to_lower().replace(" ", "-").validate_filename()

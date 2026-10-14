@@ -7,6 +7,7 @@
 
 use evo_core::math::Det;
 use evo_planet::{Gas, PlanetParams};
+use evo_sim::orders::OrderKind;
 use evo_sim::Seeding;
 
 pub const FORMAT: &str = "evonisium-point-de-sauvegarde";
@@ -108,6 +109,9 @@ pub struct SaveFile {
     /// Interventions du joueur et le point de sauvegarde écrit juste avant
     /// chacune (outil « avec et sans »).
     pub interventions: Vec<SavedIntervention>,
+    /// Jalons de l'histoire (début de chaque chapitre du récit) : date et
+    /// titre, dans la langue de l'écran au moment de la sauvegarde.
+    pub milestones: Vec<(f64, String)>,
 }
 
 /// Une intervention passée et son point de sauvegarde.
@@ -148,6 +152,7 @@ impl SaveFile {
                 i.label.replace(['\t', '\n'], " ")
             );
         }
+        s += &milestone_lines(&self.milestones);
         s
     }
 
@@ -173,6 +178,7 @@ impl SaveFile {
             mode: "observateur".into(),
             branch_of: String::new(),
             interventions: Vec::new(),
+            milestones: Vec::new(),
         };
         for line in lines {
             if line.trim().is_empty() {
@@ -193,6 +199,7 @@ impl SaveFile {
                 "pas" => save.steps = v.parse().map_err(|_| "pas illisible")?,
                 "annees" => save.years = v.parse().map_err(|_| "date illisible")?,
                 "branche_de" => save.branch_of = v.into(),
+                "jalon" => save.milestones.extend(milestone_of(v)),
                 "intervention" => {
                     let f: Vec<&str> = v.splitn(4, '\t').collect();
                     if let [order, years, path, label] = f[..] {
@@ -208,6 +215,133 @@ impl SaveFile {
             }
         }
         Ok(save)
+    }
+}
+
+fn milestone_lines(list: &[(f64, String)]) -> String {
+    list.iter().map(|(y, t)| format!("jalon\t{y:e}\t{}\n", t.replace(['\t', '\n'], " "))).collect()
+}
+
+fn milestone_of(v: &str) -> Option<(f64, String)> {
+    let (y, t) = v.split_once('\t')?;
+    Some((y.parse().ok()?, t.to_string()))
+}
+
+pub const REPLAY_FORMAT: &str = "evonisium-rejeu";
+pub const REPLAY_FORMAT_VERSION: u32 = 1;
+/// Extension des fichiers de rejeu.
+pub const REPLAY_SUFFIX: &str = ".rejeu";
+
+/// Un rejeu à partager : la planète (code), l'ensemencement, le mode et le
+/// registre des ordres. La graine et ce registre suffisent à refaire la même
+/// histoire ; le fichier tient en quelques kilo-octets. Les pauses et les
+/// reprises n'en font pas partie : elles ne changent pas l'histoire.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReplayFile {
+    pub name: String,
+    pub engine_version: String,
+    pub spec: PlanetSpec,
+    pub seed: u64,
+    pub level: u32,
+    pub seeding: String,
+    pub mode: String,
+    /// Date atteinte quand le rejeu a été exporté.
+    pub years: f64,
+    pub milestones: Vec<(f64, String)>,
+    /// Ordres : date demandée et ordre.
+    pub orders: Vec<(f64, OrderKind)>,
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+}
+
+impl ReplayFile {
+    /// Garde les ordres qui changent l'histoire (sans pauses ni reprises).
+    pub fn keep(kind: &OrderKind) -> bool {
+        !matches!(kind, OrderKind::Pause | OrderKind::Resume)
+    }
+
+    /// Interventions du joueur dans le registre.
+    pub fn interventions(&self) -> usize {
+        self.orders.iter().filter(|(_, k)| matches!(k, OrderKind::Intervene(_))).count()
+    }
+
+    pub fn to_text(&self) -> String {
+        let mut s = format!("{REPLAY_FORMAT}\t{REPLAY_FORMAT_VERSION}\n");
+        s += &format!("nom\t{}\n", self.name.replace(['\t', '\n'], " "));
+        s += &format!("version_moteur\t{}\n", self.engine_version);
+        s += &format!("mode\t{}\n", self.mode);
+        s += &format!("planete\t{}\n", self.spec.code(self.seed, self.level));
+        s += &format!("ensemencement\t{}\n", self.seeding);
+        s += &format!("annees\t{:e}\n", self.years);
+        s += &milestone_lines(&self.milestones);
+        for (due, kind) in &self.orders {
+            // L'ordre en binaire (hexadécimal), suivi de son libellé lisible.
+            let bytes = bincode::serialize(kind).unwrap_or_default();
+            s += &format!("ordre\t{due:e}\t{}\t{}\n", hex(&bytes), kind.label().replace(['\t', '\n'], " "));
+        }
+        s
+    }
+
+    pub fn from_text(text: &str) -> Result<ReplayFile, String> {
+        let mut lines = text.lines();
+        let head = lines.next().ok_or("fichier vide")?;
+        let (fmt, ver) = head.split_once('\t').ok_or("en-tête illisible")?;
+        if fmt != REPLAY_FORMAT {
+            return Err("ce fichier n'est pas un rejeu d'Evonisium".into());
+        }
+        if ver.trim().parse::<u32>().map_err(|e| e.to_string())? > REPLAY_FORMAT_VERSION {
+            return Err("rejeu d'une version plus récente".into());
+        }
+        let mut r = ReplayFile {
+            name: String::new(),
+            engine_version: String::new(),
+            spec: PlanetSpec::default(),
+            seed: 0,
+            level: 4,
+            seeding: "sources".into(),
+            mode: "observateur".into(),
+            years: 0.0,
+            milestones: Vec::new(),
+            orders: Vec::new(),
+        };
+        for line in lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let (k, v) = line.split_once('\t').ok_or("ligne illisible")?;
+            match k {
+                "nom" => r.name = v.into(),
+                "version_moteur" => r.engine_version = v.into(),
+                "mode" => r.mode = v.into(),
+                "planete" => {
+                    let (spec, seed, level) = PlanetSpec::from_code(v).ok_or("code de planète illisible")?;
+                    r.spec = spec;
+                    r.seed = seed;
+                    r.level = level;
+                }
+                "ensemencement" => r.seeding = v.into(),
+                "annees" => r.years = v.parse().map_err(|_| "date illisible")?,
+                "jalon" => r.milestones.extend(milestone_of(v)),
+                "ordre" => {
+                    let f: Vec<&str> = v.splitn(3, '\t').collect();
+                    let due: f64 = f.first().and_then(|x| x.parse().ok()).ok_or("ordre illisible")?;
+                    let bytes = f.get(1).and_then(|x| unhex(x)).ok_or("ordre illisible")?;
+                    let kind: OrderKind = bincode::deserialize(&bytes).map_err(|_| "ordre illisible")?;
+                    r.orders.push((due, kind));
+                }
+                _ => {}
+            }
+        }
+        Ok(r)
     }
 }
 
@@ -260,10 +394,33 @@ mod tests {
             mode: "observateur".into(),
             branch_of: "/tmp/avant.evo".into(),
             interventions: vec![SavedIntervention { order: 4, years: 1e6, save: "/tmp/i.evo".into(), label: "impact".into() }],
+            milestones: vec![(3.2e8, "Les premières cellules".into()), (9e8, "L'air change".into())],
         };
         let back = SaveFile::from_text(&save.to_text()).unwrap();
         assert_eq!(back, save);
         assert!(SaveFile::from_text("autre chose").is_err());
         assert_eq!(back.seeding_mode(), Seeding::AllOcean);
+    }
+
+    #[test]
+    fn replay_round_trips() {
+        use evo_sim::orders::Intervention;
+        let r = ReplayFile {
+            name: "Une Terre".into(),
+            engine_version: "0.1.0".into(),
+            spec: PlanetSpec::default(),
+            seed: 2026,
+            level: 4,
+            seeding: "sources".into(),
+            mode: "bac-a-sable".into(),
+            years: 2.5e9,
+            milestones: vec![(4e8, "La vie".into())],
+            orders: vec![(0.0, OrderKind::SeedLife), (1.5e9, OrderKind::Intervene(Intervention::Impact { cell: 12, diameter_km: 10.0 }))],
+        };
+        let back = ReplayFile::from_text(&r.to_text()).unwrap();
+        assert_eq!(back, r);
+        assert_eq!(back.interventions(), 1);
+        assert!(ReplayFile::from_text("evonisium-point-de-sauvegarde\t3").is_err());
+        assert!(!ReplayFile::keep(&OrderKind::Pause) && ReplayFile::keep(&OrderKind::SeedLife));
     }
 }

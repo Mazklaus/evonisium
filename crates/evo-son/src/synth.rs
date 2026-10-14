@@ -166,6 +166,37 @@ pub enum Kind {
     /// ou moins sèches selon `net`). Couvre trilles d'insectes, bourdons
     /// d'ailes, croassements, grognements de poissons, clics et sifflets.
     Trille(Box<Trille>),
+    /// Note faite d'harmoniques : cuivres, archets, orgues, cordes frappées
+    /// ou électriques, synthétiseurs (instruments des techniques, étape 7).
+    Additif(Box<Additif>),
+}
+
+/// Timbre d'une note additive (`Kind::Additif`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Timbre {
+    /// Amplitude des huit premières harmoniques.
+    pub harm: [f32; 8],
+    /// Les harmoniques s'éclairent quand la note enfle (cuivres) : 0 à 1.
+    pub eclat: f32,
+    /// Attaque et relâche, s.
+    pub att: f32,
+    pub rel: f32,
+    /// Note tenue (0) ou qui s'éteint seule en `chute` s (cordes frappées).
+    pub chute: f32,
+    /// Vibrato : fréquence (Hz) et profondeur (part de la fréquence).
+    pub vib: (f32, f32),
+    /// Saturation (guitare électrique), 0 : aucune.
+    pub sature: f32,
+    /// Écart des harmoniques (cordes raides du piano), 0 : justes.
+    pub raideur: f32,
+}
+
+pub struct Additif {
+    f: f32,
+    dur: f32,
+    timbre: Timbre,
+    ph: [f32; 8],
+    vph: f32,
 }
 
 /// Paramètres et état d'un appel animal (`Kind::Trille`).
@@ -351,6 +382,46 @@ impl Voice {
                 let air = souffle.run(rng.bipolar()) * (0.25 + 0.6 * (1.0 - (t / (*att * 2.0)).min(1.0)));
                 (ton * 0.6 + air) * env
             }
+            Kind::Additif(a) => {
+                let a = &mut **a;
+                let tb = &a.timbre;
+                let fin = a.dur + tb.rel;
+                if t > fin {
+                    return None;
+                }
+                let mut env = if t < tb.att { t / tb.att } else { 1.0 };
+                if tb.chute > 0.0 {
+                    env *= (-t * 4.6 / tb.chute).exp();
+                }
+                if t > a.dur {
+                    env *= 1.0 - (t - a.dur) / tb.rel.max(1e-3);
+                }
+                a.vph = (a.vph + tb.vib.0 * dt).fract();
+                let vib = if t > tb.att { 1.0 + tb.vib.1 * (TAU * a.vph).sin() } else { 1.0 };
+                // Les harmoniques hautes ne s'ouvrent qu'avec le souffle.
+                let ouvert = 1.0 - tb.eclat * (1.0 - env);
+                let mut x = 0.0;
+                let mut b = 1.0;
+                for (n, (ph, &h)) in a.ph.iter_mut().zip(&tb.harm).enumerate() {
+                    if h == 0.0 {
+                        b *= ouvert;
+                        continue;
+                    }
+                    let k = (n + 1) as f32;
+                    let fk = a.f * k * (1.0 + tb.raideur * k * k) * vib;
+                    if fk > rate * 0.45 {
+                        break;
+                    }
+                    *ph = (*ph + fk * dt).fract();
+                    x += (TAU * *ph).sin() * h * b;
+                    b *= ouvert;
+                }
+                x *= env;
+                if tb.sature > 0.0 {
+                    x = (x * (1.0 + 6.0 * tb.sature)).tanh() * (0.6 + 0.4 / (1.0 + 6.0 * tb.sature));
+                }
+                x
+            }
             Kind::Rhombe { filt, f, tour, ph, dur } => {
                 if t > *dur {
                     return None;
@@ -426,6 +497,10 @@ impl Make {
     pub fn trille(&self, f0: f32, f1: f32, puls: f32, net: f32, bruit: f32, harm: f32, dur: f32, att: f32) -> Kind {
         let filt = Biquad::new(FilterKind::BandPass, f0.clamp(40.0, self.rate * 0.4), 3.0, self.rate);
         Kind::Trille(Box::new(Trille { f0, f1, puls, net, bruit, harm, dur, att: att.max(0.001), phase: 0.0, pph: 0.0, filt }))
+    }
+    /// Note additive de `dur` s ; voir `Kind::Additif`.
+    pub fn additif(&self, midi: f32, dur: f32, timbre: Timbre) -> Kind {
+        Kind::Additif(Box::new(Additif { f: mtof(midi), dur, timbre, ph: [0.0; 8], vph: 0.0 }))
     }
     pub fn rhombe(&self, f: f32, tour: f32, dur: f32) -> Kind {
         Kind::Rhombe { filt: Biquad::new(FilterKind::BandPass, f, 6.0, self.rate), f, tour, ph: 0.0, dur }
