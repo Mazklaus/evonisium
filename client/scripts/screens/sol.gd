@@ -158,6 +158,7 @@ func _people_sound(on: bool) -> void:
 		return
 	if on:
 		Son.son.peuple(people["name"], people.get("words", PackedStringArray()), people.get("rites", PackedStringArray()), float(people["population"]), 1.0, int(people["people"]))
+		Son.son.techniques_du_peuple(App.session, int(people["people"]))
 	else:
 		Son.son.sans_peuple()
 

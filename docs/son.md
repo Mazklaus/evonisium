@@ -59,6 +59,19 @@ Chaque animal du moteur porte un organe sonore (`evo_life::body::SoundOrgan`, fo
 
 [Simplification] Pas de propagation du son dans le milieu (forêt qui étouffe, eau qui porte) au-delà de la distance et du filtre ; pas de réponse d'une espèce à l'autre.
 
+## Villes (livraison 3, volet villes, étape 7, sur sociétés d'essai)
+
+`evo-son/src/villes.rs`, lu dans l'état des sociétés publié (`evo_society::state::SocietyState`, version 1) sans rien écrire dans le moteur. Les sociétés sont encore celles du banc d'essai du client (`SocietySlot`) ; le son suivra quand le moteur les publiera.
+
+- **Où.** Sur le globe, avec le calque des sociétés : la ville de la cellule au centre de la vue se fait entendre à partir de la bande de zoom 4, plus fort à mesure qu'on descend. Elle se tait ailleurs.
+- **Ce qui sonne.** Un fond de foule, puis des couches tirées des techniques de la cellule : bêtes du troupeau (selon le cheptel), sabots (cheval), charrettes (roue), forge (cuivre, bronze, fer), chantier (brique, urbanisme, béton), cloche grave du temple (bronze et temple fort, rare), crieurs du marché dans la langue du peuple et pièces qui tintent (monnaie), moulin (eau, vent), machines à vapeur et sifflet d'usine, train (locomotive), trafic, voitures et klaxons (moteur, automobile), avion (aviation), tambours ou canons quand la société est en guerre, et un musicien de rue. Les couches d'un âge s'effacent quand le suivant les remplace : plus de forges ni de moulins dans une ville industrielle, plus de sabots ni de charrettes dans une ville d'automobiles, et le trafic couvre la foule.
+- **Dosage.** Comme pour la faune : un événement à la fois ou presque (deux au plus), jamais deux qui démarrent à moins de 2 s, chaque couche se repose après avoir sonné (deux minutes pour la cloche). Une grande ville a plus à dire.
+- **Instruments qui suivent les techniques.** La tradition d'un peuple (ses gammes, ses manières de célébrer, ses tambours) ne change pas, mais ses techniques lui donnent de nouveaux instruments : lyre, trompe de métal et gong avec le bronze, orgue avec le moulin à eau ou la pompe, vièle à archet avec l'université ou l'imprimerie, piano avec la machine-outil, guitare électrique avec le réseau électrique, synthétiseur avec le transistor. Le plus récent prend la mélodie, parfois avec un plus ancien ; un seul des instruments mélodiques d'avant reste. On les entend dans les chants rituels au sol (`techniques_du_peuple`) et chez le musicien de rue.
+- **Interface pour le client** (`EvoSon`) : `ville(session, cellule, proche)` et `sans_ville()`, appelés par l'autoload `Son` ; `techniques_du_peuple(session, peuple)` après `peuple(...)`, appelé par la scène au sol.
+- **Essai** : `cargo run --release -p evo-son --example villes -- dossier` rend une ville à cinq âges (75 s chacune, de 1 à 1,6 % d'un cœur) et le même rite joué avec les instruments de quatre âges.
+
+[Simplification] Pas de jour ni de nuit, pas de météo : une ville sonne de même à toute heure. Une date par instrument, sans chemin propre à chaque peuple ; les voies sans mains n'ont pas d'instruments des techniques. Le cheptel par habitant règle les bêtes, sans distinguer les espèces domestiquées.
+
 ## Fond musical par ère (boucles enregistrées)
 
 Sur demande de l'utilisateur (2026-10-11), le fond de chaque ère n'est plus
@@ -120,4 +133,4 @@ Moyenne 2,1 %, sous le budget de 5 à 10 % d'un cœur fixé par Vision (pris sur
 ## Suite
 
 - Livraison 2, suite : cycle jour et nuit quand la scène au sol en aura un, budget de densité sonore par scène, ères animales de la musique, narrateur (voix masculine à choisir, textes par gabarits).
-- Livraison 3, coupée en deux par Vision : le volet peuples avec l'étape 6 (langues et chants, ci-dessus, à brancher sur l'état culturel publié une fois l'étape intégrée au moteur) ; le volet villes avec l'étape 7.
+- Livraison 3, coupée en deux par Vision : le volet peuples avec l'étape 6 et le volet villes avec l'étape 7 (ci-dessus), tous deux sur données d'essai, à brancher sur les états publiés par le moteur quand il les publiera.

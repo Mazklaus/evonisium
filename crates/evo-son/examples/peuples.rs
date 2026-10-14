@@ -60,6 +60,7 @@ fn peuples(st: &CulturalState) -> Vec<Peuple> {
             population: p.population,
             taille: 1.0,
             cle: p.id as u64,
+            techniques: Vec::new(),
         });
     }
     out.sort_by(|a, b| b.rites.len().cmp(&a.rites.len()).then(b.population.total_cmp(&a.population)));
