@@ -14,9 +14,11 @@
 use crate::session::{image_rgba8, image_rgbaf};
 use evo_morph::artefact::{self, Artefact};
 use evo_morph::body::{impostor_views, Action, Locomotion, Mesh};
+use evo_morph::building;
 use evo_view::camp::{folk_species, layout, Placed};
 use evo_view::culture::CampView;
 use evo_view::ground::{bench_species, real_species, Crowd, Patch, SceneSpecies, Site, PATCH_SIZE_M};
+use evo_view::town::{Town, TownGround, TownView};
 use godot::classes::Image;
 use godot::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -31,6 +33,9 @@ pub struct Built {
     pub crowd: Crowd,
     pub atlas: Vec<u8>,
     pub ms: f64,
+    /// La ville de la cellule (étape 7), son sol et le maillage de chacun de
+    /// ses modèles.
+    pub town: Option<(Town, TownGround, Vec<Mesh>)>,
 }
 
 type Slot = Arc<Mutex<Option<Built>>>;
@@ -61,7 +66,9 @@ impl IRefCounted for EvoGround {
 /// une espèce d'agents ; les autres gardent les gestes des figurants.
 ///
 /// Avec `camp` (étape 6 : le groupe culturel de la cellule et le nom de son
-/// peuple), un campement se pose près du centre avec ses gens.
+/// peuple), un campement se pose près du centre avec ses gens. Avec `town`
+/// (étape 7 : la ville ou le village d'une société), la ville se bâtit à la
+/// place et ses gens vont et viennent sur la place.
 pub fn build(
     site: Site,
     real: Vec<SceneSpecies>,
@@ -69,7 +76,9 @@ pub fn build(
     total: usize,
     seed: u64,
     camp: Option<(CampView, String)>,
+    town: Option<TownView>,
 ) -> Built {
+    let camp = if town.is_some() { None } else { camp };
     let t0 = Instant::now();
     let patch = Patch::new(site.clone(), seed);
     let mut species = Vec::new();
@@ -82,7 +91,11 @@ pub fn build(
             None => species.push(sp),
         }
     }
-    let folk = camp.as_ref().map(|(_, name)| folk_species(&format!("{name} (peuple d'essai)"), seed ^ 0x666F));
+    let folk = match (&camp, &town) {
+        (_, Some(t)) => Some(folk_species(&format!("{} (société d'essai)", t.society), seed ^ 0x666F)),
+        (Some((_, name)), None) => Some(folk_species(&format!("{name} (peuple d'essai)"), seed ^ 0x666F)),
+        _ => None,
+    };
     let plans: Vec<_> = species.iter().chain(agents.iter().map(|a| &a.0)).chain(folk.iter()).map(|s| s.plan.clone()).collect();
     // Une ligne au moins : l'atlas d'une scène vide reste une image valide.
     let mut atlas = vec![0u8; IMPOSTOR_VIEWS * IMPOSTOR_PX * IMPOSTOR_PX * plans.len().max(1) * 4];
@@ -91,11 +104,22 @@ pub fn build(
         atlas[k * row..(k + 1) * row].copy_from_slice(&impostor_views(plan, IMPOSTOR_VIEWS, IMPOSTOR_PX));
     }
     let mut crowd = Crowd::with_agents(patch, species, agents, total, seed);
-    if let (Some((view, name)), Some(folk)) = (camp, folk) {
-        let c = layout(&view, &name, &crowd.patch, seed);
-        crowd.add_camp(c, folk);
+    let mut built_town = None;
+    match (town, camp, folk) {
+        (Some(view), _, Some(folk)) => {
+            let t = evo_view::town::layout(&view, &crowd.patch, seed);
+            let ground = t.ground_mesh(&crowd.patch);
+            let meshes = t.models.iter().map(|m| building::mesh(m.kind, &t.style, m.seed)).collect();
+            crowd.add_camp(t.folk_camp(), folk);
+            built_town = Some((t, ground, meshes));
+        }
+        (None, Some((view, name)), Some(folk)) => {
+            let c = layout(&view, &name, &crowd.patch, seed);
+            crowd.add_camp(c, folk);
+        }
+        _ => {}
     }
-    Built { crowd, atlas, ms: t0.elapsed().as_secs_f64() * 1000.0 }
+    Built { crowd, atlas, ms: t0.elapsed().as_secs_f64() * 1000.0, town: built_town }
 }
 
 impl EvoGround {
@@ -139,6 +163,23 @@ fn species_mesh(s: &SceneSpecies, m: &Mesh) -> VarDictionary {
     d
 }
 
+/// Maillage fixe (objet, bâtiment), en mètres, pour Godot.
+fn static_mesh(m: &Mesh) -> VarDictionary {
+    let mut d = VarDictionary::new();
+    let verts: Vec<Vector3> = m.positions.iter().map(|p| Vector3::new(p[0], p[1], p[2])).collect();
+    let normals: Vec<Vector3> = m.normals.iter().map(|n| Vector3::new(n[0], n[1], n[2])).collect();
+    let colours: Vec<Color> = m.colours.iter().map(|c| Color::from_rgb(c[0], c[1], c[2])).collect();
+    let mut idx = Vec::with_capacity(m.indices.len());
+    for t in m.indices.chunks(3) {
+        idx.extend_from_slice(&[t[0] as i32, t[2] as i32, t[1] as i32]);
+    }
+    d.set("vertices", &PackedVector3Array::from(&verts[..]));
+    d.set("normals", &PackedVector3Array::from(&normals[..]));
+    d.set("colors", &PackedColorArray::from(&colours[..]));
+    d.set("indices", &PackedInt32Array::from(&idx[..]));
+    d
+}
+
 fn locomotion_label(l: Locomotion, aquatic: bool, fr: bool) -> String {
     match (l, fr) {
         // Sans pattes hors de l'eau, l'ondulation est une reptation.
@@ -178,7 +219,7 @@ impl EvoGround {
         let (seed, total) = (seed as u64, total.clamp(1, 1_000_000) as usize);
         g.bind_mut().start(true, move || {
             let extras = bench_species(&site, seed, 6);
-            build(site, extras, Vec::new(), total, seed, None)
+            build(site, extras, Vec::new(), total, seed, None, None)
         });
         g
     }
@@ -303,17 +344,85 @@ impl EvoGround {
     #[func]
     fn artefact_mesh(&self, index: i64) -> VarDictionary {
         let a = Artefact::from_index(index.max(0) as usize);
-        let m = artefact::mesh(a, 11);
-        let mut d = VarDictionary::new();
-        let verts: Vec<Vector3> = m.positions.iter().map(|p| Vector3::new(p[0], p[1], p[2])).collect();
-        let normals: Vec<Vector3> = m.normals.iter().map(|n| Vector3::new(n[0], n[1], n[2])).collect();
-        let colours: Vec<Color> = m.colours.iter().map(|c| Color::from_rgb(c[0], c[1], c[2])).collect();
-        let mut idx = Vec::with_capacity(m.indices.len());
-        for t in m.indices.chunks(3) {
-            idx.extend_from_slice(&[t[0] as i32, t[2] as i32, t[1] as i32]);
-        }
+        let mut d = static_mesh(&artefact::mesh(a, 11));
         d.set("key", a.key());
         d.set("label", a.label(self.fr));
+        d
+    }
+
+    /// La ville de la scène : nom, société, ville ou village, époque,
+    /// habitants, centre de la place, rayon bâti, bâtiments par sorte ;
+    /// vide sans ville.
+    #[func]
+    fn town_info(&self) -> VarDictionary {
+        let mut d = VarDictionary::new();
+        let Some((t, _, _)) = self.built.as_ref().and_then(|b| b.town.as_ref()) else { return d };
+        let Some(c) = self.crowd() else { return d };
+        let v = &t.view;
+        let fr = self.fr;
+        d.set("name", v.name.as_str());
+        d.set("society", v.society.as_str());
+        d.set("city", v.city);
+        d.set("capital", v.capital);
+        d.set("era", v.era.label(fr));
+        let lang = if fr { evo_view::format::Lang::Fr } else { evo_view::format::Lang::En };
+        d.set("pop", evo_view::format::number_in(lang, (v.pop / 10.0).round() * 10.0, 0).as_str());
+        d.set("peak", evo_view::format::number_in(lang, (v.peak / 10.0).round() * 10.0, 0).as_str());
+        d.set("ruined", v.city && v.pop < 0.5 * v.peak);
+        d.set("centre", Vector3::new(t.plaza.0, c.patch.height_at(t.plaza.0, t.plaza.1), t.plaza.1));
+        d.set("radius", t.radius as f64);
+        d.set("buildings", t.buildings.len() as i64);
+        d.set("fields", t.fields.len() as i64);
+        d.set("models", t.models.len() as i64);
+        let mut kinds = VarArray::new();
+        for (k, n) in building::Kind::ALL.iter().zip(t.counts()) {
+            if n > 0 {
+                kinds.push(&format!("{n} × {}", k.label(fr)).to_variant());
+            }
+        }
+        d.set("kinds", &kinds);
+        d
+    }
+
+    /// Maillage d'un modèle de bâtiment de la ville, en mètres.
+    #[func]
+    fn town_mesh(&self, k: i64) -> VarDictionary {
+        let Some((t, _, meshes)) = self.built.as_ref().and_then(|b| b.town.as_ref()) else { return VarDictionary::new() };
+        let Some(m) = meshes.get(k.max(0) as usize) else { return VarDictionary::new() };
+        let mut d = static_mesh(m);
+        d.set("kind", t.models[k as usize].kind.label(self.fr));
+        d
+    }
+
+    /// Pour chaque modèle de la ville, les transformations de ses
+    /// bâtiments (12 nombres par instance).
+    #[func]
+    fn town_instances(&self) -> VarArray {
+        let mut out = VarArray::new();
+        let Some((t, _, _)) = self.built.as_ref().and_then(|b| b.town.as_ref()) else { return out };
+        let mut by: Vec<Vec<f32>> = vec![Vec::new(); t.models.len()];
+        for b in &t.buildings {
+            by[b.model as usize].extend_from_slice(&b.rows());
+        }
+        for v in by {
+            out.push(&PackedFloat32Array::from(&v[..]).to_variant());
+        }
+        out
+    }
+
+    /// Le sol de la ville (rues, place, champs) : sommets, normales,
+    /// couleurs, indices.
+    #[func]
+    fn town_ground(&self) -> VarDictionary {
+        let Some((_, g, _)) = self.built.as_ref().and_then(|b| b.town.as_ref()) else { return VarDictionary::new() };
+        let mut d = VarDictionary::new();
+        let verts: Vec<Vector3> = g.positions.iter().map(|p| Vector3::new(p[0], p[1], p[2])).collect();
+        let normals: Vec<Vector3> = g.normals.iter().map(|n| Vector3::new(n[0], n[1], n[2])).collect();
+        let colours: Vec<Color> = g.colours.iter().map(|c| Color::from_rgb(c[0], c[1], c[2])).collect();
+        let mut idx = Vec::with_capacity(g.indices.len());
+        for t in g.indices.chunks(3) {
+            idx.extend_from_slice(&[t[0] as i32, t[2] as i32, t[1] as i32]);
+        }
         d.set("vertices", &PackedVector3Array::from(&verts[..]));
         d.set("normals", &PackedVector3Array::from(&normals[..]));
         d.set("colors", &PackedColorArray::from(&colours[..]));

@@ -199,10 +199,12 @@ void vertex() {
 	v_pw2 = vec4(0.0);
 	if (show_peoples) {
 		vec4 d5 = fetch(data5, uv);
-		int k = clamp(int(d5.r + 0.5), 0, 10);
+		int k = clamp(int(d5.r + 0.5), 0, 9);
 		if (k < 4) v_pw0[k] = 1.0;
 		else if (k < 8) v_pw1[k - 4] = 1.0;
 		else v_pw2[k - 8] = 1.0;
+		// Part des champs (sociétés, étape 7).
+		v_pw2.z = d5.b;
 		v_pw2.w = d5.g;
 	}
 }
@@ -258,11 +260,11 @@ void fragment() {
 	// est nombreux ; frontière à l'encre où deux rangs s'égalent.
 	float border_ink = 0.0;
 	if (show_peoples) {
-		float w[11] = float[11](v_pw0.x, v_pw0.y, v_pw0.z, v_pw0.w, v_pw1.x, v_pw1.y, v_pw1.z, v_pw1.w, v_pw2.x, v_pw2.y, v_pw2.z);
+		float w[10] = float[10](v_pw0.x, v_pw0.y, v_pw0.z, v_pw0.w, v_pw1.x, v_pw1.y, v_pw1.z, v_pw1.w, v_pw2.x, v_pw2.y);
 		int top = 0;
 		float w1 = -1.0;
 		float w2 = -1.0;
-		for (int i = 0; i < 11; i++) {
+		for (int i = 0; i < 10; i++) {
 			if (w[i] > w1) {
 				w2 = w1;
 				w1 = w[i];
@@ -280,6 +282,12 @@ void fragment() {
 			// frontière, côté intérieur.
 			float ribbon = 1.0 - smoothstep(0.1, 0.35, gap);
 			col = mix(col, pc * 0.8, 0.45 * ribbon);
+			// Champs : sillons ocre, plus serrés où la terre est labourée.
+			float fields = clamp(v_pw2.z, 0.0, 1.0);
+			if (fields > 0.02) {
+				float furrow = step(fract((FRAGCOORD.x * 0.8 + FRAGCOORD.y * 0.3) / 4.0), 0.35);
+				col = mix(col, vec3(0.72, 0.58, 0.3), furrow * smoothstep(0.02, 0.5, fields) * 0.55);
+			}
 		}
 		border_ink = 1.0 - smoothstep(0.0, fwidth(gap) * 1.4, gap);
 	}

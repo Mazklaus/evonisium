@@ -62,6 +62,7 @@ func _build() -> void:
 	if saves.is_empty():
 		(guided if fresh else n).grab_focus.call_deferred()
 	menu.add_child(Atlas.button(App.t("load"), _show_saves))
+	menu.add_child(Atlas.button(App.t("gallery"), _show_gallery))
 	menu.add_child(Atlas.button(App.t("settings"), _show_settings))
 	menu.add_child(Atlas.button(App.t("quit"), func(): get_tree().quit()))
 
@@ -142,6 +143,14 @@ func _show_saves() -> void:
 		if not sel.is_empty():
 			_continue(list.get_item_metadata(sel[0]))))
 	h.add_child(Atlas.button(App.t("close"), func(): saves_box.queue_free()))
+
+var gallery: Control
+
+func _show_gallery() -> void:
+	if gallery and is_instance_valid(gallery):
+		gallery.queue_free()
+	gallery = preload("res://scripts/ui/galerie.gd").new()
+	add_child(gallery)
 
 func _show_settings() -> void:
 	if settings_panel:

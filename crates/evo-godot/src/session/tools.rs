@@ -135,6 +135,7 @@ impl EvoSession {
         if !inf.sandbox && (inf.points as f64) < i.cost() {
             return -1;
         }
+        self.refresh_milestones();
         let Some(g) = &mut self.game else { return -1 };
         g.intervene(i, &save_path.to_string(), &save_name.to_string()) as i64
     }

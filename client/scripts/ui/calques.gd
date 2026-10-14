@@ -7,6 +7,8 @@ signal layer_changed(layer: Dictionary)
 signal raw_toggled(on: bool)
 ## Peuples sur le globe (étape 6).
 signal peoples_toggled(on: bool)
+## Sociétés sur le globe (étape 7).
+signal societies_toggled(on: bool)
 
 var layers: Array = []
 var buttons: Array = []
@@ -17,6 +19,7 @@ var current := {}
 var palette_img: Image
 var guild_labels: VBoxContainer
 var peoples: CheckBox
+var societies: CheckBox
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(232, 0)
@@ -50,6 +53,11 @@ func _ready() -> void:
 	peoples.tooltip_text = App.t("peoples_bench")
 	peoples.toggled.connect(func(on): peoples_toggled.emit(on))
 	v.add_child(peoples)
+	societies = CheckBox.new()
+	societies.text = App.t("societies_layer")
+	societies.tooltip_text = App.t("societies_bench")
+	societies.toggled.connect(func(on): societies_toggled.emit(on))
+	v.add_child(societies)
 	v.add_child(Atlas.hsep())
 	legend_box = VBoxContainer.new()
 	legend_box.add_theme_constant_override("separation", 2)

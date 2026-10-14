@@ -164,6 +164,7 @@ dependencies = [
  "evo-morph",
  "evo-planet",
  "evo-sim",
+ "evo-society",
  "evo-son",
  "evo-view",
  "godot",
@@ -243,6 +244,7 @@ dependencies = [
 name = "evo-view"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "evo-agents",
  "evo-core",
  "evo-culture",
@@ -252,6 +254,7 @@ dependencies = [
  "evo-morph",
  "evo-planet",
  "evo-sim",
+ "evo-society",
 ]
 
 [[package]]
