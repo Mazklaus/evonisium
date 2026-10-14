@@ -159,6 +159,10 @@ pub struct Society {
     pub victories: u16,
     pub defeats: u16,
     pub peak: Label,
+    /// Marche la plus haute de ses techniques, et l'année où elle l'a
+    /// atteinte.
+    #[serde(default)]
+    pub frontier: (u16, i64),
 }
 
 impl Society {

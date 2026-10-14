@@ -213,3 +213,73 @@ impl EvoSession {
         Some(recit::fiche(&e, &lieu, &voisins, tirage))
     }
 }
+
+/// Clés des techniques connues (catalogue d'`evo-society`).
+fn cles(k: &evo_society::catalog::Known) -> Vec<String> {
+    evo_society::catalog::catalog().techniques.iter().filter(|t| k.has(t.id)).map(|t| t.key.clone()).collect()
+}
+
+impl EvoSession {
+    /// Le peuple d'une société pour le son : les mots de sa langue (état
+    /// culturel de l'étape 6, s'il est prêt), sa taille, ses techniques.
+    fn peuple_du_son(&mut self, people: u32, population: f64, techniques: Vec<String>) -> evo_son::peuples::Peuple {
+        let mut langue = evo_son::peuples::Langue { mots: Vec::new(), cle: people as u64 };
+        let mut nom = String::new();
+        if let Some(st) = self.culture() {
+            if let Some(p) = st.peoples.iter().find(|p| p.id == people) {
+                nom = p.name.clone();
+                if let Some(l) = p.language.and_then(|id| st.languages.iter().find(|l| l.id == id)) {
+                    langue = evo_son::peuples::Langue { mots: l.words.iter().map(|w| w.1.clone()).collect(), cle: l.id as u64 };
+                }
+            }
+        }
+        evo_son::peuples::Peuple {
+            nom,
+            langue,
+            rites: Vec::new(),
+            population: population as f32,
+            taille: 1.0,
+            cle: people as u64,
+            techniques,
+        }
+    }
+
+    /// La ville (ou le peuplement) d'une cellule, pour le son des villes
+    /// (livraison 3) ; `None` si personne n'y vit en ville. Lecture seule de
+    /// l'état des sociétés publié.
+    pub(crate) fn ville_du_son(&mut self, cell: i64) -> Option<evo_son::villes::Ville> {
+        let st = self.society_state()?;
+        let c = st.cells.iter().find(|c| c.cell as i64 == cell)?;
+        if !c.sedentary || c.urban <= 0.0 {
+            return None;
+        }
+        let s = st.societies.iter().find(|s| s.id == c.society)?;
+        let institution = |i: evo_society::society::Institution| s.institutions[i as usize] as f32;
+        let city = c.city.and_then(|id| st.cities.iter().find(|x| x.id == id));
+        let techniques = cles(&c.known);
+        let peuple = self.peuple_du_son(s.people, s.agg.population, techniques.clone());
+        Some(evo_son::villes::Ville {
+            nom: city.map_or_else(|| s.name.clone(), |x| x.name.clone()),
+            cle: city.map_or(1 << 32 | c.cell as u64, |x| x.id as u64),
+            population: c.pop as f32,
+            urbain: c.urban as f32,
+            techniques,
+            betail: (c.livestock / c.pop.max(1.0)) as f32,
+            temple: institution(evo_society::society::Institution::Temple),
+            marche: institution(evo_society::society::Institution::Market),
+            guerre: s.at_war,
+            peuple,
+        })
+    }
+
+    /// Techniques de la société la plus peuplée d'un peuple (étape 7), pour
+    /// les instruments de ses chants ; vide sans sociétés.
+    pub(crate) fn techniques_du_peuple(&self, people: i64) -> Vec<String> {
+        let Some(st) = self.society_state() else { return Vec::new() };
+        st.societies
+            .iter()
+            .filter(|s| s.people as i64 == people)
+            .max_by(|a, b| a.agg.population.total_cmp(&b.agg.population))
+            .map_or_else(Vec::new, |s| cles(&s.known))
+    }
+}

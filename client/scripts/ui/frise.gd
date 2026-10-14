@@ -20,7 +20,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 14)
 	add_child(row)
 	menu = GridContainer.new()
-	menu.columns = 3
+	menu.columns = 4
 	menu.add_theme_constant_override("h_separation", 6)
 	menu.add_theme_constant_override("v_separation", 6)
 	row.add_child(menu)

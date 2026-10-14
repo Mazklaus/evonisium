@@ -555,7 +555,7 @@ nom = Écriture
 ref = Uruk, 5,3 ka ; Égypte ; Chine ; Méso-Amérique
 pre = comptage, sceaux
 corps = mains
-diff = 60
+diff = 50
 inv = 0.6
 besoin = administration
 drapeaux = ecriture
@@ -1103,12 +1103,12 @@ recette = fer 1 <- charbon_bois 4 ; gisement fer 1 ; travail 0.6
 
 [extraction_charbon]
 nom = Extraction du charbon
-ref = Chine des Song ; Angleterre, XIIIe siècle
+ref = Chine des Song ; Angleterre, XIIIe siècle ; une centaine de tonnes par mineur et par an vers 1700 (Hatcher, 1993)
 ou = fonte_fer, haut_fourneau
 res = charbon
 diff = 24
 besoin = combustible
-recette = charbon 1 ; gisement charbon 0.7 ; travail 0.02
+recette = charbon 1 ; gisement charbon 0.7 ; travail 0.01
 
 [machine_outil]
 nom = Machine-outil
@@ -1123,7 +1123,7 @@ recette = machines 1 <- fer 0.5 ; travail 0.8
 
 [pompe_vapeur]
 nom = Pompe à feu
-ref = Newcomen, 1712
+ref = Newcomen, 1712 ; 250 t par mineur et par an au XIXe siècle (Church, 1986)
 pre = extraction_charbon, haut_fourneau
 res = charbon
 diff = 50
@@ -1132,7 +1132,7 @@ besoin = combustible
 sci = mecanique:0.35
 drapeaux = fossile
 energie = charbon:0.01
-recette = charbon 1 ; gisement charbon 0.7 ; travail 0.008
+recette = charbon 1 ; gisement charbon 0.7 ; travail 0.004
 
 [coke]
 nom = Fonte au coke

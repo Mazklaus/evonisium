@@ -8,8 +8,10 @@
 
 mod bodies;
 mod culture;
+mod gallery;
 mod region;
 mod slide;
+mod society;
 mod son;
 mod story;
 mod tools;
@@ -105,6 +107,7 @@ pub struct EvoSession {
     watch_step: u64,
     bridge_ms: f64,
     culture: culture::CultureSlot,
+    society: society::SocietySlot,
     /// Vitesse tenue, mesurée entre les pas publiés (attente du frein comprise).
     meter: std::cell::RefCell<(Instant, evo_view::pace::Meter)>,
 }
@@ -131,6 +134,7 @@ impl IRefCounted for EvoSession {
             watch_step: 0,
             bridge_ms: 0.0,
             culture: Default::default(),
+            society: Default::default(),
             meter: std::cell::RefCell::new((Instant::now(), Default::default())),
         }
     }
@@ -341,6 +345,8 @@ impl EvoSession {
             // sauvegardes forment un arbre de branches.
             d.set("branch_of", save.branch_of.as_str());
             d.set("interventions", save.interventions.len() as i64);
+            d.set("years", save.years);
+            d.set("milestones", &self.save_milestones(&path.to_string()));
         }
         d
     }
@@ -384,6 +390,7 @@ impl EvoSession {
 
     #[func]
     fn save(&mut self, path: GString, name: GString) {
+        self.refresh_milestones();
         if let Some(g) = &mut self.game {
             g.save(&path.to_string(), &name.to_string());
         }

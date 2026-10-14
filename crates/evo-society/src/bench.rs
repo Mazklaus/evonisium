@@ -392,6 +392,7 @@ fn make_land(lat: f64, lon: f64, temp: f64, rain: f64, relief: f64, river: f64) 
 
 /// Un monde construit : le monde des sociétés et la position de chaque
 /// cellule.
+#[derive(Clone)]
 pub struct Bench {
     pub world: SocietyWorld,
     /// (latitude, longitude) de chaque cellule.

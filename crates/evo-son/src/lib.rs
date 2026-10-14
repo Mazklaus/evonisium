@@ -21,6 +21,7 @@ pub mod musique;
 pub mod peuples;
 pub mod recit;
 pub mod synth;
+pub mod villes;
 
 use ambiance::{Globe, Micro};
 use fond::{Boucle, Fond};
@@ -154,6 +155,12 @@ pub enum Ordre {
     Faune(Option<Vec<(faune::Organe, u32)>>),
     /// Appel d'une espèce, tout près (l'espèce que l'on suit).
     Cri(faune::Organe),
+    /// Ville regardée de près sur le globe et proximité de la caméra (0 à
+    /// 1) ; `None` quand il n'y en a plus.
+    Ville(Option<(villes::Ville, f32)>),
+    /// Techniques de la société du peuple regardé (étape 7) : ses chants
+    /// prennent les instruments qu'elles permettent.
+    Techniques(Vec<String>),
 }
 
 /// Ce que le son signale au fil principal (sous-titres, fin de phrase).
@@ -200,6 +207,7 @@ pub struct Son {
     chant: Option<Chant>,
     pub fond: Fond,
     faune: faune::Faune,
+    rue: Option<villes::Rue>,
 }
 
 /// Pas de contrôle, en échantillons.
@@ -236,6 +244,7 @@ impl Son {
             chant: None,
             fond: Fond::new(rate),
             faune: faune::Faune::default(),
+            rue: None,
         }
     }
 
@@ -277,6 +286,16 @@ impl Son {
                     self.push(x);
                 }
             }
+            Ordre::Techniques(t) => {
+                if let Some(r) = &mut self.rumeur {
+                    r.peuple.techniques = t;
+                }
+            }
+            Ordre::Ville(v) => match (v, &mut self.rue) {
+                (Some((v, p)), Some(r)) if r.ville.cle == v.cle => r.maj(v, p),
+                (Some((v, p)), _) => self.rue = Some(villes::Rue::new(v, p, self.rate, &mut self.rng)),
+                (None, _) => self.rue = None,
+            },
             Ordre::Prononcer(mot) => {
                 if let Some(r) = &self.rumeur {
                     let loc = peuples::Locuteur::homme(&mut self.rng);
@@ -392,6 +411,14 @@ impl Son {
             let voix = self.voices.iter().filter(|v| v.bus == Bus::Ambiance).count();
             self.faune.tick(dt, voix, &self.mk, &mut self.rng, &mut fresh);
         }
+        // La ville regardée de près, sur le globe seulement.
+        if let Some(r) = &mut self.rue {
+            r.ecoute(self.vue == Vue::Globe);
+            if self.vue == Vue::Globe {
+                let parleurs = self.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_)) && v.bus == Bus::Ambiance).count();
+                r.tick(dt, parleurs, &self.mk, &mut self.rng, &mut fresh);
+            }
+        }
         for v in fresh.drain(..) {
             self.push(v);
         }
@@ -444,7 +471,8 @@ impl Son {
                 }
                 None => false,
             });
-            let amb = self.globe.run(rng, dt, rate) + self.micro.run(rng, dt, rate);
+            let rue = self.rue.as_mut().map_or(0.0, |r| r.run(rng, dt, rate));
+            let amb = self.globe.run(rng, dt, rate) + self.micro.run(rng, dt, rate) + rue;
             bus[1][0] += amb;
             bus[1][1] += amb;
             let fond = self.fond.run(dt, rng);
@@ -657,6 +685,7 @@ mod tests {
             population: 800.0,
             taille: 1.0,
             cle: 3,
+            techniques: Vec::new(),
         };
         son.ordre(Ordre::Peuple(Some(p.clone())));
         let gens = |s: &Son| s.voices.iter().filter(|v| matches!(v.kind, synth::Kind::Gosier(_))).count();

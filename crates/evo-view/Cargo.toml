@@ -16,3 +16,5 @@ evo-engine.workspace = true
 evo-agents.workspace = true
 evo-morph.workspace = true
 evo-culture.workspace = true
+evo-society.workspace = true
+bincode.workspace = true
