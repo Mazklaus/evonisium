@@ -251,8 +251,14 @@ pub struct CultureWorld {
     cell_links: BTreeMap<u32, Vec<(u32, f64)>>,
     #[serde(skip)]
     index: BTreeMap<(u32, u32), usize>,
-    #[serde(skip)]
+    /// Index et liens à refaire ; vrai à la lecture d'une sauvegarde, qui ne
+    /// les porte pas.
+    #[serde(skip, default = "dirty_after_load")]
     dirty: bool,
+}
+
+fn dirty_after_load() -> bool {
+    true
 }
 
 /// Solution exacte de dp/dt = λ·p·(1 − p) − μ·p sur `gens` générations.
@@ -508,6 +514,39 @@ impl CultureWorld {
     pub fn remove_group(&mut self, cell: u32, species: u32) {
         self.groups.retain(|g| !(g.cell == cell && g.species == species));
         self.dirty = true;
+    }
+
+    /// Change de grille : `old_of[c]` est l'ancienne cellule de la cellule
+    /// `c`, `share[c]` la part de l'ancienne qu'elle reçoit. Chaque groupe
+    /// passe dans les cellules issues de la sienne, avec sa part
+    /// d'individus ; les liens entre cellules sont à reposer.
+    pub fn remap_cells(&mut self, old_of: &[usize], share: &[f64]) {
+        let old = std::mem::take(&mut self.groups);
+        let mut by_cell: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        for (i, g) in old.iter().enumerate() {
+            by_cell.entry(g.cell).or_default().push(i);
+        }
+        for (c, &o) in old_of.iter().enumerate() {
+            let Some(list) = by_cell.get(&(o as u32)) else { continue };
+            if share[c] <= 0.0 {
+                continue;
+            }
+            for &i in list {
+                let mut g = old[i].clone();
+                g.cell = c as u32;
+                g.population *= share[c];
+                g.links.clear();
+                self.groups.push(g);
+            }
+        }
+        self.groups.sort_by_key(|g| (g.cell, g.species));
+        self.cell_links.clear();
+        self.dirty = true;
+    }
+
+    /// Cellules liées à `cell`.
+    pub fn linked(&self, cell: u32) -> bool {
+        self.cell_links.contains_key(&cell)
     }
 
     pub fn set_population(&mut self, cell: u32, species: u32, population: f64) {

@@ -42,7 +42,8 @@ impl Family {
             EventKind::LifeSeeded { .. } | EventKind::OxygenThreshold { .. } => Family::Milestone,
             EventKind::NewLineage { .. } | EventKind::Radiation { .. } => Family::Speciation,
             EventKind::LineageExtinct { .. } | EventKind::MassExtinction { .. } => Family::Extinction,
-            EventKind::Innovation { .. } => Family::Innovation,
+            EventKind::Innovation { .. } | EventKind::HistoricalMode { .. } => Family::Innovation,
+            EventKind::Myth { .. } => Family::Milestone,
             EventKind::Snowball { .. } => Family::Catastrophe,
             EventKind::PlateReorganisation { .. } => Family::Geology,
             EventKind::AcceleratorOn { .. } | EventKind::AcceleratorOff { .. } => Family::Accelerator,
@@ -302,6 +303,22 @@ pub fn body(e: &Event, lang: Lang, name: &dyn Fn(u32) -> String) -> String {
         }
         (EventKind::Radiation { gain, .. }, Lang::Fr) => format!("Radiation : les lignées se multiplient (×{gain:.1})."),
         (EventKind::Radiation { gain, .. }, Lang::En) => format!("Radiation: lineages multiply (×{gain:.1})."),
+        (EventKind::HistoricalMode { starts: true, .. }, Lang::Fr) => {
+            "Une espèce accumule ses savoirs d'une génération à l'autre : le temps passe désormais année par année.".into()
+        }
+        (EventKind::HistoricalMode { starts: true, .. }, Lang::En) => {
+            "A species builds on its knowledge from one generation to the next: time now passes year by year.".into()
+        }
+        (EventKind::HistoricalMode { starts: false, .. }, Lang::Fr) => {
+            "Plus aucune espèce ne transmet ses savoirs : le temps reprend son cours.".into()
+        }
+        (EventKind::HistoricalMode { starts: false, .. }, Lang::En) => {
+            "No species passes on its knowledge any more: time resumes its pace.".into()
+        }
+        (EventKind::Myth { intervention: true, .. }, Lang::Fr) => "Un peuple fait un mythe de votre intervention.".into(),
+        (EventKind::Myth { intervention: true, .. }, Lang::En) => "A people turns your intervention into a myth.".into(),
+        (EventKind::Myth { intervention: false, .. }, Lang::Fr) => "Un peuple fait un mythe d'un phénomène qu'il ne s'explique pas.".into(),
+        (EventKind::Myth { intervention: false, .. }, Lang::En) => "A people turns something it cannot explain into a myth.".into(),
         (EventKind::OrderApplied { label, .. }, Lang::Fr) => {
             if e.origin == Origin::Player {
                 format!("Votre intervention s'applique : {label}.")

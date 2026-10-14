@@ -9,6 +9,7 @@
 //! par dème. Ce qui se recalcule exactement n'est pas écrit : grilles,
 //! phénotypes, conditions des cellules du vivant, état publié.
 
+use crate::culture::Cultures;
 use crate::disturbance::Disturbances;
 use crate::history::{History, Publication};
 use crate::influence::InfluenceReserve;
@@ -32,7 +33,7 @@ use std::sync::Arc;
 /// Signature des fichiers de sauvegarde.
 pub const MAGIC: &[u8; 9] = b"EVONISIUM";
 /// Version du format ; une sauvegarde d'une autre version est refusée.
-pub const FORMAT_VERSION: u32 = 12;
+pub const FORMAT_VERSION: u32 = 13;
 
 #[derive(Serialize, Deserialize)]
 struct SavedPopulation {
@@ -86,6 +87,7 @@ struct SaveState<'a> {
     influence: InfluenceReserve,
     published_events: usize,
     disturbances: Cow<'a, Disturbances>,
+    cultures: Cow<'a, Cultures>,
 }
 
 fn invalid(msg: impl Into<String>) -> io::Error {
@@ -152,6 +154,7 @@ impl World {
             influence: self.influence,
             disturbances: Cow::Borrowed(&self.disturbances),
             published_events: self.published_events(),
+            cultures: Cow::Borrowed(&self.cultures),
         };
         out.write_all(MAGIC)?;
         out.write_all(&FORMAT_VERSION.to_le_bytes())?;
@@ -231,8 +234,17 @@ impl World {
         world.stats = s.stats;
         world.influence = s.influence;
         world.disturbances = s.disturbances.into_owned();
-        let (t0, dt) = (world.years, world.config.step_years);
-        world.disturbances.apply_to(&mut world.bio, t0 - dt, t0);
+        world.cultures = s.cultures.into_owned();
+        // Fenêtre de la dernière phase planétaire : le dernier pas, ou en
+        // mode historique le dernier siècle achevé.
+        let t0 = world.years;
+        let (from, to) = if world.cultures.world.historical() {
+            let end = t0 - world.progress.climate_clock;
+            (end - crate::culture::HISTORICAL_CLIMATE_YEARS, end)
+        } else {
+            (t0 - world.config.step_years, t0)
+        };
+        world.disturbances.apply_to(&mut world.bio, from, to);
         world.set_published_events(s.published_events);
         world.publication = Publication::default();
         world.republish();

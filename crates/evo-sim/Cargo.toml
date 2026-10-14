@@ -17,6 +17,7 @@ evo-core.workspace = true
 evo-planet.workspace = true
 evo-genetics.workspace = true
 evo-life.workspace = true
+evo-culture.workspace = true
 rand.workspace = true
 rayon.workspace = true
 mimalloc.workspace = true

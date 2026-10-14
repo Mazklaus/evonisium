@@ -27,6 +27,7 @@
 //! La même graine et le même registre d'ordres donnent donc la même histoire,
 //! quel que soit le nombre de coeurs.
 
+use crate::culture::{Cultures, HISTORICAL_CLIMATE_YEARS, HISTORICAL_ECOLOGY_YEARS, HISTORICAL_STEP_YEARS};
 use crate::disturbance::{self, Barrier, ClimateAnomaly, Disturbances};
 use crate::evolution::{evolve_deme, habitat_class, BasisCache, EvolutionParams, EvolutionStats, Fixation};
 use crate::history::{CellView, ClimateMode, EventView, History, Publication, PublishedState, Sample, SpeciesView};
@@ -38,6 +39,7 @@ use evo_core::events::{EventKind, EventLog, Origin};
 use evo_core::flux::{Element, FluxRegistry};
 use evo_core::math::Det;
 use evo_core::rng::{rng_for, Stream};
+use evo_culture::Phenomenon;
 use evo_genetics::genome::MARKER_LEN;
 use evo_genetics::{
     Domain, DomainFamily, Gene, Genome, GenomeChangeCause, GenomeJournal, JournalEntry, LineageRegistry, MutationParams, OriginFixation,
@@ -341,6 +343,14 @@ pub struct Progress {
     pub diversity_level: u32,
     pub extinction_episode: bool,
     pub radiation_episode: bool,
+    /// Accélérateur cognitif (étape 6) en marche.
+    pub cognitive_accelerator_on: bool,
+    /// Date de la bascule en mode historique, et sortie s'il en est sorti.
+    pub historical_years: Option<f64>,
+    /// Temps écoulé depuis la dernière écologie et le dernier climat du
+    /// mode historique, années.
+    pub ecology_clock: f64,
+    pub climate_clock: f64,
 }
 
 /// Extinctions de masse et radiations : fenêtres de mesure du nombre de
@@ -384,6 +394,8 @@ pub fn complexity_bits(p: &Phenotype, on_land: bool) -> u8 {
 /// apparition : rien ne les code, elles naissent des familles de domaines
 /// (moteurs, récepteurs, nerfs, matrice) et de la sélection.
 pub const ANIMAL_PATHWAY: &str = "animaux et plantes";
+/// Chemin suivi par l'accélérateur cognitif (étape 6).
+pub const COGNITIVE_PATHWAY: &str = "cognition";
 pub const ANIMAL_STAGE_COUNT: usize = 6;
 pub const ANIMAL_STAGES: [&str; ANIMAL_STAGE_COUNT] =
     ["animal mobile", "système nerveux", "squelette", "plante à tissus de soutien hors de l'eau", "animal hors de l'eau", "organe sonore"];
@@ -436,6 +448,8 @@ pub struct World {
     pub chemistry: Vec<WaterChemistry>,
     pub communities: Vec<Vec<Population>>,
     pub lineages: LineageRegistry,
+    /// Espèces et groupes culturels (étape 6).
+    pub cultures: Cultures,
     pub events: EventLog,
     pub journal: GenomeJournal,
     /// Registre de flux : carbone et phosphore entrés ou sortis du système
@@ -578,6 +592,7 @@ impl World {
         let deme_level = config.deme_level.unwrap_or(config.bio_level.saturating_sub(1)).min(config.bio_level);
         let deme_grid = BioGrid::new(&bio.grid, deme_level);
         let (demes, deme_index) = (deme_grid.children, deme_grid.parent);
+        let seed = config.seed;
         Self {
             history: History::new(config.history_every_years),
             influence: InfluenceReserve::new(&config.influence),
@@ -595,6 +610,7 @@ impl World {
             chemistry,
             communities,
             lineages: LineageRegistry::default(),
+            cultures: Cultures::new(seed),
             events: EventLog::default(),
             journal: GenomeJournal::default(),
             flux: FluxRegistry::default(),
@@ -774,7 +790,7 @@ impl World {
                 OrderKind::SeedLife => self.seed_life_with(Origin::Player, Some(event)),
                 OrderKind::Intervene(ref i) => {
                     if self.influence.try_spend(&self.config.influence, i.cost()) {
-                        self.intervene(i, order.id);
+                        self.intervene(i, order.id, event);
                     } else {
                         self.events.push_with(
                             self.years,
@@ -795,8 +811,56 @@ impl World {
         }
     }
 
-    /// Applique une intervention déjà payée.
-    fn intervene(&mut self, i: &Intervention, order: u64) {
+    /// Applique une intervention déjà payée ; les peuples qui la voient
+    /// peuvent en faire un mythe.
+    fn intervene(&mut self, i: &Intervention, order: u64, event: u64) {
+        self.apply_intervention(i, order);
+        let (cell, radius_km, phenomenon) = match *i {
+            Intervention::Fertilize { cell, radius_km, .. } => (cell, radius_km, Phenomenon::Abundance),
+            Intervention::Eruption { cell, .. } => (cell, 300.0, Phenomenon::Eruption),
+            Intervention::Impact { cell, diameter_km } => (cell, 3e-3 * disturbance::kill_radius_m(diameter_km), Phenomenon::Impact),
+            Intervention::Isolate { cell, length_km, .. } => (cell, 0.5 * length_km, Phenomenon::Earthquake),
+            Intervention::ClimatePulse { cell, radius_km, delta_k, rain_factor, .. } => {
+                let p = if rain_factor >= 2.0 {
+                    Phenomenon::Flood
+                } else if rain_factor >= 1.3 {
+                    Phenomenon::Rain
+                } else if rain_factor <= 0.5 {
+                    Phenomenon::Drought
+                } else if delta_k >= 0.0 {
+                    Phenomenon::Heat
+                } else {
+                    Phenomenon::Cold
+                };
+                (cell, radius_km, p)
+            }
+        };
+        self.witness(cell, radius_km, phenomenon, true, Some(event));
+    }
+
+    /// Un phénomène est vu dans un rayon autour d'une cellule physique :
+    /// chaque groupe culturel qui y vit peut en faire un mythe.
+    fn witness(&mut self, cell: u32, radius_km: f64, phenomenon: Phenomenon, intervention: bool, cause: Option<u64>) {
+        if self.cultures.world.groups.is_empty() {
+            return;
+        }
+        let center = self.planet.grid.centers[(cell as usize).min(self.planet.grid.len() - 1)];
+        let radius = radius_km.max(1.0) * 1e3 / self.planet.params.radius_m;
+        let mut cells: Vec<u32> = self.cultures.world.groups.iter().map(|g| g.cell).collect();
+        cells.dedup();
+        for c in cells {
+            if disturbance::angle(self.bio.grid.centers[c as usize], center) > radius {
+                continue;
+            }
+            for myth in self.cultures.world.witness(c, phenomenon, intervention) {
+                let people = self.cultures.world.myths[myth as usize].people;
+                let origin = if intervention { Origin::Player } else { Origin::Engine };
+                self.events.push_with(self.years, Some(c), EventKind::Myth { myth, people, intervention }, origin, cause);
+            }
+        }
+    }
+
+    fn apply_intervention(&mut self, i: &Intervention, order: u64) {
         match *i {
             Intervention::Fertilize { cell, radius_km, moles_p } => {
                 let m = moles_p.max(0.0);
@@ -941,7 +1005,25 @@ impl World {
         if self.paused {
             return timings;
         }
-        let dt = self.next_step_years();
+        // Mode historique (étape 6) : pas d'un an, rythmes fixes pour les
+        // autres phases ; la vitesse demandée n'y change rien.
+        let historical = self.cultures.world.historical();
+        let dt = if historical { HISTORICAL_STEP_YEARS } else { self.next_step_years() };
+        let (climate_span, ecology_span) = if historical {
+            let p = &mut self.progress;
+            p.climate_clock += dt;
+            p.ecology_clock += dt;
+            let take = |clock: &mut f64, period: f64| {
+                if *clock >= period - 1e-9 {
+                    std::mem::take(clock)
+                } else {
+                    0.0
+                }
+            };
+            (take(&mut p.climate_clock, HISTORICAL_CLIMATE_YEARS), take(&mut p.ecology_clock, HISTORICAL_ECOLOGY_YEARS))
+        } else {
+            (dt, dt)
+        };
         let step_index = self.stats.steps;
         let years = self.years;
         let first_event = self.events.total();
@@ -957,14 +1039,18 @@ impl World {
         check(self, "début");
         // 1. Planète lente.
         let mut land_trace = vec![("début", self.land_populations())];
-        self.planet_phase(years, dt, step_index);
+        if climate_span > 0.0 {
+            self.planet_phase(years + dt - climate_span, climate_span, step_index);
+        }
         land_trace.push(("planète", self.land_populations()));
         check(self, "planète");
         timings.planet = t0.elapsed();
 
         // 2. Écologie et cycles globaux.
         let t1 = Instant::now();
-        self.ecology_phase(years, dt);
+        if ecology_span > 0.0 {
+            self.ecology_phase(years + dt - ecology_span, ecology_span);
+        }
         land_trace.push(("écologie", self.land_populations()));
         check(self, "écologie");
         timings.ecology = t1.elapsed();
@@ -996,9 +1082,11 @@ impl World {
         // 4. Migration.
         let t3 = Instant::now();
         land_trace.push(("évolution", self.land_populations()));
-        self.migrate(dt, step_index);
-        land_trace.push(("migration", self.land_populations()));
-        self.trim_communities();
+        if ecology_span > 0.0 {
+            self.migrate(ecology_span, step_index);
+            land_trace.push(("migration", self.land_populations()));
+            self.trim_communities();
+        }
         land_trace.push(("plafond", self.land_populations()));
         if std::env::var_os("EVO_DEBUG_LAND").is_some() && land_trace[0].1 .0 > 0 {
             let t: Vec<String> = land_trace.iter().map(|(n, (c, b))| format!("{n} {c} {b:.3e}")).collect();
@@ -1013,7 +1101,12 @@ impl World {
         self.influence.recharge(&self.config.influence, dt);
         self.disturbances.expire(self.years);
         self.bookkeeping(modified);
-        self.adapt_step(first_event, oxygen_before);
+        if !historical {
+            self.adapt_step(first_event, oxygen_before);
+        }
+        // 6. Cultures : groupes accordés aux populations quand l'écologie a
+        // tourné, puis un pas de culture.
+        self.culture_phase(years, dt, !historical || ecology_span > 0.0);
         if std::env::var_os("EVO_DEBUG_CO2").is_some() && (self.years / 2e6).floor() > (years / 2e6).floor() {
             let pl = &self.planet;
             let r = &pl.reservoirs;
@@ -1401,13 +1494,29 @@ impl World {
         let cfg = &self.config;
         let accelerator = self.progress.accelerator_on;
         let complex = self.complexity_boost(years);
+        let cognitive = self.cognitive_boost(years);
         let (communities, chemistry, envs, cache) = (&self.communities, &self.chemistry, &self.bio.env, &self.basis_cache);
         let results: Vec<_> = self
             .demes
             .par_iter()
             .enumerate()
             .map(|(d, cells)| {
-                evolve_deme(d, cells, communities, chemistry, envs, cfg, dt, years, step_index, round, accelerator, complex, cache)
+                evolve_deme(
+                    d,
+                    cells,
+                    communities,
+                    chemistry,
+                    envs,
+                    cfg,
+                    dt,
+                    years,
+                    step_index,
+                    round,
+                    accelerator,
+                    complex,
+                    cognitive,
+                    cache,
+                )
             })
             .collect();
         let mut modified = Vec::new();
@@ -1918,6 +2027,13 @@ impl World {
                     .collect()
             })
             .collect();
+        // Les groupes culturels se partagent entre les cellules filles.
+        let mut kids = vec![0u32; self.bio.len()];
+        for &o in &old_of {
+            kids[o] += 1;
+        }
+        let share: Vec<f64> = old_of.iter().map(|&o| 1.0 / kids[o].max(1) as f64).collect();
+        self.cultures.world.remap_cells(&old_of, &share);
         self.bio = bio;
         self.config.bio_level = level;
         let deme_level = self.config.deme_level.unwrap_or(level.saturating_sub(1)).min(level);
@@ -1946,6 +2062,76 @@ impl World {
         let running = (years - since - acc.complexity_patience_years).max(0.0);
         let escalation = 10f64.dpowf(running / acc.complexity_escalation_years.max(1.0));
         (acc.boost * escalation).min(acc.complexity_max_boost.max(acc.boost))
+    }
+
+    /// Effet de l'accélérateur cognitif au moment `years` : 1 quand il
+    /// n'agit pas ; sinon son multiplicateur, décuplé à chaque
+    /// `complexity_escalation_years` passées depuis la fin de sa patience,
+    /// au plus `cognitive_max_boost`. [Simplification] Accélération
+    /// déclarée (décision du 7 octobre 2026 : émergence assistée).
+    fn cognitive_boost(&self, years: f64) -> f64 {
+        let acc = &self.config.evolution.accelerator;
+        if !self.progress.cognitive_accelerator_on {
+            return 1.0;
+        }
+        let Some(first) = self.progress.animal_years[0] else { return 1.0 };
+        let running = (years - first - acc.cognitive_patience_years).max(0.0);
+        let escalation = 10f64.dpowf(running / acc.complexity_escalation_years.max(1.0));
+        (acc.cognitive_boost * escalation).min(acc.cognitive_max_boost.max(acc.cognitive_boost))
+    }
+
+    /// Cultures (étape 6) : groupes accordés aux populations, pas de
+    /// culture de `dt` années commencé à `start`, bascule du mode historique
+    /// et accélérateur cognitif.
+    fn culture_phase(&mut self, start: f64, dt: f64, sync: bool) {
+        if sync {
+            let o2 = 100.0 * self.planet.reservoirs.mixing_ratio(Gas::O2);
+            self.cultures.sync(&self.communities, &self.bio, &self.lineages, o2, &self.config.physiology);
+        }
+        let w = &mut self.cultures.world;
+        let was = w.historical();
+        if !w.groups.is_empty() || was {
+            w.year = start;
+            w.step(dt);
+        } else {
+            w.year = start + dt;
+        }
+        let now = w.historical();
+        if now != was {
+            let species = w.species.iter().find(|s| s.historical()).or(w.species.first()).map_or(0, |s| s.id);
+            self.events.push(self.years, None, EventKind::HistoricalMode { species, starts: now });
+            if now && self.progress.historical_years.is_none() {
+                self.progress.historical_years = Some(self.years);
+            }
+            self.progress.climate_clock = 0.0;
+            self.progress.ecology_clock = 0.0;
+        }
+        // Accélérateur cognitif : 800 Ma après le premier animal mobile sans
+        // espèce en mode historique.
+        let acc = &self.config.evolution.accelerator;
+        if self.progress.cognitive_accelerator_on && now {
+            self.progress.cognitive_accelerator_on = false;
+            self.events.push_with(
+                self.years,
+                None,
+                EventKind::AcceleratorOff { pathway: COGNITIVE_PATHWAY.into() },
+                Origin::Accelerator,
+                None,
+            );
+        } else if acc.enabled && !self.progress.cognitive_accelerator_on && self.progress.historical_years.is_none() {
+            if let Some(first) = self.progress.animal_years[0] {
+                if self.years - first >= acc.cognitive_patience_years {
+                    self.progress.cognitive_accelerator_on = true;
+                    self.events.push_with(
+                        self.years,
+                        None,
+                        EventKind::AcceleratorOn { pathway: COGNITIVE_PATHWAY.into(), stage: 0 },
+                        Origin::Accelerator,
+                        None,
+                    );
+                }
+            }
+        }
     }
 
     /// Étapes de la complexité : première apparition sur la planète, et
@@ -2159,11 +2345,23 @@ impl World {
         self.scan_species_origins();
         let species = self.species();
         let p = &self.config.influence;
+        let historical = self.cultures.world.historical();
+        let step_years = if historical { HISTORICAL_STEP_YEARS } else { self.config.step_years };
+        let previous = self.publication.current.as_ref().and_then(|p| p.culture.clone());
+        let culture = if self.cultures.world.groups.is_empty() {
+            None
+        } else {
+            match previous {
+                Some(c) if historical && self.progress.ecology_clock > 0.0 => Some(c),
+                _ => Some(Arc::new(evo_culture::CulturalState::of(&self.cultures.world))),
+            }
+        };
         self.publication.publish(PublishedState {
             step: self.stats.steps,
             years: self.years,
-            step_years: self.config.step_years,
-            climate_mode: ClimateMode::for_step(self.next_step_years()),
+            step_years,
+            climate_mode: ClimateMode::for_step(if historical { HISTORICAL_STEP_YEARS } else { self.next_step_years() }),
+            culture,
             globals,
             cells,
             bio_level: self.config.bio_level,
@@ -2328,6 +2526,22 @@ impl World {
         h.u(self.disturbances.barriers.len() as u64);
         h.u(self.disturbances.anomalies.len() as u64);
         h.f(self.disturbances.killed_biomass);
+        let cw = &self.cultures.world;
+        h.u(cw.tick);
+        h.f(cw.year);
+        h.u(cw.groups.len() as u64);
+        for g in &cw.groups {
+            h.u(u64::from(g.cell) << 32 | u64::from(g.species));
+            h.f(g.population);
+            h.u(g.people as u64);
+            for t in &g.traits {
+                h.u(t.id as u64);
+                h.f(t.freq);
+                h.f(t.mastery);
+            }
+        }
+        h.u(cw.myths.len() as u64);
+        h.u(cw.notables.len() as u64);
         h.0
     }
 
@@ -2630,6 +2844,77 @@ mod tests {
         assert!(w.carbon_balance_error() < 1e-9, "carbone {}", w.carbon_balance_error());
         assert!(w.phosphorus_balance_error() < 1e-9);
         assert!(w.biomass() > 0.0);
+    }
+
+    /// Rend sociales, à langage, les populations de la lignée de la plus
+    /// abondante (lectures cognitives posées à la main, perdues à la
+    /// reprise d'une sauvegarde qui rebâtit les phénotypes).
+    fn make_social(w: &mut World, lineage: Option<u32>) -> u32 {
+        let lineage = lineage.unwrap_or_else(|| {
+            w.communities.iter().flatten().max_by(|a, b| a.biomass.total_cmp(&b.biomass)).expect("une population").lineage
+        });
+        for p in w.communities.iter_mut().flatten().filter(|p| p.lineage == lineage) {
+            let mut ph = (*p.phenotype).clone();
+            let r = &mut ph.animal.cognition;
+            r.capacities = [0.8; 8];
+            r.brain_budget = 8.0;
+            r.organ = evo_life::phenotype::ManipulationOrgan::Hand;
+            r.manipulation_quality = 0.8;
+            r.channels = [0.9, 0.5, 0.2, 0.2, 0.0];
+            r.juvenile_share = 0.3;
+            r.sociality = 0.9;
+            p.phenotype = Arc::new(ph);
+        }
+        // Plus de tour d'évolution : le génotype garde ses lectures.
+        w.config.evolution.round_years = Some(1e12);
+        lineage
+    }
+
+    #[test]
+    fn a_cultural_species_switches_to_historical_mode_and_replays() {
+        let run = || {
+            let mut w = small_world(5);
+            for _ in 0..10 {
+                w.step();
+            }
+            let lineage = make_social(&mut w, None);
+            w.step();
+            assert!(w.cultures.world.groups.iter().any(|g| g.species == lineage), "groupes culturels");
+            assert!(!w.cultures.world.historical());
+            w.step();
+            assert!(w.cultures.world.historical(), "bascule après deux pas de gain positif");
+            assert!(w.events.events.iter().any(|e| matches!(e.kind, EventKind::HistoricalMode { starts: true, .. })));
+            assert_eq!(w.progress.historical_years, Some(w.years));
+            w
+        };
+        let mut a = run();
+        let y = a.years;
+        a.step();
+        assert_eq!(a.years, y + 1.0, "pas d'un an");
+        for _ in 0..24 {
+            a.step();
+        }
+        assert_eq!(a.years, y + 25.0);
+        assert_eq!(a.progress.ecology_clock, 5.0, "écologie tous les dix ans");
+        assert_eq!(a.progress.climate_clock, 25.0);
+        // Une partie reprise en mode historique continue à l'identique.
+        let mut bytes = Vec::new();
+        a.save_to(&mut bytes).unwrap();
+        let mut b = World::load_from(&mut bytes.as_slice()).unwrap();
+        make_social(&mut b, Some(a.cultures.world.groups[0].species));
+        assert_eq!(a.state_hash(), b.state_hash());
+        for _ in 0..120 {
+            a.step();
+            b.step();
+        }
+        assert_eq!(a.state_hash(), b.state_hash());
+        assert!(a.publication.current.as_ref().unwrap().culture.is_some());
+        // Et une partie rejouée aussi.
+        let mut c = run();
+        for _ in 0..145 {
+            c.step();
+        }
+        assert_eq!(a.state_hash(), c.state_hash());
     }
 
     #[test]

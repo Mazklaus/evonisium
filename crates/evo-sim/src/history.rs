@@ -278,6 +278,9 @@ pub struct PublishedState {
     pub focus: Focus,
     /// Barrières et anomalies climatiques en cours (étape 4).
     pub disturbances: crate::disturbance::Disturbances,
+    /// État culturel (étape 6), dès qu'une espèce a des groupes culturels.
+    /// En mode historique, refait tous les dix ans (au pas de l'écologie).
+    pub culture: Option<Arc<evo_culture::CulturalState>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

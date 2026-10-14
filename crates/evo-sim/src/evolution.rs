@@ -189,6 +189,16 @@ pub struct AcceleratorParams {
     pub complexity_escalation_years: f64,
     /// Plafond de cet effet sur les rétentions.
     pub complexity_max_boost: f64,
+    /// Accélérateur cognitif (étape 6) : durée après le premier animal mobile
+    /// sans espèce en mode historique avant d'agir, années.
+    pub cognitive_patience_years: f64,
+    /// Mutants de plus représentés par chaque candidat qu'il ajoute, au
+    /// départ ; décuplé à chaque `complexity_escalation_years`, au plus
+    /// `cognitive_max_boost`.
+    pub cognitive_boost: f64,
+    pub cognitive_max_boost: f64,
+    /// Candidats ajoutés par tour à chaque génotype visé.
+    pub cognitive_candidates: usize,
 }
 
 impl Default for AcceleratorParams {
@@ -200,6 +210,10 @@ impl Default for AcceleratorParams {
             complexity_patience_years: 1.0e9,
             complexity_escalation_years: 100e6,
             complexity_max_boost: 1e12,
+            cognitive_patience_years: 800e6,
+            cognitive_boost: 100.0,
+            cognitive_max_boost: 1e6,
+            cognitive_candidates: 8,
         }
     }
 }
@@ -587,6 +601,7 @@ pub fn evolve_genotype(
     rng: &mut impl Rng,
     accelerator_on: bool,
     complex_boost: f64,
+    cognitive_boost: f64,
     stats: &mut EvolutionStats,
 ) -> Option<Fixed> {
     let physio = &cfg.physiology;
@@ -889,6 +904,31 @@ pub fn evolve_genotype(
             }
         }
     }
+    // Accélérateur cognitif (étape 6) : chez une lignée sociale qui a un
+    // organe de manipulation, des mutations de plus sur ses gènes nerveux,
+    // copies accordées à une capacité tirée au hasard. La sélection décide
+    // toujours : un cerveau qui ne paie pas en r ne se fixe pas.
+    if cognitive_boost > 1.0 && cognitive_target(&resident.phenotype) {
+        for _ in 0..evo.accelerator.cognitive_candidates {
+            let Some(change) = evo_genetics::mutate_family(
+                &resident.genome,
+                evo_genetics::DomainFamily::Neural,
+                (380.0, 780.0),
+                GenomeChangeCause::Accelerator,
+                &cfg.mutation,
+                rng,
+            ) else {
+                break;
+            };
+            let Some((s, phenotype, rates)) = evaluate(&change, stats) else { continue };
+            if !multiple && best_s(&fixers) >= s {
+                continue;
+            }
+            if regime.candidate_fixes(s, ne, cognitive_boost, rng) {
+                consider(&mut fixers, s, change, phenotype, rates);
+            }
+        }
+    }
     for (change, s, copies) in tunnel_pending {
         // Tunnel stochastique : la lignée du mutant innovant, tant qu'elle
         // survit, produit des doubles mutants ; la seconde mutation est tirée
@@ -1041,6 +1081,13 @@ pub fn evolve_genotype(
     Some(Fixed { change: first.change, phenotype: first.phenotype, rates: first.rates, selection: first.s, extra: Vec::new() })
 }
 
+/// Génotype visé par l'accélérateur cognitif : un corps social qui a un
+/// organe de manipulation.
+pub fn cognitive_target(p: &Phenotype) -> bool {
+    let c = &p.animal.cognition;
+    c.sociality >= 0.15 && c.organ != evo_life::phenotype::ManipulationOrgan::None
+}
+
 /// Évolution d'un dème : un tirage par génotype, dans sa cellule
 /// représentative. Ne modifie rien : les fixations sont appliquées ensuite,
 /// dans l'ordre des dèmes.
@@ -1058,6 +1105,7 @@ pub fn evolve_deme(
     round: u64,
     accelerator_on: bool,
     complex_boost: f64,
+    cognitive_boost: f64,
     cache: &BasisCache,
 ) -> (Vec<Fixation>, EvolutionStats, Vec<NewBasis>) {
     let mut stats = EvolutionStats::default();
@@ -1107,6 +1155,7 @@ pub fn evolve_deme(
             &mut rng,
             accelerator_on,
             complex_boost,
+            cognitive_boost,
             &mut stats,
         ) {
             let GenomeChange { genome, cause, element } = change;

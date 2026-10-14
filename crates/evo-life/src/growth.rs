@@ -224,6 +224,9 @@ pub struct Physiology {
     pub capacity_scale: f64,
     pub brain_scale: f64,
     pub wits_weight: f64,
+    /// Poids, dans l'astuce, de l'apprentissage social (voir
+    /// `CognitiveReadings::social_learning`).
+    pub social_wits_weight: f64,
 }
 
 impl Physiology {
@@ -339,6 +342,7 @@ impl Default for Physiology {
             capacity_scale: 0.5,
             brain_scale: 4.0,
             wits_weight: 1.0,
+            social_wits_weight: 1.0,
         }
     }
 }

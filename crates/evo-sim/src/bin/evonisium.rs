@@ -223,6 +223,10 @@ fn complexity(args: &[String]) {
         cfg.physiology.max_starvation = m.parse().expect("mortalité invalide");
     }
     let max_years: f64 = arg(args, "--max-years", 3e9);
+    // `--annees-historiques N` : s'arrête N ans après la bascule en mode
+    // historique (mesure de vitesse de l'étape 6).
+    let historical_years: f64 = arg(args, "--annees-historiques", 1000.0);
+    let mut historical_clock: Option<(f64, Instant)> = None;
     let every: f64 = arg(args, "--every-years", 50e6);
     let start = Instant::now();
     // `--reprendre CHEMIN` : repart d'une sauvegarde ; `--sauver-a Y CHEMIN` :
@@ -248,9 +252,47 @@ fn complexity(args: &[String]) {
     let mut seen_events = world.events.total();
     while world.years() < max_years {
         world.step();
+        if world.cultures.world.historical() {
+            let (since, t) = *historical_clock.get_or_insert((world.years(), Instant::now()));
+            let span = world.years() - since;
+            if span >= historical_years {
+                let secs = t.elapsed().as_secs_f64();
+                let cw = &world.cultures.world;
+                println!(
+                    "  ◆ {span:.0} ans en mode historique en {secs:.1} s : {:.0} ans/s | groupes {} peuples {} mythes {} notables {}",
+                    span / secs.max(1e-9),
+                    cw.groups.len(),
+                    cw.peoples.len(),
+                    cw.myths.len(),
+                    cw.notables.len()
+                );
+                if let Some(path) = opt(args, "--sauver-historique") {
+                    world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
+                }
+                break;
+            }
+        } else {
+            historical_clock = None;
+        }
         for e in world.events.since(seen_events) {
-            if matches!(e.kind, evo_core::events::EventKind::MassExtinction { .. } | evo_core::events::EventKind::Radiation { .. }) {
-                println!("  ✦ {} : {}", e.kind.describe(), format_years(e.years));
+            use evo_core::events::EventKind as K;
+            match &e.kind {
+                K::MassExtinction { .. } | K::Radiation { .. } => println!("  ✦ {} : {}", e.kind.describe(), format_years(e.years)),
+                K::HistoricalMode { species, starts } => {
+                    println!(
+                        "  ◆ mode historique {} (espèce {species}) : {}",
+                        if *starts { "atteint" } else { "quitté" },
+                        format_years(e.years)
+                    )
+                }
+                K::AcceleratorOn { pathway, .. } | K::AcceleratorOff { pathway } if pathway == evo_sim::world::COGNITIVE_PATHWAY => {
+                    println!(
+                        "  ⚑ accélérateur cognitif {} : {}",
+                        if matches!(e.kind, K::AcceleratorOn { .. }) { "en marche" } else { "arrêté" },
+                        format_years(e.years)
+                    )
+                }
+                _ => {}
             }
         }
         seen_events = world.events.total();
@@ -362,6 +404,23 @@ fn complexity(args: &[String]) {
                 world.config.bio_level,
                 start.elapsed().as_secs_f64()
             );
+            {
+                let cw = &world.cultures.world;
+                let (mut bb, mut soc, mut sl, mut organs) = (0.0f64, 0.0f64, 0.0f64, 0usize);
+                for p in world.communities.iter().flatten() {
+                    let c = &p.phenotype.animal.cognition;
+                    bb = bb.max(c.brain_budget);
+                    soc = soc.max(c.sociality);
+                    sl = sl.max(c.social_learning());
+                    organs += usize::from(c.organ != evo_life::phenotype::ManipulationOrgan::None);
+                }
+                let gain = cw.species.iter().map(|s| s.gain).fold(f64::NEG_INFINITY, f64::max);
+                println!(
+                    "          cognition : budget max {bb:.2} socialité max {soc:.2} apprentissage social max {sl:.2} organes {organs} | espèces culturelles {} groupes {} gain max {gain:.1}",
+                    cw.species.len(),
+                    cw.groups.len(),
+                );
+            }
             if args.iter().any(|a| a == "--suivre") {
                 trace_complex(&world);
             }

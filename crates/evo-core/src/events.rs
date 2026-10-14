@@ -104,6 +104,19 @@ pub enum EventKind {
         gain: f64,
         lineages: u32,
     },
+    /// Mode historique (étape 6) : une espèce accumule ses savoirs d'une
+    /// génération à l'autre, et le pas devient d'un an ; ou il prend fin,
+    /// faute de groupes culturels.
+    HistoricalMode {
+        species: u32,
+        starts: bool,
+    },
+    /// Un peuple fait un mythe d'un phénomène qu'il a vu (étape 6).
+    Myth {
+        myth: u32,
+        people: u32,
+        intervention: bool,
+    },
 }
 
 impl EventKind {
@@ -123,6 +136,8 @@ impl EventKind {
             EventKind::OrderRefused { .. } => "ordre refusé",
             EventKind::MassExtinction { .. } => "extinction de masse",
             EventKind::Radiation { .. } => "radiation",
+            EventKind::HistoricalMode { .. } => "mode historique",
+            EventKind::Myth { .. } => "mythe",
         }
     }
 
@@ -150,6 +165,14 @@ impl EventKind {
                 format!("Extinction de masse : {:.0} % des lignées disparaissent.", 100.0 * lost_share)
             }
             EventKind::Radiation { gain, .. } => format!("Radiation : le nombre de lignées est multiplié par {gain:.1}."),
+            EventKind::HistoricalMode { starts: true, .. } => {
+                "Une espèce accumule ses savoirs de génération en génération : le temps passe désormais année par année.".into()
+            }
+            EventKind::HistoricalMode { starts: false, .. } => {
+                "Plus aucune espèce ne transmet ses savoirs : le temps reprend son cours.".into()
+            }
+            EventKind::Myth { intervention: true, .. } => "Un peuple fait un mythe de votre intervention.".into(),
+            EventKind::Myth { intervention: false, .. } => "Un peuple fait un mythe d'un phénomène qu'il ne s'explique pas.".into(),
         }
     }
 
@@ -169,6 +192,8 @@ impl EventKind {
             EventKind::OrderRefused { .. } => 0.3,
             EventKind::MassExtinction { .. } => 0.9,
             EventKind::Radiation { .. } => 0.6,
+            EventKind::HistoricalMode { .. } => 0.95,
+            EventKind::Myth { .. } => 0.5,
         }
     }
 }

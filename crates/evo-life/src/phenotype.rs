@@ -230,6 +230,18 @@ impl CognitiveReadings {
         let b = self.bounded();
         (b[0] + b[2] + b[3] + b[4]) / 4.0
     }
+
+    /// Ce que le corps permet d'apprendre des autres, entre 0 et 1 :
+    /// socialité × moyenne de la mémoire à long terme, de la théorie de
+    /// l'esprit et de la pensée symbolique (sous le budget) × meilleur canal.
+    /// [Simplification] Hypothèse de l'intelligence culturelle (Herrmann et
+    /// coll., 2007 ; van Schaik et Burkart, 2011) : les savoirs appris des
+    /// autres paient en r, sans passer par les techniques de la culture.
+    pub fn social_learning(&self) -> f64 {
+        let b = self.bounded();
+        let bandwidth = self.channels.iter().copied().fold(0.0, f64::max);
+        self.sociality * (b[1] + b[5] + b[7]) / 3.0 * bandwidth.min(1.0)
+    }
 }
 
 impl AnimalTraits {
@@ -342,7 +354,7 @@ fn animal_traits(p: &mut Phenotype, org: &Organisation, body: Option<(Shape, f64
         a.sound =
             crate::body::sound_organ(org.motor, support, org.neural, org.cuticle, org.sensor_nm, length, p.is_terrestrial(), p.sexual);
         a.cognition = cognitive_readings(&a, org, cells, p.is_terrestrial(), physio);
-        a.wits = physio.wits_weight * a.cognition.foraging() * coord;
+        a.wits = physio.wits_weight * (a.cognition.foraging() + physio.social_wits_weight * a.cognition.social_learning()) * coord;
     }
     p.animal = a;
 }

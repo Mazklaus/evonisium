@@ -172,6 +172,39 @@ pub fn divergent_copy(genome: &Genome, params: &MutationParams, rng: &mut impl R
     (!genome.genes.is_empty()).then(|| diverge(genome, params, rng))
 }
 
+/// Mutation d'un gène fonctionnel de la famille `family`, tiré au hasard
+/// (accélérateur cognitif) : une fois sur deux, sa copie, accordée à une
+/// longueur d'onde tirée entre `nm_range.0` et `nm_range.1` ; sinon une
+/// mutation ponctuelle. `None` sans gène de cette famille. La cause est
+/// `cause`.
+pub fn mutate_family(
+    genome: &Genome,
+    family: DomainFamily,
+    nm_range: (f64, f64),
+    cause: GenomeChangeCause,
+    params: &MutationParams,
+    rng: &mut impl Rng,
+) -> Option<GenomeChange> {
+    let found: Vec<usize> =
+        (0..genome.genes.len()).filter(|&i| genome.genes[i].functional && genome.genes[i].domain.family == family).collect();
+    if found.is_empty() {
+        return None;
+    }
+    let i = found[rng.random_range(0..found.len())];
+    Some(genome.derive(cause, |g| {
+        if rng.random_bool(0.5) {
+            let mut copy = g.genes[i];
+            copy.domain.absorption_nm = nm_range.0 + rng.random::<f64>() * (nm_range.1 - nm_range.0);
+            copy.domain.efficiency *= params.divergence_quality;
+            g.genes.insert(i + 1, copy);
+            ChangedElement::Inserted { index: (i + 1) as u16, family }
+        } else {
+            point_mutation(&mut g.genes[i].domain, params, rng);
+            ChangedElement::Gene { index: i as u16, family }
+        }
+    }))
+}
+
 /// Génome augmenté de la copie `copy` du gène `i`, placée juste après lui.
 pub fn insert_copy(genome: &Genome, i: usize, copy: Gene) -> GenomeChange {
     genome.derive(GenomeChangeCause::SpontaneousMutation(MutationKind::DuplicationDivergence), |g| {
