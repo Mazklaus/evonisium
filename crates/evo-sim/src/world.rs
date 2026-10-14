@@ -270,11 +270,16 @@ pub struct PhaseTimings {
     pub evolution: Duration,
     pub migration: Duration,
     pub bookkeeping: Duration,
+    /// Cultures (étape 6) : groupes accordés aux populations et pas de
+    /// culture.
+    pub culture: Duration,
+    /// État publié.
+    pub publish: Duration,
 }
 
 impl PhaseTimings {
     pub fn total(&self) -> Duration {
-        self.planet + self.ecology + self.evolution + self.migration + self.bookkeeping
+        self.planet + self.ecology + self.evolution + self.migration + self.bookkeeping + self.culture + self.publish
     }
 
     pub fn add(&mut self, o: &PhaseTimings) {
@@ -283,6 +288,8 @@ impl PhaseTimings {
         self.evolution += o.evolution;
         self.migration += o.migration;
         self.bookkeeping += o.bookkeeping;
+        self.culture += o.culture;
+        self.publish += o.publish;
     }
 
     pub fn divided(&self, n: u32) -> PhaseTimings {
@@ -293,6 +300,8 @@ impl PhaseTimings {
             evolution: self.evolution / n,
             migration: self.migration / n,
             bookkeeping: self.bookkeeping / n,
+            culture: self.culture / n,
+            publish: self.publish / n,
         }
     }
 }
@@ -1109,12 +1118,18 @@ impl World {
         }
         // 6. Cultures : groupes accordés aux populations quand l'écologie a
         // tourné, puis un pas de culture.
+        timings.bookkeeping = t4.elapsed();
+        let t5 = Instant::now();
         self.culture_phase(years, dt, full);
+        timings.culture = t5.elapsed();
         // État publié : à chaque pas, au pas de l'écologie en mode historique
         // (ou quand un événement s'inscrit).
+        let t6 = Instant::now();
         if full || self.events.total() > first_event {
             self.publish();
         }
+        timings.publish = t6.elapsed();
+        let t4 = Instant::now();
         if std::env::var_os("EVO_DEBUG_CO2").is_some() && (self.years / 2e6).floor() > (years / 2e6).floor() {
             let pl = &self.planet;
             let r = &pl.reservoirs;
@@ -1200,7 +1215,7 @@ impl World {
             );
         }
         self.stats.steps += 1;
-        timings.bookkeeping = t4.elapsed();
+        timings.bookkeeping += t4.elapsed();
         self.timings.add(&timings);
         timings
     }

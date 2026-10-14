@@ -272,6 +272,9 @@ fn complexity(args: &[String]) {
     while world.years() < max_years {
         world.step();
         if world.cultures.world.historical() {
+            if historical_clock.is_none() {
+                world.timings = Default::default();
+            }
             let (since, t) = *historical_clock.get_or_insert((world.years(), Instant::now()));
             let span = world.years() - since;
             if span >= historical_years {
@@ -284,6 +287,19 @@ fn complexity(args: &[String]) {
                     cw.peoples.len(),
                     cw.myths.len(),
                     cw.notables.len()
+                );
+                let t = &world.timings;
+                let total = t.total().as_secs_f64().max(1e-9);
+                let part = |d: std::time::Duration| 100.0 * d.as_secs_f64() / total;
+                println!(
+                    "  ◆ part du temps : culture {:.1} % | écologie {:.1} % | migration {:.1} % | planète {:.1} % | évolution {:.1} % | registres {:.1} % | publication {:.1} %",
+                    part(t.culture),
+                    part(t.ecology),
+                    part(t.migration),
+                    part(t.planet),
+                    part(t.evolution),
+                    part(t.bookkeeping),
+                    part(t.publish)
                 );
                 // Porte de l'étape 6 : technique transmise sur 10 générations
                 // ou plus, traditions dans plusieurs peuples.
