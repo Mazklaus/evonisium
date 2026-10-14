@@ -2011,6 +2011,21 @@ impl World {
     /// populations au prorata de son volume d'eau. Les grilles sont
     /// emboîtées : une cellule grossière garde son numéro, si bien que les
     /// événements passés restent bien placés.
+    /// Change la physiologie d'une partie en cours (bancs de calibrage) :
+    /// les phénotypes sont rebâtis, le cache des bases vidé. Change
+    /// l'histoire à venir.
+    pub fn set_physiology(&mut self, physio: Physiology) {
+        self.config.physiology = physio;
+        let mut built: std::collections::HashMap<usize, Arc<Phenotype>> = std::collections::HashMap::new();
+        for p in self.communities.iter_mut().flatten() {
+            let ph = built
+                .entry(Arc::as_ptr(&p.genome) as usize)
+                .or_insert_with(|| Arc::new(Phenotype::from_genome(&p.genome, &self.config.physiology)));
+            p.phenotype = ph.clone();
+        }
+        self.basis_cache = BasisCache::default();
+    }
+
     pub fn refine_life_grid(&mut self) {
         let level = self.config.level;
         if self.config.bio_level >= level {

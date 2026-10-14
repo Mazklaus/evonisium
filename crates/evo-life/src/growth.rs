@@ -220,7 +220,9 @@ pub struct Physiology {
     /// coordination qui porte le budget cérébral aux deux tiers du sien (8),
     /// et gain de l'attaque et de la fuite par unité de capacité de
     /// fourragement (mémoire de travail, catégorisation, causalité,
-    /// planification).
+    /// planification). Échelle des capacités calée sur la porte de l'étape 6
+    /// (mode historique 180 Ma à 1,6 Ga après le premier animal mobile) :
+    /// à 0,5, la Terre (graine 7) y entrait 60 Ma après ; à 2, 900 Ma.
     pub capacity_scale: f64,
     pub brain_scale: f64,
     pub wits_weight: f64,
@@ -339,7 +341,7 @@ impl Default for Physiology {
             grazing_share: 0.2,
             defense_weight: 3.0,
             sexual_selection: 0.05,
-            capacity_scale: 0.5,
+            capacity_scale: 2.0,
             brain_scale: 4.0,
             wits_weight: 1.0,
             social_wits_weight: 1.0,

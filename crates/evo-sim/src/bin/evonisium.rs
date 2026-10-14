@@ -239,6 +239,25 @@ fn complexity(args: &[String]) {
             w
         }
     };
+    // Réglages de la cognition (étape 6), applicables à une partie reprise.
+    let knobs = ["--capacite", "--cerveau", "--astuce", "--astuce-sociale"];
+    if knobs.iter().any(|k| opt(args, k).is_some()) {
+        let mut ph = world.config.physiology.clone();
+        let num = |k: &str| opt(args, k).map(|v| v.parse::<f64>().expect("nombre invalide"));
+        if let Some(v) = num("--capacite") {
+            ph.capacity_scale = v;
+        }
+        if let Some(v) = num("--cerveau") {
+            ph.brain_scale = v;
+        }
+        if let Some(v) = num("--astuce") {
+            ph.wits_weight = v;
+        }
+        if let Some(v) = num("--astuce-sociale") {
+            ph.social_wits_weight = v;
+        }
+        world.set_physiology(ph);
+    }
     let mut save_at = args.iter().position(|a| a == "--sauver-a").map(|i| {
         let y: f64 = args.get(i + 1).and_then(|v| v.parse().ok()).expect("date invalide");
         (y, args.get(i + 2).cloned().expect("chemin manquant"))
