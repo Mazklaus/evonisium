@@ -1100,13 +1100,21 @@ impl World {
         self.years = years + dt;
         self.influence.recharge(&self.config.influence, dt);
         self.disturbances.expire(self.years);
-        self.bookkeeping(modified);
+        // En mode historique, les populations ne changent qu'avec l'écologie :
+        // les registres qui les parcourent attendent son pas.
+        let full = !historical || ecology_span > 0.0;
+        self.bookkeeping(modified, full);
         if !historical {
             self.adapt_step(first_event, oxygen_before);
         }
         // 6. Cultures : groupes accordés aux populations quand l'écologie a
         // tourné, puis un pas de culture.
-        self.culture_phase(years, dt, !historical || ecology_span > 0.0);
+        self.culture_phase(years, dt, full);
+        // État publié : à chaque pas, au pas de l'écologie en mode historique
+        // (ou quand un événement s'inscrit).
+        if full || self.events.total() > first_event {
+            self.publish();
+        }
         if std::env::var_os("EVO_DEBUG_CO2").is_some() && (self.years / 2e6).floor() > (years / 2e6).floor() {
             let pl = &self.planet;
             let r = &pl.reservoirs;
@@ -1843,8 +1851,14 @@ impl World {
         }
     }
 
-    fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>) {
+    fn bookkeeping(&mut self, modified: Vec<(usize, usize, GenomeChangeCause)>, full: bool) {
         let years = self.years;
+        if !full {
+            if self.history.due(years) {
+                self.record_history();
+            }
+            return;
+        }
         // Lignées éteintes.
         let mut present: Vec<u32> = self.communities.iter().flatten().map(|p| p.lineage).collect();
         present.sort_unstable();
@@ -1988,7 +2002,6 @@ impl World {
         if self.history.due(years) {
             self.record_history();
         }
-        self.publish();
     }
 
     /// Passe la grille du vivant à la résolution de la grille physique

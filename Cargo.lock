@@ -207,6 +207,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "evo-core",
+ "evo-culture",
  "evo-genetics",
  "evo-life",
  "evo-planet",
