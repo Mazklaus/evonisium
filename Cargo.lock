@@ -219,6 +219,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "evo-society"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "evo-core",
+ "evo-culture",
+ "libm",
+ "rand",
+ "rayon",
+ "serde",
+]
+
+[[package]]
 name = "evo-son"
 version = "0.1.0"
 dependencies = [

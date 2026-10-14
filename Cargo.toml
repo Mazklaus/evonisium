@@ -32,6 +32,7 @@ evo-view = { path = "crates/evo-view" }
 evo-agents = { path = "crates/evo-agents" }
 evo-son = { path = "crates/evo-son" }
 evo-culture = { path = "crates/evo-culture" }
+evo-society = { path = "crates/evo-society" }
 
 [profile.release]
 debug = 1

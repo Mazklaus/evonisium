@@ -1,0 +1,18 @@
+[package]
+name = "evo-society"
+description = "Sociétés et histoire (étape 7) : sociétés et institutions, économie, techniques jusqu'au XXIe siècle, sciences, guerre, épidémies, flux vers la planète."
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+evo-core.workspace = true
+evo-culture.workspace = true
+rand.workspace = true
+serde.workspace = true
+libm.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+bincode.workspace = true

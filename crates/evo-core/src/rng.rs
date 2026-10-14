@@ -32,6 +32,9 @@ pub enum Stream {
     /// l'état simulé (étape 6). Les agents tirés pour l'écran gardent le flux
     /// `Individuals`.
     Culture = 12,
+    /// Sociétés : inventions du catalogue étendu, démographie, guerres,
+    /// épidémies, sciences et notables de l'étape 7.
+    Society = 13,
 }
 
 /// Mélangeur SplitMix64 : diffuse chaque bit d'entrée sur toute la sortie.

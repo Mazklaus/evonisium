@@ -1,0 +1,1775 @@
+# Catalogue des techniques d'Evonisium, des premiers outils à un équivalent
+# du XXIe siècle. Format : voir src/catalog.rs.
+#
+# Les difficultés sont en unités du modèle de Henrich (2004), comme à
+# l'étape 6 ; « inv » règle la facilité d'invention relative. Les effets sont
+# des ordres de grandeur, signalés comme tels dans docs/etape-7-societes.md.
+# Les nœuds préfixés aq_, po_, st_ et sm_ sont les voies de remplacement des
+# mondes aquatiques, pauvres en oxygène, souterrains et des espèces sans mains.
+
+# ---------------------------------------------------------------- Étape 6
+[sonde]
+nom = Bâton à sonder
+ref = Chimpanzés de Gombe, bâtons à termites
+famille = Probe
+diff = 3
+
+[percussion]
+nom = Marteau et enclume
+ref = Chimpanzés de Taï, casse-noix
+famille = Percussion
+diff = 5
+
+[eclat]
+nom = Taille de la pierre
+ref = Lomekwi, 3,3 millions d'années
+famille = Flake
+pre = percussion
+diff = 12
+effet = cueillette:1.1
+recette = outils 1 <- pierre 0.05 ; travail 0.02
+
+[biface]
+nom = Biface
+ref = Acheuléen, 1,7 million d'années
+famille = Handaxe
+pre = eclat
+diff = 25
+effet = cueillette:1.05, artisanat:1.05
+
+[corde]
+nom = Corde et liens
+ref = Fibre torsadée d'Abri du Maras, 50 ka
+famille = Cord
+diff = 10
+
+[abri]
+nom = Abri construit
+ref = Huttes de Terra Amata
+famille = Shelter
+diff = 8
+recette = batiments 1 <- bois 0.3 ; travail 0.05
+
+[recipient]
+nom = Récipient
+ref = Œufs d'autruche gravés, Diepkloof
+famille = Container
+diff = 8
+
+[feu]
+nom = Maîtrise du feu
+ref = Wonderwerk, environ 1 million d'années
+famille = Fire
+corps = feu
+diff = 18
+effet = sante:0.97
+
+[cuisson]
+nom = Cuisson
+ref = Hypothèse de Wrangham
+famille = Cooking
+pre = feu
+corps = feu
+diff = 10
+effet = sante:0.95, cueillette:1.1
+
+[parure]
+nom = Parure
+ref = Perles de coquillage de Blombos, 75 ka
+famille = Ornament
+diff = 10
+recette = luxe 1 ; travail 1.0
+
+[epieu]
+nom = Épieu
+ref = Lances de Schöningen, 300 ka
+famille = Spear
+diff = 14
+effet = cueillette:1.1, militaire:1.1
+
+[radeau]
+nom = Radeau
+ref = Arrivée en Australie, 65 ka
+famille = Raft
+pre = corde
+diff = 22
+effet = transport:1.1, peche:1.05
+
+[propulseur]
+nom = Propulseur
+ref = Propulseurs magdaléniens
+famille = Thrower
+pre = epieu, corde
+diff = 34
+effet = cueillette:1.15, militaire:1.1
+
+[outil_os]
+nom = Outils d'os
+ref = Harpons de Katanda, 90 ka
+famille = BoneTool
+pre = eclat
+diff = 30
+effet = artisanat:1.05
+
+[vetement]
+nom = Vêtements cousus
+ref = Aiguilles de Denisova, 50 ka
+famille = Clothing
+pre = outil_os
+diff = 38
+effet = sante:0.98
+recette = cuir 1 ; travail 0.06
+
+[peche]
+nom = Pêche
+ref = Pinnacle Point, 160 ka
+famille = Fishing
+pre = corde
+diff = 36
+effet = peche:1.0
+
+# ---------------------------------------------------------------- Chasse et cueillette avancées
+[arc]
+nom = Arc
+ref = Pointes de Sibudu, 64 ka
+pre = corde, propulseur
+corps = mains
+diff = 40
+besoin = nourriture
+effet = cueillette:1.2, militaire:1.2
+
+[filet]
+nom = Filets
+ref = Filets de Dolní Věstonice, 27 ka
+pre = corde, peche
+diff = 30
+besoin = nourriture
+effet = peche:1.3, cueillette:1.05
+
+[harpon]
+nom = Harpon
+ref = Katanda
+pre = outil_os, peche
+diff = 30
+effet = peche:1.2
+
+[hamecon]
+nom = Hameçon
+ref = Hameçons de Sakitari, 23 ka
+pre = outil_os, peche
+diff = 28
+effet = peche:1.15
+
+[pieges]
+nom = Pièges et collets
+ref = Chasse au lapin du Paléolithique supérieur
+pre = corde
+diff = 16
+effet = cueillette:1.1
+
+[microlithes]
+nom = Microlithes
+ref = Mésolithique
+pre = eclat, arc
+corps = mains
+diff = 30
+effet = cueillette:1.08, artisanat:1.03
+
+[pirogue]
+nom = Pirogue
+ref = Pirogue de Pesse, 10 ka
+pre = radeau, biface
+res = foret
+diff = 26
+besoin = transport
+effet = transport:1.2, peche:1.1, portee:1
+
+[aiguille]
+nom = Aiguille à chas et tissu
+ref = Paléolithique supérieur
+pre = outil_os, vetement
+corps = mains
+diff = 30
+effet = sante:0.98
+recette = textile 1 ; travail 0.08
+
+[art_rupestre]
+nom = Art pariétal
+ref = Grotte Chauvet, Sulawesi
+pre = parure
+diff = 20
+effet = fidelite:0.005, science:1.02
+
+[calendrier_lunaire]
+nom = Comptage des lunes
+ref = Os d'Ishango
+pre = art_rupestre
+corps = ciel
+diff = 25
+effet = science:1.05
+
+[meule]
+nom = Meule à grains
+ref = Ohalo II, 23 ka
+pre = percussion, recipient
+diff = 14
+besoin = nourriture
+effet = cueillette:1.05
+
+[recolte_sauvage]
+nom = Récolte des céréales sauvages
+ref = Natoufiens et faucilles
+pre = eclat, meule
+res = plante_graine
+diff = 18
+besoin = nourriture
+effet = cueillette:1.15
+
+[stockage]
+nom = Fosses et paniers de réserve
+ref = Silos natoufiens
+pre = recipient
+diff = 14
+besoin = nourriture
+effet = stockage:0.3
+
+[sel]
+nom = Récolte du sel
+ref = Salines de Hallstatt, marais salants
+pre = recipient
+res = sel
+diff = 10
+recette = sel 1 ; travail 0.1
+
+[traineau]
+nom = Traîneau
+ref = Patins de Heinola
+pre = corde, biface
+diff = 18
+effet = transport:1.1
+
+[plantes_medicinales]
+nom = Plantes médicinales
+ref = Pharmacopées des chasseurs-cueilleurs
+pre = cuisson
+diff = 14
+besoin = sante
+effet = sante:0.97
+recette = medicaments 1 ; travail 0.2
+
+# ---------------------------------------------------------------- Néolithique
+[village]
+nom = Village permanent
+ref = Göbekli Tepe, Aïn Mallaha
+pre = stockage, abri
+res = abondance
+diff = 16
+effet = urbain:0.01
+
+[culture_cereales]
+nom = Culture des céréales
+ref = Croissant fertile, 11,5 ka ; Chine, 9 ka
+pre = recolte_sauvage, village
+res = plante_graine
+corps = sedentaire
+diff = 40
+inv = 0.6
+besoin = nourriture
+drapeaux = agriculture
+
+[culture_tubercules]
+nom = Culture des tubercules
+ref = Kuk en Nouvelle-Guinée ; Andes
+pre = sonde, village
+res = plante_racine
+corps = sedentaire
+diff = 34
+inv = 0.6
+besoin = nourriture
+drapeaux = agriculture
+
+[elevage]
+nom = Élevage
+ref = Chèvres et moutons du Zagros, 10,5 ka
+pre = corde, stockage
+res = animal
+diff = 36
+inv = 0.5
+besoin = nourriture
+drapeaux = elevage
+
+[poterie]
+nom = Poterie
+ref = Xianrendong, 20 ka ; Jomon
+pre = feu, recipient, village
+corps = feu
+diff = 26
+effet = stockage:0.15
+recette = poterie 1 <- bois 0.05 ; travail 0.03
+
+[tissage]
+nom = Tissage
+ref = Lin de Çatal Höyük
+pre = corde, aiguille, village
+corps = mains
+diff = 26
+recette = textile 1 ; travail 0.05
+
+[lait]
+nom = Laitage
+ref = Lipides laitiers des poteries, 9 ka
+pre = elevage, poterie
+res = animal_lait
+diff = 22
+effet = troupeau:1.6
+
+[laine]
+nom = Laine
+ref = Moutons laineux, 6 ka
+pre = elevage, tissage
+res = troupeau
+diff = 18
+recette = textile 1 <- betail 0.01 ; travail 0.03
+
+[hache_polie]
+nom = Hache polie
+ref = Néolithique européen
+pre = biface, village
+diff = 22
+effet = artisanat:1.08
+recette = outils 1 <- pierre 0.08 ; travail 0.015
+
+[brique_crue]
+nom = Brique crue
+ref = Jéricho, 10 ka
+pre = village, recipient
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 16
+recette = batiments 1 <- pierre 0.2 ; travail 0.03
+
+[jachere]
+nom = Jachère
+ref = Agricultures anciennes
+ou = culture_cereales, culture_tubercules, aq_algoculture, st_champignons, sm_jardins
+diff = 14
+effet = sol:0.002
+
+[fumure]
+nom = Fumure
+ref = Néolithique d'Europe
+pre = elevage
+ou = culture_cereales, culture_tubercules
+diff = 16
+effet = sol:0.003, rendement:1.1
+
+[irrigation]
+nom = Canaux d'irrigation
+ref = Mésopotamie, 8 ka
+ou = culture_cereales, culture_tubercules
+res = riviere
+corps = sedentaire
+diff = 34
+besoin = nourriture
+effet = irrigation:1.0
+
+[terrasses]
+nom = Terrasses
+ref = Andes, Asie du Sud-Est
+ou = culture_cereales, culture_tubercules
+pre = brique_crue
+diff = 24
+effet = rendement:1.08, sol:0.002
+
+[araire]
+nom = Araire attelé
+ref = Mésopotamie, 6 ka
+pre = elevage, hache_polie
+ou = culture_cereales, culture_tubercules
+res = troupeau
+diff = 30
+besoin = nourriture
+effet = traction:1.0, travail_champ:0.6, rendement:1.1
+energie = animal:1
+
+[grenier]
+nom = Grenier
+ref = Greniers de Jerf el Ahmar
+pre = village
+ou = poterie, po_sechage_solaire, brique_crue
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 16
+effet = stockage:0.25, admin:0.02
+
+[four_potier]
+nom = Four de potier
+ref = Mésopotamie, 6 ka
+pre = poterie
+corps = feu
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 22
+effet = artisanat:1.04
+recette = batiments 1 <- pierre 0.15, bois 0.2 ; travail 0.025
+
+[comptage]
+nom = Jetons de comptage
+ref = Jetons d'argile du Levant, 9 ka
+pre = village, parure
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 20
+besoin = administration
+effet = admin:0.05
+
+[sceaux]
+nom = Sceaux
+ref = Sceaux-cylindres
+pre = comptage
+ou = poterie, aq_coquilles, po_sechage_solaire
+diff = 16
+effet = admin:0.03
+
+[vin_biere]
+nom = Bière et vin
+ref = Jiahu, 9 ka ; Godin Tepe
+pre = poterie
+ou = culture_cereales, culture_tubercules
+diff = 16
+besoin = prestige
+recette = luxe 1 <- grain 2 ; travail 0.15
+
+[roue]
+nom = Roue
+ref = Mésopotamie et steppe, 5,5 ka
+pre = hache_polie
+ou = poterie, po_sechage_solaire
+corps = mains, terre
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 34
+besoin = transport
+effet = transport:1.15
+
+[chariot]
+nom = Chariot
+ref = Bronocice, 5,4 ka
+pre = roue, araire
+corps = terre
+diff = 24
+effet = transport:1.25, portee:1
+
+[cheval]
+nom = Monture domestiquée
+ref = Botai, 5,5 ka ; dromadaire, 3 ka
+pre = elevage
+res = monture
+diff = 28
+besoin = transport
+effet = transport:1.2
+
+[equitation]
+nom = Cavalerie
+ref = Steppe pontique
+pre = cheval
+corps = terre
+diff = 26
+besoin = conquete
+effet = militaire:1.3, portee:1
+drapeaux = cavalerie
+
+[collier_epaule]
+nom = Collier d'épaule
+ref = Chine, Ve siècle
+pre = cheval, araire
+diff = 24
+effet = traction:0.5, travail_champ:0.85
+
+[cuivre_martele]
+nom = Cuivre natif martelé
+ref = Çayönü, 10 ka
+pre = percussion, parure
+res = cuivre
+corps = mains
+diff = 18
+drapeaux = metal
+recette = luxe 1 <- cuivre 0.02 ; travail 0.3
+
+[charbonnage]
+nom = Charbonnage
+ref = Charbon de bois des fondeurs
+pre = feu
+ou = four_potier, poterie
+corps = feu
+diff = 16
+recette = charbon_bois 1 <- bois 5 ; travail 0.08
+
+[fonte_cuivre]
+nom = Fonte du cuivre
+ref = Belovode, 7 ka
+pre = cuivre_martele, four_potier, charbonnage
+res = cuivre
+corps = feu
+diff = 36
+drapeaux = metal
+effet = artisanat:1.05
+recette = cuivre 1 <- charbon_bois 4 ; gisement cuivre 1 ; travail 2
+recette = outils 1 <- cuivre 0.01 ; travail 0.01
+
+[bronze]
+nom = Bronze
+ref = Bronze à l'étain, 5,3 ka
+pre = fonte_cuivre
+corps = feu
+diff = 40
+besoin = defense
+drapeaux = metal
+effet = artisanat:1.08, militaire:1.25
+recette = etain 1 <- charbon_bois 3 ; gisement etain 1 ; travail 3
+recette = bronze 1 <- cuivre 0.88, etain 0.12, charbon_bois 1 ; travail 0.5
+recette = outils 1 <- bronze 0.008 ; travail 0.008
+recette = armes 1 <- bronze 0.01 ; travail 0.02
+
+[armure]
+nom = Armure et bouclier
+ref = Armures de Dendra
+pre = bronze
+diff = 22
+effet = militaire:1.1, defense:1.1
+
+[char_guerre]
+nom = Char de guerre
+ref = Sintashta, 4 ka
+pre = chariot, cheval, bronze
+diff = 30
+besoin = conquete
+effet = militaire:1.25
+
+[fortifications]
+nom = Fortifications
+ref = Remparts de Jéricho, d'Uruk
+pre = brique_crue
+diff = 22
+besoin = defense
+effet = defense:1.6
+
+# ---------------------------------------------------------------- Écriture et administration
+[ecriture]
+nom = Écriture
+ref = Uruk, 5,3 ka ; Égypte ; Chine ; Méso-Amérique
+pre = comptage, sceaux
+corps = mains
+diff = 60
+inv = 0.6
+besoin = administration
+drapeaux = ecriture
+effet = fidelite:0.05, admin:0.15, science:1.5
+recette = livres 1 ; travail 0.5
+
+[aq_gravure]
+nom = Écriture gravée sur coquille
+ref = Voie aquatique de l'écriture sur support sec
+pre = comptage
+corps = eau
+diff = 60
+inv = 0.6
+besoin = administration
+drapeaux = ecriture
+effet = fidelite:0.04, admin:0.12, science:1.4
+recette = livres 1 ; travail 0.6
+
+[sm_marques]
+nom = Marques gravées au bec
+ref = Voie sans mains de l'écriture
+pre = comptage
+corps = sans_mains
+diff = 60
+inv = 0.4
+drapeaux = ecriture
+effet = fidelite:0.02, admin:0.06, science:1.2
+
+[alphabet]
+nom = Alphabet
+ref = Proto-sinaïtique, 3,8 ka
+ou = ecriture, aq_gravure
+diff = 30
+effet = fidelite:0.03, admin:0.05, science:1.3
+
+[papier]
+nom = Papyrus et papier
+ref = Égypte ; Cai Lun, 105
+ou = ecriture, aq_gravure
+diff = 24
+effet = science:1.1
+recette = livres 1 <- bois 0.05 ; travail 0.25
+
+[numeration]
+nom = Numération écrite
+ref = Sumer, base soixante
+pre = comptage
+ou = ecriture, aq_gravure, sm_marques
+diff = 24
+effet = science:1.2, admin:0.05
+
+[geometrie]
+nom = Géométrie et arpentage
+ref = Égypte, Babylone
+pre = numeration
+diff = 26
+effet = science:1.15, admin:0.03
+sci = mecanique:0.05
+
+[calendrier_solaire]
+nom = Calendrier solaire
+ref = Stonehenge ; Égypte
+pre = calendrier_lunaire, village
+corps = ciel
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 22
+effet = rendement:1.03, science:1.05
+
+[st_calendrier_thermique]
+nom = Calendrier des cycles thermiques
+ref = Voie souterraine des calendriers
+pre = village
+corps = sous_terre
+diff = 22
+effet = rendement:1.03, science:1.05
+
+[poids_mesures]
+nom = Poids et mesures
+ref = Poids de Mohenjo-daro
+pre = comptage
+diff = 18
+effet = admin:0.02, artisanat:1.03
+
+[biens_monnaie]
+nom = Biens-monnaie
+ref = Orge et coquillages
+pre = comptage
+diff = 14
+drapeaux = monnaie
+effet = admin:0.02
+
+[metal_pese]
+nom = Métal pesé
+ref = Sicle mésopotamien
+pre = biens_monnaie, poids_mesures
+ou = fonte_cuivre, cuivre_martele, po_metal_froid, aq_electrodeposition
+diff = 20
+drapeaux = marche
+
+[pieces]
+nom = Pièces de monnaie
+ref = Lydie, 2,6 ka
+pre = metal_pese
+ou = ecriture, aq_gravure
+diff = 26
+drapeaux = marche, monnaie
+effet = artisanat:1.05
+
+[droit_ecrit]
+nom = Droit écrit
+ref = Code d'Hammurabi, 1750 avant notre ère
+ou = ecriture, aq_gravure
+diff = 28
+besoin = administration
+drapeaux = droit
+effet = admin:0.1
+
+[bureaucratie]
+nom = Bureaucratie
+ref = Scribes d'Ur III
+pre = numeration
+ou = ecriture, aq_gravure
+diff = 34
+besoin = administration
+effet = admin:0.15
+
+[recensement]
+nom = Recensement et cadastre
+ref = Chine des Han ; Rome
+pre = bureaucratie, geometrie
+diff = 22
+effet = admin:0.08
+
+[routes]
+nom = Routes pavées et relais
+ref = Voie royale perse ; voies romaines
+pre = bureaucratie
+ou = chariot, st_vibrations, aq_acoustique
+diff = 30
+besoin = transport
+effet = transport:1.3, portee:1, admin:0.05
+
+[urbanisme]
+nom = Urbanisme
+ref = Uruk ; Mohenjo-daro
+pre = brique_crue
+ou = irrigation, grenier
+corps = sedentaire
+diff = 26
+effet = urbain:0.06
+
+[aqueduc_egouts]
+nom = Aqueducs et égouts
+ref = Mohenjo-daro ; Rome
+pre = urbanisme, bureaucratie
+diff = 34
+besoin = sante
+effet = sante:0.92, epidemie:0.85, urbain:0.03
+
+[chirurgie]
+nom = Chirurgie simple
+ref = Trépanations ; papyrus Edwin Smith
+pre = plantes_medicinales
+ou = fonte_cuivre, eclat
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 24
+effet = sante:0.98
+
+[ecole]
+nom = École de scribes
+ref = Édubba sumérienne
+ou = ecriture, aq_gravure
+diff = 24
+drapeaux = ecole
+effet = science:1.2, fidelite:0.01
+
+[bibliotheque]
+nom = Bibliothèque
+ref = Ninive ; Alexandrie
+pre = papier, bureaucratie
+diff = 24
+effet = science:1.2, fidelite:0.01
+
+# ---------------------------------------------------------------- Âge du fer et Antiquité
+[fonte_fer]
+nom = Fonte du fer
+ref = Anatolie, 3,2 ka ; Afrique de l'Ouest sans âge du cuivre
+pre = four_potier, charbonnage
+res = fer
+corps = feu
+diff = 55
+besoin = defense
+drapeaux = metal
+effet = artisanat:1.15, rendement:1.05, militaire:1.2
+recette = fer 1 <- charbon_bois 8 ; gisement fer 1 ; travail 2
+recette = outils 1 <- fer 0.01 ; travail 0.006
+recette = armes 1 <- fer 0.012 ; travail 0.015
+
+[acier_trempe]
+nom = Acier trempé
+ref = Acier de Damas, wootz indien
+pre = fonte_fer
+diff = 34
+effet = militaire:1.15, artisanat:1.05
+
+[charrue_lourde]
+nom = Charrue lourde
+ref = Charrue à versoir, Chine des Han ; Europe du Xe siècle
+pre = araire
+ou = fonte_fer, po_four_solaire, aq_electrodeposition
+diff = 30
+besoin = nourriture
+effet = rendement:1.2, travail_champ:0.85
+
+[assolement]
+nom = Assolement triennal
+ref = Europe carolingienne
+pre = charrue_lourde, jachere
+diff = 22
+effet = rendement:1.15, sol:0.002
+
+[arc_composite]
+nom = Arc composite
+ref = Steppe, Akkad
+pre = arc, elevage
+diff = 26
+effet = militaire:1.15
+
+[phalange]
+nom = Infanterie organisée
+ref = Phalange grecque ; légion romaine
+pre = bureaucratie
+ou = bronze, fonte_fer, po_metal_froid, aq_electrodeposition
+diff = 30
+besoin = conquete
+effet = militaire:1.25
+
+[catapulte]
+nom = Machines de siège
+ref = Syracuse, 400 avant notre ère
+pre = geometrie
+ou = fonte_fer, po_four_solaire
+diff = 30
+sci = mecanique:0.15
+effet = militaire:1.12
+
+[voile]
+nom = Voile
+ref = Égypte, 5 ka
+pre = pirogue, tissage
+res = cote
+ou = culture_cereales, culture_tubercules, elevage, aq_algoculture, aq_aquaculture, st_champignons, sm_jardins
+diff = 26
+besoin = transport
+effet = transport:1.25, portee:1, peche:1.1
+
+[navire_planches]
+nom = Navire à bordages
+ref = Barque de Khéops
+pre = voile, hache_polie
+diff = 26
+effet = transport:1.2, portee:1
+
+[moulin_eau]
+nom = Moulin à eau
+ref = Grèce, IIIe siècle avant notre ère
+pre = roue, geometrie
+res = riviere
+diff = 32
+besoin = nourriture
+sci = mecanique:0.1
+energie = eau:1
+effet = artisanat:1.05
+
+[moulin_vent]
+nom = Moulin à vent
+ref = Perse, IXe siècle
+pre = geometrie
+ou = voile, roue, aq_acoustique
+res = vent
+diff = 32
+besoin = combustible
+sci = mecanique:0.15
+energie = vent:1
+effet = artisanat:1.04
+
+[verre]
+nom = Verre
+ref = Mésopotamie, 4,5 ka
+pre = four_potier
+corps = feu
+diff = 26
+recette = luxe 1 <- bois 0.5 ; travail 0.3
+
+[po_verre_solaire]
+nom = Verre au four solaire
+ref = Voie sans feu du verre
+pre = po_four_solaire
+diff = 30
+recette = luxe 1 ; travail 0.35
+
+[beton_romain]
+nom = Mortier de chaux et béton
+ref = Rome, IIe siècle avant notre ère
+pre = brique_crue, four_potier
+corps = feu
+diff = 28
+effet = urbain:0.02
+recette = batiments 1 <- pierre 0.3, bois 0.05 ; travail 0.02 ; carbonate 0.004
+
+[philosophie_naturelle]
+nom = Philosophie naturelle
+ref = Ionie, Inde, Chine, VIe siècle avant notre ère
+pre = geometrie
+ou = alphabet, papier
+diff = 34
+besoin = savoir
+effet = science:1.3
+
+[astronomie_observation]
+nom = Astronomie d'observation
+ref = Babylone, Maya
+pre = calendrier_solaire, numeration
+corps = ciel
+diff = 28
+effet = science:1.1
+
+[st_navigation_magnetique]
+nom = Repérage magnétique
+ref = Voie souterraine de la navigation
+pre = numeration
+corps = sous_terre
+diff = 28
+effet = portee:1, science:1.05
+
+[zero]
+nom = Zéro et notation positionnelle
+ref = Brahmagupta, 628
+pre = numeration, philosophie_naturelle
+diff = 28
+effet = science:1.15, admin:0.03
+
+[algebre]
+nom = Algèbre
+ref = Al-Khwarizmi, 820
+pre = zero
+diff = 30
+sci = mecanique:0.2
+effet = science:1.15
+
+[boussole]
+nom = Boussole
+ref = Chine des Song, XIe siècle
+pre = philosophie_naturelle
+ou = fonte_fer, po_four_solaire, aq_electrodeposition
+diff = 28
+effet = transport:1.1
+instrument = geologie
+
+[cartographie]
+nom = Cartographie
+ref = Ptolémée ; portulans
+pre = geometrie, boussole
+diff = 24
+effet = portee:1, admin:0.03
+
+[universite]
+nom = Université
+ref = Nalanda ; al-Qarawiyyin ; Bologne
+pre = ecole, bibliotheque, droit_ecrit
+diff = 30
+drapeaux = ecole
+effet = science:1.3
+
+[banque]
+nom = Banque et crédit
+ref = Templiers ; banques florentines
+pre = pieces, droit_ecrit
+diff = 30
+drapeaux = marche
+effet = artisanat:1.05, admin:0.03
+
+[papier_monnaie]
+nom = Papier-monnaie
+ref = Jiaozi des Song, 1024
+pre = banque, imprimerie
+diff = 24
+drapeaux = monnaie
+
+[imprimerie]
+nom = Imprimerie
+ref = Bi Sheng, 1040 ; Gutenberg, 1450
+pre = papier, bibliotheque
+ou = fonte_fer, alphabet
+diff = 40
+inv = 0.6
+besoin = savoir
+sci = mecanique:0.15
+drapeaux = imprimerie
+effet = fidelite:0.03, science:1.6
+recette = livres 1 <- bois 0.02 ; travail 0.03
+
+[poudre]
+nom = Poudre noire
+ref = Chine, IXe siècle
+pre = charbonnage, philosophie_naturelle
+corps = feu
+res = sel
+diff = 34
+sci = chimie:0.2
+besoin = conquete
+drapeaux = poudre
+effet = militaire:1.3
+
+[canon]
+nom = Canon
+ref = Chine, XIIIe siècle ; Europe, XIVe siècle
+pre = poudre, fonte_fer
+diff = 34
+effet = militaire:1.3, defense:0.7
+
+[mousquet]
+nom = Arquebuse et mousquet
+ref = Europe et Empire ottoman, XVe siècle
+pre = canon
+diff = 30
+effet = militaire:1.3
+
+[navigation_hauturiere]
+nom = Navigation hauturière
+ref = Polynésiens ; caravelles
+pre = boussole, navire_planches, astronomie_observation
+diff = 40
+besoin = transport
+sci = astronomie:0.3
+drapeaux = navigation
+effet = transport:1.3, portee:3
+
+[pirogue_balancier]
+nom = Pirogue à balancier et navigation aux étoiles
+ref = Austronésiens, Lapita
+pre = pirogue, voile, calendrier_lunaire
+diff = 40
+besoin = transport
+drapeaux = navigation
+effet = transport:1.1, portee:2
+
+[lunette]
+nom = Lunette astronomique
+ref = Galilée, 1609
+pre = verre, geometrie, algebre
+ou = verre, po_verre_solaire
+diff = 30
+sci = mecanique:0.25
+instrument = astronomie
+effet = science:1.05
+
+[microscope]
+nom = Microscope
+ref = Van Leeuwenhoek, 1676
+pre = lunette
+diff = 30
+instrument = biologie, maladies, heredite
+effet = science:1.05
+
+[thermometre]
+nom = Thermomètre et baromètre
+ref = Torricelli, 1643
+pre = lunette
+diff = 26
+sci = mecanique:0.3
+instrument = climat
+
+[balance_precision]
+nom = Balance de précision
+ref = Lavoisier
+pre = poids_mesures
+ou = fonte_fer, po_four_solaire, aq_electrodeposition
+diff = 24
+sci = chimie:0.2
+instrument = chimie, mecanique
+
+[methode_scientifique]
+nom = Méthode expérimentale
+ref = Alhazen ; Galilée ; Bacon
+pre = algebre, imprimerie
+ou = lunette, balance_precision
+diff = 70
+inv = 0.4
+besoin = savoir
+sci = mecanique:0.3, astronomie:0.35
+drapeaux = methode
+effet = science:2.5
+
+[academie]
+nom = Académie des sciences
+ref = Royal Society, 1660
+pre = methode_scientifique
+diff = 24
+effet = science:1.3
+
+[revue_scientifique]
+nom = Revue savante
+ref = Philosophical Transactions, 1665
+pre = academie
+diff = 22
+effet = science:1.3, fidelite:0.01
+
+[variolisation]
+nom = Variolisation
+ref = Chine et Inde ; Lady Montagu, 1721
+pre = plantes_medicinales, quarantaine
+diff = 26
+sci = maladies:0.1
+besoin = sante
+effet = immunite:0.9
+
+[quarantaine]
+nom = Quarantaine
+ref = Raguse, 1377
+pre = bureaucratie, universite
+diff = 20
+sci = maladies:0.1
+besoin = sante
+effet = epidemie:0.9
+
+[four_solaire]
+nom = Concentrateur solaire
+ref = Miroirs ardents ; fours solaires
+pre = verre, geometrie
+res = soleil
+diff = 30
+besoin = combustible
+sci = mecanique:0.2
+energie = solaire:0.3
+
+# ---------------------------------------------------------------- Industrie
+[haut_fourneau]
+nom = Haut fourneau
+ref = Chine des Han ; Europe, XIVe siècle
+pre = fonte_fer
+ou = moulin_eau, moulin_vent
+diff = 40
+recette = fer 1 <- charbon_bois 4 ; gisement fer 1 ; travail 0.6
+
+[extraction_charbon]
+nom = Extraction du charbon
+ref = Chine des Song ; Angleterre, XIIIe siècle
+ou = fonte_fer, haut_fourneau
+res = charbon
+diff = 24
+besoin = combustible
+recette = charbon 1 ; gisement charbon 0.7 ; travail 0.02
+
+[machine_outil]
+nom = Machine-outil
+ref = Tour à fileter, Maudslay
+pre = algebre
+ou = haut_fourneau, po_four_solaire, aq_electrodeposition
+ou = moulin_eau, moulin_vent, haut_fourneau, aq_geothermie, st_geothermie
+diff = 40
+sci = mecanique:0.35
+effet = artisanat:1.1
+recette = machines 1 <- fer 0.5 ; travail 0.8
+
+[pompe_vapeur]
+nom = Pompe à feu
+ref = Newcomen, 1712
+pre = extraction_charbon, haut_fourneau
+res = charbon
+diff = 50
+inv = 0.6
+besoin = combustible
+sci = mecanique:0.35
+drapeaux = fossile
+energie = charbon:0.01
+recette = charbon 1 ; gisement charbon 0.7 ; travail 0.008
+
+[coke]
+nom = Fonte au coke
+ref = Darby, 1709
+pre = extraction_charbon, haut_fourneau
+diff = 34
+besoin = combustible
+sci = chimie:0.25
+recette = fer 1 <- charbon 2 ; gisement fer 1 ; travail 0.4
+
+[machine_vapeur]
+nom = Machine à vapeur
+ref = Watt, 1769
+pre = pompe_vapeur, machine_outil
+diff = 50
+inv = 0.6
+sci = mecanique:0.45, chimie:0.3
+drapeaux = fossile, industrie
+energie = charbon:0.06
+recette = machines 1 <- fer 0.4, charbon 1 ; travail 0.3
+
+[filature_mecanique]
+nom = Filature mécanique
+ref = Arkwright, 1771
+pre = machine_outil, tissage
+diff = 30
+drapeaux = industrie
+effet = artisanat:1.1
+recette = textile 1 <- machines 0.002 ; travail 0.004
+
+[locomotive]
+nom = Chemin de fer
+ref = Stephenson, 1825
+pre = machine_vapeur
+diff = 34
+sci = mecanique:0.5
+effet = transport:1.8, portee:2, admin:0.03
+
+[bateau_vapeur]
+nom = Navire à vapeur
+ref = Fulton, 1807
+pre = machine_vapeur, navigation_hauturiere
+diff = 30
+effet = transport:1.5, portee:3
+
+[acier_bessemer]
+nom = Acier industriel
+ref = Bessemer, 1856
+pre = coke
+ou = machine_vapeur, electromagnetisme
+diff = 34
+sci = chimie:0.45
+effet = artisanat:1.1, militaire:1.1
+recette = fer 1 <- charbon 1.2 ; gisement fer 1 ; travail 0.08
+
+[ciment_portland]
+nom = Ciment Portland
+ref = Aspdin, 1824
+pre = coke, beton_romain
+diff = 26
+effet = urbain:0.05
+recette = batiments 1 <- pierre 0.2, charbon 0.05 ; travail 0.01 ; carbonate 0.02
+
+[chimie_industrielle]
+nom = Chimie industrielle
+ref = Procédés Leblanc et Solvay
+pre = balance_precision
+ou = coke, aq_piles, po_electrochimie
+diff = 34
+sci = chimie:0.5
+effet = artisanat:1.05
+recette = medicaments 1 <- charbon 0.01 ; travail 0.02
+
+[pile_electrique]
+nom = Pile électrique
+ref = Volta, 1800
+pre = balance_precision
+diff = 30
+sci = chimie:0.35
+effet = science:1.05
+
+[po_electrochimie]
+nom = Électrochimie sans feu
+ref = Voie pauvre en oxygène de la chimie
+pre = pile_electrique
+corps = peu_oxygene
+diff = 30
+sci = chimie:0.4
+recette = fer 1 <- electricite 4 ; gisement fer 1 ; travail 0.3
+
+[electromagnetisme]
+nom = Dynamo et moteur électrique
+ref = Faraday, 1831 ; Siemens, 1866
+pre = pile_electrique, machine_outil
+diff = 46
+sci = mecanique:0.55
+drapeaux = industrie
+energie = electrique:0.8
+recette = electricite 1 <- charbon 0.6 ; travail 0.002
+
+[telegraphe]
+nom = Télégraphe électrique
+ref = Morse, 1837
+pre = pile_electrique
+ou = machine_outil, aq_piles
+diff = 30
+sci = mecanique:0.5, chimie:0.4
+effet = admin:0.05, portee:2, science:1.1
+
+[reseau_electrique]
+nom = Réseau électrique
+ref = Edison, 1882
+pre = electromagnetisme
+ou = acier_bessemer, aq_electrodeposition, po_electrochimie
+diff = 36
+effet = urbain:0.1
+recette = electricite 1 <- charbon 0.45 ; travail 0.001
+
+[hydroelectricite]
+nom = Hydroélectricité
+ref = Niagara, 1895
+pre = reseau_electrique
+res = riviere
+diff = 28
+recette = electricite 1 ; travail 0.0006
+
+[forage_petrole]
+nom = Forage pétrolier
+ref = Drake, 1859
+ou = machine_vapeur, electromagnetisme
+res = petrole
+diff = 30
+besoin = combustible
+sci = geologie:0.4
+drapeaux = fossile
+recette = petrole 1 ; gisement petrole 0.85 ; travail 0.003
+
+[moteur_combustion]
+nom = Moteur à combustion
+ref = Otto, 1876 ; Diesel, 1893
+pre = forage_petrole, machine_outil
+diff = 40
+sci = mecanique:0.6, chimie:0.5
+drapeaux = fossile, industrie
+energie = petrole:0.25
+effet = transport:1.5
+
+[automobile]
+nom = Automobile
+ref = Benz, 1886 ; Ford, 1908
+pre = moteur_combustion
+ou = acier_bessemer, aq_electrodeposition
+diff = 28
+effet = transport:1.3
+
+[tracteur]
+nom = Tracteur
+ref = Fordson, 1917
+pre = moteur_combustion, charrue_lourde
+diff = 28
+effet = travail_champ:0.08, carburant:2
+
+[engrais_chimiques]
+nom = Engrais de synthèse
+ref = Haber et Bosch, 1913
+pre = chimie_industrielle
+ou = reseau_electrique, forage_petrole
+diff = 40
+besoin = nourriture
+sci = chimie:0.7
+effet = sol:0.01, engrais:12
+recette = engrais 1 <- petrole 0.8 ; travail 0.005
+recette = engrais 1 <- electricite 12 ; travail 0.006
+
+[semences]
+nom = Semences sélectionnées
+ref = Maïs hybride, 1930
+pre = engrais_chimiques
+diff = 30
+besoin = nourriture
+sci = heredite:0.6
+effet = rendement:1.5
+
+[pesticides]
+nom = Pesticides
+ref = Années 1940
+pre = engrais_chimiques
+diff = 24
+effet = rendement:1.15
+
+[revolution_verte]
+nom = Révolution verte
+ref = Borlaug, années 1960
+pre = semences, tracteur
+diff = 30
+sci = heredite:0.75
+effet = rendement:1.3
+
+[pompage]
+nom = Irrigation par pompage
+ref = Pompes motorisées
+pre = irrigation
+ou = moteur_combustion, reseau_electrique
+diff = 22
+effet = irrigation:1.0
+
+[theorie_germes]
+nom = Théorie des germes
+ref = Pasteur, Koch, 1860-1880
+pre = microscope, methode_scientifique
+diff = 40
+besoin = sante
+sci = maladies:0.5
+effet = epidemie:0.6, sante:0.85
+
+[antisepsie]
+nom = Antisepsie
+ref = Lister, 1867
+pre = theorie_germes
+diff = 22
+effet = sante:0.88
+
+[vaccins]
+nom = Vaccins
+ref = Jenner, 1796 ; Pasteur, 1885
+pre = variolisation, theorie_germes
+diff = 30
+sci = maladies:0.6
+effet = immunite:0.3
+
+[hygiene_moderne]
+nom = Eau potable et égouts modernes
+ref = Londres après 1858
+pre = theorie_germes, aqueduc_egouts
+ou = ciment_portland, aq_electrodeposition
+diff = 30
+effet = sante:0.75, epidemie:0.6
+
+[antibiotiques]
+nom = Antibiotiques
+ref = Fleming, 1928 ; Florey, 1940
+pre = theorie_germes, chimie_industrielle
+diff = 40
+sci = chimie:0.75, maladies:0.75
+effet = sante:0.7, epidemie:0.4
+recette = medicaments 1 <- petrole 0.005 ; travail 0.01
+
+[ecole_obligatoire]
+nom = École pour tous
+ref = Prusse, 1763 ; lois Ferry, 1882
+pre = imprimerie, bureaucratie, ecole, methode_scientifique
+diff = 28
+drapeaux = ecole
+effet = science:1.2, natalite:0.85, admin:0.05
+
+[contraception]
+nom = Contraception
+ref = Pilule, 1960
+pre = antisepsie
+diff = 30
+sci = heredite:0.5
+effet = natalite:0.65
+
+[theorie_evolution]
+nom = Théorie de l'évolution
+ref = Darwin et Wallace, 1858
+pre = methode_scientifique
+diff = 34
+besoin = savoir
+sci = biologie:0.6, geologie:0.5
+effet = science:1.05
+
+[genetique]
+nom = Génétique
+ref = Mendel, 1866 ; ADN, 1953
+pre = theorie_evolution, microscope
+diff = 34
+sci = heredite:0.5
+effet = science:1.05
+
+[sismographe]
+nom = Sismographe
+ref = Milne, 1880
+pre = electromagnetisme
+diff = 22
+instrument = geologie
+
+[tectonique]
+nom = Tectonique des plaques
+ref = Wegener, 1912 ; années 1960
+pre = sismographe
+diff = 30
+sci = geologie:0.7
+
+[climatologie]
+nom = Climatologie
+ref = Arrhenius, 1896 ; Keeling, 1958
+pre = thermometre, telegraphe
+diff = 30
+sci = climat:0.6
+
+[spectroscopie]
+nom = Spectroscopie
+ref = Fraunhofer ; Kirchhoff et Bunsen
+pre = lunette, pile_electrique
+diff = 30
+sci = chimie:0.5
+instrument = chimie, astronomie
+
+[telephone]
+nom = Téléphone
+ref = Bell, 1876
+pre = telegraphe, reseau_electrique
+diff = 28
+effet = admin:0.03, portee:1
+
+[radio]
+nom = Radio
+ref = Marconi, 1895
+pre = telephone
+diff = 30
+sci = mecanique:0.7
+effet = portee:2, science:1.05
+
+[aviation]
+nom = Aviation
+ref = Wright, 1903
+pre = moteur_combustion
+diff = 34
+sci = mecanique:0.7
+effet = transport:1.3, portee:3, militaire:1.2
+
+[plastiques]
+nom = Plastiques
+ref = Bakélite, 1907
+pre = forage_petrole, chimie_industrielle
+diff = 26
+sci = chimie:0.75
+effet = artisanat:1.1
+
+[transistor]
+nom = Transistor
+ref = Bell Labs, 1947
+pre = radio
+diff = 40
+sci = chimie:0.8, mecanique:0.8
+effet = science:1.2
+
+[ordinateur]
+nom = Ordinateur
+ref = ENIAC, 1945 ; circuits intégrés
+pre = transistor
+diff = 40
+effet = science:1.5, admin:0.1, artisanat:1.15
+
+[satellites]
+nom = Fusées et satellites
+ref = Spoutnik, 1957
+pre = aviation, ordinateur
+diff = 40
+sci = mecanique:0.85, astronomie:0.8
+effet = portee:3
+
+[internet]
+nom = Réseau informatique mondial
+ref = ARPANET, 1969 ; Web, 1991
+pre = ordinateur, telephone
+diff = 40
+besoin = savoir
+drapeaux = reseau
+effet = science:1.5, admin:0.1, portee:5
+
+[conteneur]
+nom = Transport par conteneurs
+ref = McLean, 1956
+pre = moteur_combustion, navigation_hauturiere
+diff = 22
+effet = transport:1.5, portee:2
+
+[fission_nucleaire]
+nom = Énergie nucléaire
+ref = Fermi, 1942 ; Obninsk, 1954
+pre = spectroscopie, reseau_electrique
+res = uranium
+diff = 50
+sci = mecanique:0.85, chimie:0.8
+recette = electricite 1 ; gisement uranium 0.00002 ; travail 0.0005
+
+[bombe_atomique]
+nom = Arme nucléaire
+ref = Manhattan, 1945
+pre = fission_nucleaire
+diff = 40
+besoin = defense
+effet = militaire:3.0
+
+[mitrailleuse]
+nom = Armes industrielles
+ref = Maxim, 1884
+pre = mousquet, acier_bessemer
+diff = 30
+effet = militaire:1.6
+
+[char_assaut]
+nom = Blindés
+ref = 1916
+pre = mitrailleuse, moteur_combustion
+diff = 30
+effet = militaire:1.4
+
+[solaire_photovoltaique]
+nom = Photovoltaïque
+ref = Bell Labs, 1954
+pre = transistor
+res = soleil
+diff = 30
+recette = electricite 1 ; travail 0.0012
+
+[eolien_moderne]
+nom = Éolienne moderne
+ref = Gedser, 1957
+pre = reseau_electrique
+ou = aviation, aq_reseau
+res = vent
+diff = 26
+recette = electricite 1 ; travail 0.0009
+
+[geothermie_electrique]
+nom = Géothermie électrique
+ref = Larderello, 1904
+pre = reseau_electrique
+res = geothermie
+diff = 26
+recette = electricite 1 ; travail 0.0008
+
+[medecine_moderne]
+nom = Médecine moderne
+ref = Seconde moitié du XXe siècle
+pre = antibiotiques, vaccins
+diff = 34
+sci = heredite:0.7
+effet = sante:0.75
+
+# ---------------------------------------------------------------- Voies aquatiques
+[aq_coquilles]
+nom = Outils de coquille
+ref = Voie aquatique des outils
+pre = percussion
+corps = eau
+diff = 12
+recette = outils 1 ; travail 0.03
+
+[aq_corail]
+nom = Construction en corail
+ref = Voie aquatique de l'abri
+pre = aq_coquilles
+corps = eau
+diff = 20
+recette = batiments 1 ; travail 0.05
+
+[aq_algoculture]
+nom = Culture des algues
+ref = Voie aquatique de l'agriculture
+pre = aq_corail, stockage
+corps = eau, sedentaire
+diff = 36
+inv = 0.6
+besoin = nourriture
+drapeaux = agriculture
+
+[aq_aquaculture]
+nom = Élevage en enclos marins
+ref = Voie aquatique de l'élevage
+pre = aq_algoculture
+corps = eau
+res = animal
+diff = 34
+inv = 0.5
+drapeaux = elevage
+
+[aq_chimie_solution]
+nom = Chimie des sources chaudes
+ref = Voie aquatique du feu
+pre = aq_corail
+corps = eau
+res = geothermie
+diff = 34
+sci = chimie:0.1
+
+[aq_geothermie]
+nom = Énergie des sources chaudes
+ref = Voie aquatique des moulins
+pre = aq_chimie_solution
+corps = eau
+res = geothermie
+diff = 30
+energie = geothermie:1
+
+[aq_piles]
+nom = Piles et bioélectricité
+ref = Voie aquatique de l'électricité
+pre = aq_chimie_solution, numeration
+corps = eau
+diff = 40
+sci = chimie:0.3
+energie = electrique:0.5
+recette = electricite 1 <- cuivre 0.001 ; travail 0.05
+
+[aq_electrodeposition]
+nom = Dépôt de minéraux par courant
+ref = Voie aquatique de la métallurgie
+pre = aq_piles
+corps = eau
+diff = 40
+drapeaux = metal
+recette = fer 1 <- electricite 5 ; gisement fer 1 ; travail 0.3
+recette = cuivre 1 <- electricite 3 ; gisement cuivre 1 ; travail 0.3
+recette = outils 1 <- fer 0.01 ; travail 0.008
+recette = machines 1 <- fer 0.5, electricite 2 ; travail 0.9
+
+[aq_acoustique]
+nom = Signaux acoustiques à longue portée
+ref = Voie aquatique des signaux
+pre = aq_gravure
+corps = eau
+diff = 30
+effet = portee:2, admin:0.05, science:1.1
+
+[aq_scaphandre]
+nom = Scaphandre et sortie à terre
+ref = Voie aquatique vers la terre
+pre = aq_electrodeposition
+corps = eau
+diff = 40
+sci = mecanique:0.5
+effet = portee:2
+
+[aq_reseau]
+nom = Réseau acoustique mondial
+ref = Voie aquatique des réseaux
+pre = aq_acoustique, aq_piles
+ou = ordinateur, transistor
+corps = eau
+diff = 40
+sci = mecanique:0.8
+drapeaux = reseau
+effet = science:1.5, admin:0.1, portee:5
+
+# ---------------------------------------------------------------- Voies pauvres en oxygène
+[po_sechage_solaire]
+nom = Poterie séchée au soleil
+ref = Voie sans feu de la poterie
+pre = recipient, village
+corps = peu_oxygene
+diff = 24
+effet = stockage:0.15
+recette = poterie 1 ; travail 0.05
+
+[po_metal_froid]
+nom = Métal natif martelé à froid
+ref = Voie sans feu de la métallurgie
+pre = percussion
+corps = peu_oxygene, mains
+res = cuivre
+diff = 30
+drapeaux = metal
+recette = cuivre 1 ; gisement cuivre 1 ; travail 4
+recette = outils 1 <- cuivre 0.012 ; travail 0.012
+
+[po_four_solaire]
+nom = Four solaire à miroirs
+ref = Voie sans feu de la fonte
+pre = po_metal_froid, geometrie
+corps = peu_oxygene
+res = soleil
+diff = 40
+sci = mecanique:0.25
+drapeaux = metal
+recette = fer 1 ; gisement fer 1 ; travail 1.6
+recette = outils 1 <- fer 0.01 ; travail 0.007
+
+[po_geothermie]
+nom = Fours géothermiques
+ref = Voie sans feu des fourneaux
+pre = po_metal_froid
+corps = peu_oxygene
+res = geothermie
+diff = 34
+energie = geothermie:1
+recette = fer 1 ; gisement fer 1 ; travail 2
+
+# ---------------------------------------------------------------- Voies souterraines
+[st_champignons]
+nom = Champignonnières
+ref = Voie souterraine de l'agriculture
+pre = stockage, abri
+corps = sous_terre, sedentaire
+diff = 34
+inv = 0.6
+besoin = nourriture
+drapeaux = agriculture
+
+[st_vibrations]
+nom = Signaux par vibrations
+ref = Voie souterraine des signaux
+pre = village
+corps = sous_terre
+diff = 24
+effet = admin:0.05, portee:1
+
+[st_geothermie]
+nom = Chaleur des profondeurs
+ref = Voie souterraine de l'énergie
+pre = st_vibrations
+corps = sous_terre
+res = geothermie
+diff = 28
+energie = geothermie:1
+
+# ---------------------------------------------------------------- Voies sans mains
+[sm_jardins]
+nom = Jardins par dissémination
+ref = Voie sans mains de l'agriculture
+pre = stockage
+corps = sans_mains
+res = plante_graine
+diff = 34
+inv = 0.5
+drapeaux = agriculture
+effet = rendement:0.5
+
+[sm_dressage]
+nom = Garde de troupeaux
+ref = Voie sans mains de l'élevage
+pre = stockage
+corps = sans_mains
+res = animal
+diff = 30
+inv = 0.5
+drapeaux = elevage
