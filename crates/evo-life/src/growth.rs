@@ -57,8 +57,9 @@ pub struct Physiology {
     /// Mortalité de fond, an⁻¹.
     pub background_mortality: f64,
     /// Feux des terres : part de l'O₂ de l'air au-dessus de laquelle la
-    /// végétation brûle, et mortalité par le feu d'un sol sec quand l'O₂
-    /// atteint `fire_full_o2`, an⁻¹ (elle croît comme le carré de l'excès).
+    /// végétation brûle, et mortalité par le feu de la végétation d'un sol
+    /// sec quand l'O₂ atteint `fire_full_o2`, an⁻¹ (elle croît comme le carré
+    /// de l'excès : 16 /an à 25 %, 200 /an à 35 %).
     /// [Simplification] Le feu est le frein de l'O₂ de l'air au-delà de 25 à
     /// 35 % (charbons fossiles, Lenton et Watson) : il rend aux terres
     /// émergées un plafond que la mer seule n'a pas.
@@ -262,7 +263,7 @@ impl Default for Physiology {
             max_starvation: 20.0,
             fire_onset_o2: 0.21,
             fire_full_o2: 0.35,
-            fire_mortality: 2.0,
+            fire_mortality: 200.0,
             oxygen_stress_mortality: 200.0,
             oxygen_stress_half: 1e-3,
             oxygen_inhibition_half: 1e-4,
@@ -853,7 +854,8 @@ fn finish(p: &Phenotype, b: &Budget, cond: &Conditions, chem: &WaterChemistry, p
             let wet = cond.moisture.clamp(0.0, 1.0);
             let co2 = if p.phototroph { physio.land_co2_factor(cond.co2_pa) } else { 1.0 };
             let excess = ((cond.o2_mixing - physio.fire_onset_o2) / (physio.fire_full_o2 - physio.fire_onset_o2)).max(0.0);
-            let fire = physio.fire_mortality * excess * excess * (1.0 - 0.5 * wet);
+            // Le feu brûle la végétation (les phototrophes) ; les animaux le fuient.
+            let fire = if p.phototroph { physio.fire_mortality * excess * excess * (1.0 - 0.5 * wet) } else { 0.0 };
             (birth * wet * co2, physio.desiccation_mortality * (1.0 - p.desiccation_tolerance) * (1.0 - 0.5 * wet) + fire)
         } else {
             // Plus de terre ferme libre (glace) : spores et formes de

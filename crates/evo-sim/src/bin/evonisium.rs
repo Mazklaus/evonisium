@@ -216,6 +216,9 @@ fn complexity(args: &[String]) {
     if let Some(p) = opt(args, "--innovation") {
         cfg.evolution.innovation_probability = p.parse().expect("probabilité invalide");
     }
+    if let Some(m) = opt(args, "--feu") {
+        cfg.physiology.fire_mortality = m.parse().expect("mortalité invalide");
+    }
     if let Some(m) = opt(args, "--famine") {
         cfg.physiology.max_starvation = m.parse().expect("mortalité invalide");
     }
