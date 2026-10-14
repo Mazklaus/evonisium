@@ -266,6 +266,30 @@ fn complexity(args: &[String]) {
                     cw.myths.len(),
                     cw.notables.len()
                 );
+                // Porte de l'étape 6 : technique transmise sur 10 générations
+                // ou plus, traditions dans plusieurs peuples.
+                let st = evo_culture::CulturalState::of(cw);
+                let technique = |id| {
+                    matches!(st.traits.iter().find(|t| t.id == id).map(|t| t.kind), Some(evo_culture::traits::TraitKind::Technique(_)))
+                };
+                let max_gen = st
+                    .groups
+                    .iter()
+                    .flat_map(|g| g.traits.iter())
+                    .filter(|t| technique(t.id))
+                    .map(|t| t.generations)
+                    .fold(0.0f32, f32::max);
+                let mut peoples: Vec<u32> = st.groups.iter().filter(|g| !g.traits.is_empty()).map(|g| g.people).collect();
+                peoples.sort_unstable();
+                peoples.dedup();
+                let species: std::collections::BTreeSet<u32> =
+                    st.groups.iter().filter(|g| !g.traits.is_empty()).map(|g| g.species).collect();
+                println!(
+                    "  ◆ porte : technique transmise sur {max_gen:.0} générations au plus ; traditions dans {} peuples, {} espèces ; {} traits",
+                    peoples.len(),
+                    species.len(),
+                    st.traits.len()
+                );
                 if let Some(path) = opt(args, "--sauver-historique") {
                     world.save_file(std::path::Path::new(&path)).expect("écriture de la sauvegarde");
                 }
