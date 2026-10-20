@@ -7,7 +7,7 @@
 //! passe par des requêtes asynchrones : ce module les relance et relève leurs
 //! réponses sans jamais attendre (une fois par image, depuis `pump`).
 
-use evo_core::events::{Event, Origin};
+use evo_core::events::{Event, EventKind, Origin};
 use evo_engine::strata::Stratum;
 use evo_engine::{Answer, Branch, BranchSpec, CellDetail, Engine, InterestZone, Intervention, NewGame, OrderKind, Query, Sample, When};
 use evo_view::chronicle::{self, Action, StopRules};
@@ -107,6 +107,31 @@ pub struct BranchRun {
     has_log: bool,
 }
 
+/// Comptes du journal pour le narrateur de la première partie.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EventTally {
+    /// Nouvelles lignées.
+    pub speciations: u32,
+    /// Événements au moins notables (hors ordres appliqués), jugés à la
+    /// vitesse de leur arrivée.
+    pub notable: u32,
+    /// Plus haute étape du chemin vers la cellule complexe.
+    pub complexity: u8,
+}
+
+impl EventTally {
+    pub fn count(&mut self, e: &Event, pace: f64) {
+        match &e.kind {
+            EventKind::NewLineage { .. } => self.speciations += 1,
+            EventKind::Innovation { pathway, stage, .. } if pathway == "cellule complexe" => self.complexity = self.complexity.max(*stage),
+            _ => {}
+        }
+        if chronicle::level(e, pace) >= chronicle::Level::Notable && !matches!(e.kind, EventKind::OrderApplied { .. }) {
+            self.notable += 1;
+        }
+    }
+}
+
 /// Une partie en cours.
 pub struct Game {
     pub engine: Engine,
@@ -119,6 +144,10 @@ pub struct Game {
     pub planet: Arc<PlanetInfo>,
     /// Journal des événements relevés, dans l'ordre.
     pub events: Vec<Event>,
+    /// Ce que le narrateur compte dans ce journal, tenu à jour à l'arrivée
+    /// de chaque événement : le journal en compte des millions en fin de
+    /// partie, trop pour le relire une fois par seconde.
+    pub tally: EventTally,
     pub lineages: Arc<Vec<LineageFrame>>,
     pub history: Vec<Sample>,
     pub rules: StopRules,
@@ -195,6 +224,7 @@ impl Game {
             sandbox,
             planet,
             events: Vec::new(),
+            tally: EventTally::default(),
             lineages: Arc::default(),
             history: Vec::new(),
             rules: StopRules::profile("naturaliste"),
@@ -367,6 +397,7 @@ impl Game {
                 self.next_event = v.id + 1;
                 let e = chronicle::from_view(&v);
                 self.apply_rules(&e);
+                self.tally.count(&e, self.pace);
                 self.events.push(e);
                 new_events += 1;
             }

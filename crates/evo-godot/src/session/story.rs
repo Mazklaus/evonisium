@@ -4,7 +4,6 @@
 //! traduit.
 
 use super::*;
-use evo_view::chronicle::Level;
 use evo_view::guide::{self, GuideState};
 use evo_view::story;
 
@@ -13,29 +12,21 @@ impl EvoSession {
         let g = self.game.as_ref()?;
         let f = self.frame()?;
         let gl = &f.state.globals;
-        let mut s = GuideState {
+        let t = g.tally;
+        Some(GuideState {
             years: f.state.years,
             lineages: gl.living_lineages as u32,
+            speciations: t.speciations,
+            notable: t.notable,
             photosynthesis_stage: gl.photosynthesis_stage,
             o2: gl.o2_mixing,
+            complexity: t.complexity,
             opened: opened.as_slice().iter().map(|s| s.to_string()).collect(),
             cell_selected,
             // Les interventions du joueur seules, pas ses autres ordres
             // (ensemencement, pause, règles d'arrêt).
             interventions: g.interventions.len() as u32,
-            ..Default::default()
-        };
-        for e in &g.events {
-            match &e.kind {
-                EventKind::NewLineage { .. } => s.speciations += 1,
-                EventKind::Innovation { pathway, stage, .. } if pathway == "cellule complexe" => s.complexity = s.complexity.max(*stage),
-                _ => {}
-            }
-            if chronicle::level(e, g.pace) >= Level::Notable && !matches!(e.kind, EventKind::OrderApplied { .. }) {
-                s.notable += 1;
-            }
-        }
-        Some(s)
+        })
     }
 
     fn events_by_id(&self, ids: &[u64]) -> VarArray {
